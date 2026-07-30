@@ -1,0 +1,59 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "dev: 감시 + 자동 재실행",
+      "type": "shell",
+      "command": "./dev.sh",
+      "isBackground": true,
+      "problemMatcher": ["$swiftc"],
+      "presentation": { "reveal": "always", "panel": "dedicated" }
+    },
+    {
+      "label": "빌드 + 실행 (한 번)",
+      "type": "shell",
+      "command": "./dev.sh once",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": ["$swiftc"]
+    },
+    {
+      "label": "HUD 렌더 (PNG)",
+      "type": "shell",
+      "command": "./dev.sh render ${input:sessionPercent} ${input:weeklyPercent} ${input:iconStyle}",
+      "problemMatcher": []
+    },
+    {
+      "label": "사용량 API 확인 (--probe)",
+      "type": "shell",
+      "command": "swift build -c release && ./.build/release/dong-mcu --probe",
+      "problemMatcher": []
+    },
+    {
+      "label": "앱 종료",
+      "type": "shell",
+      "command": "pkill -f 'dong-mcu.app/Contents/MacOS/dong-mcu' || true",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "sessionPercent",
+      "type": "promptString",
+      "description": "세션 사용률 (0-100)",
+      "default": "8"
+    },
+    {
+      "id": "weeklyPercent",
+      "type": "promptString",
+      "description": "주간 사용률 (0-100)",
+      "default": "60"
+    },
+    {
+      "id": "iconStyle",
+      "type": "pickString",
+      "description": "가운데 아이콘",
+      "options": ["clawd", "appIcon", "mark"],
+      "default": "clawd"
+    }
+  ]
+}

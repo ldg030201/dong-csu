@@ -13,6 +13,27 @@ Mac Claude UI — Claude 사용량을 화면에 띄워두는 macOS 메뉴 없는
 open build/dong-mcu.app
 ```
 
+## 개발
+
+```bash
+./dev.sh
+```
+
+`Sources/`, `Resources/`, `Package.swift`를 감시해서 저장할 때마다 재빌드 → 앱 재실행.
+빌드가 깨지면 컴파일 에러만 추려서 보여주고 앱은 그대로 둔다. Ctrl+C로 감시만 끊고
+앱은 계속 떠 있다.
+
+| 명령 | 동작 |
+|---|---|
+| `./dev.sh` | 변경 감시 + 자동 재빌드·재실행 |
+| `./dev.sh once` | 한 번만 빌드하고 실행 |
+| `./dev.sh render 94 71 clawd` | HUD를 PNG로 렌더해서 열기(앱 안 띄움) |
+
+에디터는 **VS Code + `swiftlang.swift-vscode`** 확장 기준으로 맞춰뒀다(Xcode 불필요).
+`.vscode/tasks.json`에 위 명령들이 태스크로 들어있어서 `Cmd+Shift+B`로 빌드·실행,
+태스크 목록에서 렌더/`--probe`/앱 종료를 고를 수 있다.
+필요한 것: `brew install fswatch`.
+
 Xcode 없이 Command Line Tools + SwiftPM로 빌드하고, `.app` 번들은 `build.sh`가 직접 조립한다.
 ad-hoc 서명(`codesign -s -`)이라 애플 개발자 계정은 필요 없다(로컬 실행 전용).
 
