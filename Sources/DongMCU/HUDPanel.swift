@@ -183,8 +183,12 @@ final class HUDController {
     }
 
     /// 모니터가 붙거나 빠지면 위치를 다시 화면 안으로 맞춘다.
+    /// 화면 정보가 잡히지 않거나 이미 화면 안이면 아무것도 하지 않는다.
+    /// (무조건 저장하면 일시적인 화면 변경에 사용자가 옮겨둔 위치가 날아간다.)
     @objc private func handleScreenChange() {
-        let corrected = clampedOrigin(panel.frame.origin) ?? defaultOrigin()
+        guard let corrected = clampedOrigin(panel.frame.origin),
+              corrected != panel.frame.origin
+        else { return }
         panel.setFrameOrigin(corrected)
         saveOrigin()
     }
