@@ -16,22 +16,23 @@ struct UsageHUDView: View {
     private let staleAmber = Color(red: 0.95, green: 0.72, blue: 0.27)
 
     var body: some View {
-        // 남은 시간 문구를 계속 갱신하려면 주기적으로 다시 그려야 한다.
-        TimelineView(.periodic(from: .now, by: 30)) { context in
-            HStack(spacing: 13) {
-                rings
+        HStack(spacing: 13) {
+            rings
+            // 남은 시간 문구만 시간에 따라 바뀐다. 링·아이콘은 타임라인 밖에 두어
+            // 주기적 갱신 때 다시 평가되지 않게 한다. 표시 단위가 분이라 60초면 충분하다.
+            TimelineView(.periodic(from: .now, by: 60)) { context in
                 VStack(alignment: .leading, spacing: 8) {
                     metric(title: "세션", window: store.snapshot?.fiveHour, now: context.date)
                     metric(title: "주간", window: store.snapshot?.sevenDay, now: context.date)
                 }
                 .shadow(color: .black.opacity(0.55), radius: 2, y: 0.5)
-                Spacer(minLength: 0)
             }
-            .padding(.leading, 13)
-            .padding(.trailing, 10)
-            .frame(width: Self.size.width, height: Self.size.height)
-            .overlay(alignment: .topTrailing) { staleIndicator }
+            Spacer(minLength: 0)
         }
+        .padding(.leading, 13)
+        .padding(.trailing, 10)
+        .frame(width: Self.size.width, height: Self.size.height)
+        .overlay(alignment: .topTrailing) { staleIndicator }
     }
 
     // MARK: - 링

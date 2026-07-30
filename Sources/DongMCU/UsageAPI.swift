@@ -44,7 +44,7 @@ enum UsageError: Error, CustomStringConvertible {
 
 // MARK: - 키체인
 
-struct OAuthCredentials {
+struct OAuthCredentials: Sendable {
     let accessToken: String
     let subscriptionType: String?
     let expiresAt: Date?
@@ -52,6 +52,36 @@ struct OAuthCredentials {
     var isExpired: Bool {
         guard let expiresAt else { return false }
         return expiresAt <= Date()
+    }
+
+    /// 만료 직전이면 캐시를 버리고 다시 읽는다.
+    var isUsableForAWhile: Bool {
+        guard let expiresAt else { return true }
+        return expiresAt.timeIntervalSinceNow > 60
+    }
+}
+
+/// 자격증명을 메모리에 들고 있는 캐시.
+///
+/// 키체인 조회는 `/usr/bin/security` 프로세스를 띄우기 때문에 폴링마다 하면
+/// 프로세스 생성 비용이 계속 든다. 토큰은 만료될 때까지 유효하므로 한 번만 읽는다.
+actor CredentialStore {
+    static let shared = CredentialStore()
+
+    private var cached: OAuthCredentials?
+
+    func current() -> OAuthCredentials? {
+        if let cached, !cached.isExpired, cached.isUsableForAWhile {
+            return cached
+        }
+        let fresh = ClaudeKeychain.readCredentials()
+        cached = fresh
+        return fresh
+    }
+
+    /// 서버가 401/403을 주면 캐시된 토큰이 더 이상 유효하지 않다는 뜻이다.
+    func invalidate() {
+        cached = nil
     }
 }
 
@@ -153,7 +183,7 @@ enum UsageAPI {
     private static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
 
     static func fetch() async throws -> UsageSnapshot {
-        guard let credentials = ClaudeKeychain.readCredentials() else { throw UsageError.noCredentials }
+        guard let credentials = await CredentialStore.shared.current() else { throw UsageError.noCredentials }
         if credentials.isExpired { throw UsageError.tokenExpired }
 
         var request = URLRequest(url: endpoint, timeoutInterval: 15)
@@ -175,6 +205,7 @@ enum UsageAPI {
         case 200:
             break
         case 401, 403:
+            await CredentialStore.shared.invalidate()
             throw UsageError.tokenExpired
         case 429:
             let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)

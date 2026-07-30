@@ -25,25 +25,43 @@ final class UsageStore: ObservableObject {
     }
 
     func start() {
-        timer?.invalidate()
-        let timer = Timer(timeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
-        }
-        timer.tolerance = 10
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+        startTimer()
 
-        NSWorkspace.shared.notificationCenter.addObserver(
-            self,
-            selector: #selector(handleWake),
-            name: NSWorkspace.didWakeNotification,
-            object: nil
-        )
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(self, selector: #selector(handleWake),
+                           name: NSWorkspace.didWakeNotification, object: nil)
+        // 화면이 꺼져 있으면 아무도 HUD를 보지 않는다. 그동안은 네트워크 폴링을 멈춘다.
+        center.addObserver(self, selector: #selector(handleScreensSleep),
+                           name: NSWorkspace.screensDidSleepNotification, object: nil)
+        center.addObserver(self, selector: #selector(handleScreensWake),
+                           name: NSWorkspace.screensDidWakeNotification, object: nil)
 
         refresh(force: true)
     }
 
+    private func startTimer() {
+        timer?.invalidate()
+        let timer = Timer(timeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.refresh() }
+        }
+        // 타이머를 다른 시스템 깨우기와 묶어서 처리하게 여유를 크게 준다(전력 절약).
+        timer.tolerance = Self.pollInterval / 4
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
+    }
+
     @objc private func handleWake() {
+        refresh(force: true)
+    }
+
+    @objc private func handleScreensSleep() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    @objc private func handleScreensWake() {
+        guard timer == nil else { return }
+        startTimer()
         refresh(force: true)
     }
 

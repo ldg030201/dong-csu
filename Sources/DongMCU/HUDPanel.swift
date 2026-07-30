@@ -82,19 +82,14 @@ final class HUDController {
         container.layer?.borderWidth = 1
         container.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
 
-        let blur = NSVisualEffectView(frame: container.bounds)
-        blur.material = .hudWindow
-        blur.blendingMode = .behindWindow
-        blur.state = .active
-        blur.autoresizingMask = [.width, .height]
-        container.addSubview(blur)
-
-        // 밝은 배경 위에서도 흰 글자가 뜨도록 어두운 막을 한 겹 깐다.
-        let scrim = NSView(frame: container.bounds)
-        scrim.wantsLayer = true
-        scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.34).cgColor
-        scrim.autoresizingMask = [.width, .height]
-        container.addSubview(scrim)
+        // 배경은 단색 반투명. NSVisualEffectView의 behindWindow 블러를 쓰면
+        // 항상 위에 떠 있는 창이라 뒤 내용이 바뀔 때마다 WindowServer가 계속
+        // 블러를 다시 합성한다. 어두운 카드에서는 눈에 차이가 없고 비용만 든다.
+        let backdrop = NSView(frame: container.bounds)
+        backdrop.wantsLayer = true
+        backdrop.layer?.backgroundColor = NSColor(calibratedWhite: 0.09, alpha: 0.92).cgColor
+        backdrop.autoresizingMask = [.width, .height]
+        container.addSubview(backdrop)
 
         let iconStyle = ClaudeIconStyle(
             rawValue: UserDefaults.standard.string(forKey: Self.iconStyleKey) ?? ""

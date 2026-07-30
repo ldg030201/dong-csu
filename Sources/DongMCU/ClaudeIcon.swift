@@ -15,19 +15,27 @@ enum ClaudeIconStyle: String {
 enum ClaudeIcon {
     static let claudeAppPath = "/Applications/Claude.app"
 
+    @MainActor private static var cachedImage: NSImage?
+    @MainActor private static var didResolve = false
+
     /// 아이콘 이미지 해석 순서:
     /// 1) 번들에 넣어둔 claude-icon.png (직접 갈아끼운 이미지)
     /// 2) 설치된 Claude 데스크톱 앱의 실제 아이콘
+    ///
+    /// View의 body에서 불리므로 결과를 캐시한다. 캐시가 없으면 다시 그릴 때마다
+    /// 디스크를 읽고 NSImage를 새로 만든다.
     @MainActor
     static func resolveImage() -> NSImage? {
+        if didResolve { return cachedImage }
+        didResolve = true
+
         if let url = Bundle.main.url(forResource: "claude-icon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
-            return image
+            cachedImage = image
+        } else if FileManager.default.fileExists(atPath: claudeAppPath) {
+            cachedImage = NSWorkspace.shared.icon(forFile: claudeAppPath)
         }
-        if FileManager.default.fileExists(atPath: claudeAppPath) {
-            return NSWorkspace.shared.icon(forFile: claudeAppPath)
-        }
-        return nil
+        return cachedImage
     }
 }
 

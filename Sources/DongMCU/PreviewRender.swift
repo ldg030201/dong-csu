@@ -23,9 +23,15 @@ enum HUDPreviewRenderer {
             fetchedAt: Date()
         )
 
-        // 실제 배경은 블러 + 어두운 막이므로 여기서는 어두운 단색으로 근사한다.
+        // 실제 창과 같은 배경(반투명 단색)을 쓰고, 그 뒤에 회색 바탕을 깔아
+        // 데스크톱 위에 얹힌 상태를 흉내낸다.
         let content = UsageHUDView(store: UsageStore(preview: snapshot), iconStyle: iconStyle)
-            .background(Color(red: 0.11, green: 0.11, blue: 0.12))
+            .background {
+                ZStack {
+                    Color(white: 0.42)
+                    Color(white: 0.09).opacity(0.92)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: UsageHUDView.cornerRadius, style: .continuous))
 
         let renderer = ImageRenderer(content: content)
