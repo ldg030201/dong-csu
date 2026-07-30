@@ -5,7 +5,7 @@ import SwiftUI
 /// 오른쪽: 세션 / 주간 사용률과 초기화까지 남은 시간.
 struct UsageHUDView: View {
     @ObservedObject var store: UsageStore
-    var iconStyle: ClaudeIconStyle = .appIcon
+    var iconStyle: ClaudeIconStyle = .default
 
     static let size = CGSize(width: 206, height: 88)
     static let cornerRadius: CGFloat = 20
@@ -43,7 +43,7 @@ struct UsageHUDView: View {
         return ZStack {
             ring(window: store.snapshot?.sevenDay, diameter: ringDiameter, lineWidth: outerLineWidth)
             ring(window: store.snapshot?.fiveHour, diameter: innerDiameter, lineWidth: innerLineWidth)
-            ClaudeIconView(style: iconStyle, size: innerDiameter - innerLineWidth * 2 - 2)
+            ClaudeIconView(style: iconStyle, size: innerDiameter - innerLineWidth * 2 - 4)
         }
         .frame(width: ringDiameter, height: ringDiameter)
     }

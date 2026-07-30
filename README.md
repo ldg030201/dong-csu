@@ -27,9 +27,19 @@ ad-hoc 서명(`codesign -s -`)이라 애플 개발자 계정은 필요 없다(�
 
 ### 가운데 아이콘
 
-기본값은 설치된 `/Applications/Claude.app`의 **공식 아이콘을 런타임에 그대로 로드**한다.
-다른 이미지로 쓰고 싶으면 `Resources/claude-icon.png`를 두고 다시 빌드하면 그게 우선한다.
-Claude 앱이 없고 이미지도 없으면 직접 그린 벡터 마크로 대체된다(우클릭 메뉴에서 전환 가능).
+기본값은 Claude Code 마스코트 **Clawd**. 우클릭 메뉴에서 세 가지로 전환된다.
+
+| 스타일 | 내용 |
+|---|---|
+| `clawd` (기본) | Claude Code가 터미널에 그리는 블록 아트를 11×8 픽셀 그리드로 옮긴 것 |
+| `appIcon` | 설치된 `/Applications/Claude.app`의 공식 아이콘을 런타임에 로드 |
+| `mark` | 직접 그린 벡터 버스트 |
+
+`appIcon`은 `Resources/claude-icon.png`를 두면 그 이미지가 우선한다.
+
+Clawd 그리드와 색(`rgb(215,119,87)`)은 Claude Code 바이너리에 들어있는
+`clawd_body` / `clawd_background` 정의와 블록 아트에서 그대로 가져왔다.
+자세한 근거는 [ClawdMark.swift](Sources/DongMCU/ClawdMark.swift) 주석 참고.
 
 ## 사용량은 어디서 오나
 

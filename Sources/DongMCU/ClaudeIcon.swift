@@ -2,10 +2,14 @@ import AppKit
 import SwiftUI
 
 enum ClaudeIconStyle: String {
+    /// Claude Code 마스코트 Clawd.
+    case clawd
     /// 설치된 Claude 데스크톱 앱의 공식 아이콘을 그대로 쓴다.
     case appIcon
-    /// 직접 그린 벡터 마크.
+    /// 직접 그린 벡터 버스트 마크.
     case mark
+
+    static let `default` = ClaudeIconStyle.clawd
 }
 
 enum ClaudeIcon {
@@ -35,6 +39,10 @@ struct ClaudeIconView: View {
 
     var body: some View {
         switch style {
+        case .clawd:
+            ClawdMark()
+                .frame(width: size)
+                .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
         case .appIcon:
             if let image = ClaudeIcon.resolveImage() {
                 Image(nsImage: image)

@@ -98,7 +98,7 @@ final class HUDController {
 
         let iconStyle = ClaudeIconStyle(
             rawValue: UserDefaults.standard.string(forKey: Self.iconStyleKey) ?? ""
-        ) ?? .appIcon
+        ) ?? .default
         hosting = NSHostingView(rootView: UsageHUDView(store: store, iconStyle: iconStyle))
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
@@ -224,7 +224,12 @@ final class HUDController {
         menu.addItem(reset)
 
         let iconMenu = NSMenu()
-        for (style, title) in [(ClaudeIconStyle.appIcon, "Claude 앱 아이콘"), (.mark, "직접 그린 마크")] {
+        let styles: [(ClaudeIconStyle, String)] = [
+            (.clawd, "Clawd (Claude Code 마스코트)"),
+            (.appIcon, "Claude 앱 아이콘"),
+            (.mark, "버스트 마크"),
+        ]
+        for (style, title) in styles {
             let item = NSMenuItem(title: title, action: #selector(handleIconStyle(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = style.rawValue

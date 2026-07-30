@@ -37,8 +37,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     let session = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 8 : 8
     let weekly = arguments.count > flagIndex + 3 ? Double(arguments[flagIndex + 3]) ?? 60 : 60
     let iconStyle = arguments.count > flagIndex + 4
-        ? ClaudeIconStyle(rawValue: arguments[flagIndex + 4]) ?? .appIcon
-        : .appIcon
+        ? ClaudeIconStyle(rawValue: arguments[flagIndex + 4]) ?? .default
+        : .default
 
     let succeeded = HUDPreviewRenderer.write(
         to: path,
