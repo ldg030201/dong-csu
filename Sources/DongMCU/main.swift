@@ -3,7 +3,9 @@ import AppKit
 // GUI 없이 사용량 조회만 확인하는 진단 모드: dong-mcu --probe
 if CommandLine.arguments.contains("--probe") {
     let done = DispatchSemaphore(value: 0)
-    Task {
+    // main.swift 최상위 코드는 @MainActor라서 Task {}로 띄우면
+    // done.wait()가 잡고 있는 메인 스레드를 기다리다 데드락 난다. 반드시 detached.
+    Task.detached {
         do {
             let snapshot = try await UsageAPI.fetch()
             let plan = snapshot.planName ?? "(플랜 불명)"
