@@ -47,16 +47,19 @@ final class HUDController {
     private let interactionView = HUDInteractionView()
     private var cancellables: Set<AnyCancellable> = []
 
+    private let hosting: NSHostingView<UsageHUDView>
+
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
+    private static let iconStyleKey = "hud.iconStyle"
     private static let margin: CGFloat = 16
 
     init(store: UsageStore) {
         self.store = store
 
-        let size = UsageRingView.diameter
+        let size = UsageHUDView.size
         panel = HUDPanel(
-            contentRect: NSRect(x: 0, y: 0, width: size, height: size),
+            contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -69,11 +72,15 @@ final class HUDController {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
+        // 시스템이 라이트 모드여도 배경을 어둡게 유지한다. 흰 글자 가독성이 여기서 나온다.
+        panel.appearance = NSAppearance(named: .darkAqua)
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: size, height: size))
+        let container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
-        container.layer?.cornerRadius = size / 2
+        container.layer?.cornerRadius = UsageHUDView.cornerRadius
         container.layer?.masksToBounds = true
+        container.layer?.borderWidth = 1
+        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
 
         let blur = NSVisualEffectView(frame: container.bounds)
         blur.material = .hudWindow
@@ -82,7 +89,17 @@ final class HUDController {
         blur.autoresizingMask = [.width, .height]
         container.addSubview(blur)
 
-        let hosting = NSHostingView(rootView: UsageRingView(store: store))
+        // 밝은 배경 위에서도 흰 글자가 뜨도록 어두운 막을 한 겹 깐다.
+        let scrim = NSView(frame: container.bounds)
+        scrim.wantsLayer = true
+        scrim.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.34).cgColor
+        scrim.autoresizingMask = [.width, .height]
+        container.addSubview(scrim)
+
+        let iconStyle = ClaudeIconStyle(
+            rawValue: UserDefaults.standard.string(forKey: Self.iconStyleKey) ?? ""
+        ) ?? .appIcon
+        hosting = NSHostingView(rootView: UsageHUDView(store: store, iconStyle: iconStyle))
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
         container.addSubview(hosting)
@@ -98,6 +115,12 @@ final class HUDController {
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
 
         panel.setFrameOrigin(restoredOrigin())
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleScreenChange),
+            name: NSApplication.didChangeScreenParametersNotification,
+            object: nil
+        )
         observeStore()
     }
 
@@ -130,10 +153,40 @@ final class HUDController {
             x: defaults.double(forKey: Self.originXKey),
             y: defaults.double(forKey: Self.originYKey)
         )
-        // 모니터 구성이 바뀌어 화면 밖으로 나간 위치면 기본값으로 되돌린다.
-        let frame = NSRect(origin: saved, size: panel.frame.size)
-        let visible = NSScreen.screens.contains { $0.visibleFrame.intersects(frame) }
-        return visible ? saved : defaultOrigin()
+        return clampedOrigin(saved) ?? defaultOrigin()
+    }
+
+    /// 저장된 위치가 화면 밖으로 걸치면 화면 안쪽으로 밀어 넣는다.
+    /// HUD 크기가 바뀌거나 모니터 구성이 달라졌을 때 잘려 보이는 걸 막는다.
+    private func clampedOrigin(_ origin: NSPoint) -> NSPoint? {
+        let size = panel.frame.size
+        let frame = NSRect(origin: origin, size: size)
+        let center = NSPoint(x: frame.midX, y: frame.midY)
+
+        let screen = NSScreen.screens.first { $0.frame.contains(center) }
+            ?? NSScreen.screens.max { lhs, rhs in
+                overlap(lhs, frame) < overlap(rhs, frame)
+            }
+        guard let screen, overlap(screen, frame) > 0 else { return nil }
+
+        let area = screen.visibleFrame
+        guard area.width >= size.width, area.height >= size.height else { return nil }
+        return NSPoint(
+            x: min(max(origin.x, area.minX), area.maxX - size.width),
+            y: min(max(origin.y, area.minY), area.maxY - size.height)
+        )
+    }
+
+    private func overlap(_ screen: NSScreen, _ frame: NSRect) -> CGFloat {
+        let intersection = screen.frame.intersection(frame)
+        return intersection.isNull ? 0 : intersection.width * intersection.height
+    }
+
+    /// 모니터가 붙거나 빠지면 위치를 다시 화면 안으로 맞춘다.
+    @objc private func handleScreenChange() {
+        let corrected = clampedOrigin(panel.frame.origin) ?? defaultOrigin()
+        panel.setFrameOrigin(corrected)
+        saveOrigin()
     }
 
     /// 기본 위치: 주 화면 오른쪽 위.
@@ -170,6 +223,18 @@ final class HUDController {
         reset.target = self
         menu.addItem(reset)
 
+        let iconMenu = NSMenu()
+        for (style, title) in [(ClaudeIconStyle.appIcon, "Claude 앱 아이콘"), (.mark, "직접 그린 마크")] {
+            let item = NSMenuItem(title: title, action: #selector(handleIconStyle(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = style.rawValue
+            item.state = hosting.rootView.iconStyle == style ? .on : .off
+            iconMenu.addItem(item)
+        }
+        let iconItem = NSMenuItem(title: "가운데 아이콘", action: nil, keyEquivalent: "")
+        iconItem.submenu = iconMenu
+        menu.addItem(iconItem)
+
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "종료", action: #selector(handleQuit), keyEquivalent: "q")
         quit.target = self
@@ -180,6 +245,13 @@ final class HUDController {
 
     @objc private func handleRefresh() { store.refresh(force: true) }
     @objc private func handleResetPosition() { resetPosition() }
+
+    @objc private func handleIconStyle(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let style = ClaudeIconStyle(rawValue: raw) else { return }
+        UserDefaults.standard.set(raw, forKey: Self.iconStyleKey)
+        hosting.rootView = UsageHUDView(store: store, iconStyle: style)
+    }
     @objc private func handleQuit() { NSApp.terminate(nil) }
 
     private func observeStore() {

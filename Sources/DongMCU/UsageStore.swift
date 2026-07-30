@@ -17,6 +17,13 @@ final class UsageStore: ObservableObject {
     private var consecutiveRateLimits = 0
     private var inFlight = false
 
+    init() {}
+
+    /// 렌더 확인용. 네트워크 없이 고정값으로 채운 저장소.
+    init(preview snapshot: UsageSnapshot) {
+        self.snapshot = snapshot
+    }
+
     func start() {
         timer?.invalidate()
         let timer = Timer(timeInterval: Self.pollInterval, repeats: true) { [weak self] _ in

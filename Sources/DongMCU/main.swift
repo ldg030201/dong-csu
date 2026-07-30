@@ -29,6 +29,26 @@ if CommandLine.arguments.contains("--probe") {
     exit(0)
 }
 
+// HUD를 PNG로 그려서 확인: dong-mcu --render out.png [세션%] [주간%] [appIcon|mark]
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let arguments = CommandLine.arguments
+    let path = arguments[flagIndex + 1]
+    let session = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 8 : 8
+    let weekly = arguments.count > flagIndex + 3 ? Double(arguments[flagIndex + 3]) ?? 60 : 60
+    let iconStyle = arguments.count > flagIndex + 4
+        ? ClaudeIconStyle(rawValue: arguments[flagIndex + 4]) ?? .appIcon
+        : .appIcon
+
+    let succeeded = HUDPreviewRenderer.write(
+        to: path,
+        utilization: (session, weekly),
+        iconStyle: iconStyle
+    )
+    print(succeeded ? "rendered: \(path)" : "render failed")
+    exit(succeeded ? 0 : 1)
+}
+
 let application = NSApplication.shared
 let delegate = AppDelegate()
 application.delegate = delegate
