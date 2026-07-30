@@ -94,6 +94,27 @@ final class UsageStore: ObservableObject {
         isRefreshing = false
     }
 
+    /// 툴팁·메뉴 맨 위에 쓰는 한 줄 요약.
+    var summaryText: String {
+        guard let snapshot else { return errorText ?? "사용량 불러오는 중…" }
+
+        var parts: [String] = []
+        if let plan = snapshot.planName { parts.append(plan) }
+        if let fiveHour = snapshot.fiveHour {
+            parts.append("세션 \(Int(fiveHour.utilization.rounded()))%\(Self.resetSuffix(fiveHour.resetsAt))")
+        }
+        if let sevenDay = snapshot.sevenDay {
+            parts.append("주간 \(Int(sevenDay.utilization.rounded()))%\(Self.resetSuffix(sevenDay.resetsAt))")
+        }
+        if let errorText { parts.append("(갱신 실패: \(errorText))") }
+        return parts.isEmpty ? "사용량 정보 없음" : parts.joined(separator: " · ")
+    }
+
+    private static func resetSuffix(_ resetsAt: Date?) -> String {
+        guard let resetsAt, resetsAt.timeIntervalSinceNow > 0 else { return "" }
+        return " (\(RemainingTime.text(until: resetsAt, now: Date())))"
+    }
+
     /// 실패해도 직전 성공값(snapshot)은 유지해서 링이 비어 보이지 않게 한다.
     private func apply(error: Error) {
         let usageError = error as? UsageError

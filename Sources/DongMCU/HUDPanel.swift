@@ -52,6 +52,7 @@ final class HUDController {
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
     private static let iconStyleKey = "hud.iconStyle"
+    private static let hiddenKey = "hud.hidden"
     private static let margin: CGFloat = 16
 
     init(store: UsageStore) {
@@ -119,7 +120,9 @@ final class HUDController {
         observeStore()
     }
 
+    /// 직전에 숨겨둔 상태였다면 그대로 숨긴 채로 시작한다(메뉴바 아이콘으로 다시 켤 수 있다).
     func show() {
+        guard !UserDefaults.standard.bool(forKey: Self.hiddenKey) else { return }
         panel.orderFrontRegardless()
     }
 
@@ -208,8 +211,14 @@ final class HUDController {
 
     private func makeMenu() -> NSMenu {
         let menu = NSMenu()
+        populateMenu(menu)
+        return menu
+    }
 
-        let status = NSMenuItem(title: statusLine(), action: nil, keyEquivalent: "")
+    /// HUD 우클릭 메뉴와 메뉴바 아이콘 메뉴가 같은 내용을 쓴다.
+    /// NSMenuItem은 메뉴 하나에만 속할 수 있어서, 메뉴를 만들어 넘기는 대신 채워준다.
+    func populateMenu(_ menu: NSMenu) {
+        let status = NSMenuItem(title: store.summaryText, action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
         menu.addItem(.separator())
@@ -218,8 +227,17 @@ final class HUDController {
         refresh.target = self
         menu.addItem(refresh)
 
+        let toggle = NSMenuItem(
+            title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
+            action: #selector(handleToggleHUD),
+            keyEquivalent: ""
+        )
+        toggle.target = self
+        menu.addItem(toggle)
+
         let reset = NSMenuItem(title: "위치 초기화", action: #selector(handleResetPosition), keyEquivalent: "")
         reset.target = self
+        reset.isEnabled = panel.isVisible
         menu.addItem(reset)
 
         let iconMenu = NSMenu()
@@ -240,15 +258,28 @@ final class HUDController {
         menu.addItem(iconItem)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "종료", action: #selector(handleQuit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "dong-mcu 종료", action: #selector(handleQuit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
-
-        return menu
     }
 
     @objc private func handleRefresh() { store.refresh(force: true) }
     @objc private func handleResetPosition() { resetPosition() }
+
+    @objc private func handleToggleHUD() {
+        setHUDVisible(!panel.isVisible)
+    }
+
+    private func setHUDVisible(_ visible: Bool) {
+        if visible {
+            // 숨겨둔 동안 화면 구성이 바뀌었을 수 있으니 위치를 다시 확인한다.
+            panel.setFrameOrigin(clampedOrigin(panel.frame.origin) ?? defaultOrigin())
+            panel.orderFrontRegardless()
+        } else {
+            panel.orderOut(nil)
+        }
+        UserDefaults.standard.set(!visible, forKey: Self.hiddenKey)
+    }
 
     @objc private func handleIconStyle(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
@@ -267,34 +298,6 @@ final class HUDController {
     }
 
     private func updateTooltip() {
-        interactionView.toolTip = statusLine()
-    }
-
-    private func statusLine() -> String {
-        guard let snapshot = store.snapshot else {
-            return store.errorText ?? "사용량 불러오는 중…"
-        }
-
-        var parts: [String] = []
-        if let plan = snapshot.planName { parts.append(plan) }
-        if let fiveHour = snapshot.fiveHour {
-            parts.append("5시간 \(Int(fiveHour.utilization.rounded()))%\(resetSuffix(fiveHour.resetsAt))")
-        }
-        if let sevenDay = snapshot.sevenDay {
-            parts.append("7일 \(Int(sevenDay.utilization.rounded()))%")
-        }
-        if let error = store.errorText {
-            parts.append("(갱신 실패: \(error))")
-        }
-        return parts.isEmpty ? "사용량 정보 없음" : parts.joined(separator: " · ")
-    }
-
-    private func resetSuffix(_ resetsAt: Date?) -> String {
-        guard let resetsAt else { return "" }
-        let remaining = resetsAt.timeIntervalSinceNow
-        guard remaining > 0 else { return "" }
-        let hours = Int(remaining) / 3600
-        let minutes = (Int(remaining) % 3600) / 60
-        return hours > 0 ? " (\(hours)시간 \(minutes)분 후 초기화)" : " (\(minutes)분 후 초기화)"
+        interactionView.toolTip = store.summaryText
     }
 }
