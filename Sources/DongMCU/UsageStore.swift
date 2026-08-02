@@ -20,9 +20,13 @@ final class UsageStore: ObservableObject {
     init() {}
 
     /// 렌더 확인용. 네트워크 없이 고정값으로 채운 저장소.
-    init(preview snapshot: UsageSnapshot) {
+    init(preview snapshot: UsageSnapshot, nextPoll: Date? = nil) {
         self.snapshot = snapshot
+        self.previewNextPoll = nextPoll
     }
+
+    /// 렌더 확인용 고정값. 실제 실행에서는 항상 nil이다.
+    private var previewNextPoll: Date?
 
     func start() {
         startTimer()
@@ -92,6 +96,15 @@ final class UsageStore: ObservableObject {
     private func finish() {
         inFlight = false
         isRefreshing = false
+    }
+
+    /// 다음 조회 예정 시각. 화면이 꺼져 폴링이 멈춰 있으면 nil.
+    /// 429 백오프 중이면 타이머가 울려도 건너뛰므로, 실제로 조회하는 시점은 백오프가 풀린 뒤다.
+    var nextPollDate: Date? {
+        if let previewNextPoll { return previewNextPoll }
+        guard let timer, timer.isValid else { return nil }
+        if let backoffUntil, backoffUntil > timer.fireDate { return backoffUntil }
+        return timer.fireDate
     }
 
     /// 툴팁·메뉴 맨 위에 쓰는 한 줄 요약.

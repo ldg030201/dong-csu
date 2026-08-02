@@ -25,7 +25,11 @@ enum HUDPreviewRenderer {
 
         // 실제 창과 같은 배경(반투명 단색)을 쓰고, 그 뒤에 회색 바탕을 깔아
         // 데스크톱 위에 얹힌 상태를 흉내낸다.
-        let content = UsageHUDView(store: UsageStore(preview: snapshot), iconStyle: iconStyle)
+        let store = UsageStore(
+            preview: snapshot,
+            nextPoll: Date().addingTimeInterval(7 * 60 + 12)
+        )
+        let content = UsageHUDView(store: store, iconStyle: iconStyle)
             .background {
                 ZStack {
                     Color(white: 0.42)

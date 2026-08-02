@@ -3,7 +3,7 @@ import SwiftUI
 /// 오른쪽 위에 떠 있는 사용량 HUD.
 /// 왼쪽: 이중 링(바깥=세션, 안쪽=주간) + 가운데 Claude 마크.
 /// 오른쪽: 세션 / 주간 사용률과 초기화까지 남은 시간.
-/// 오른쪽 아래: 먼저 초기화되는 쪽까지 남은 시간(초 단위).
+/// 오른쪽 아래: 다음 사용량 조회까지 남은 시간(초 단위).
 struct UsageHUDView: View {
     @ObservedObject var store: UsageStore
     var iconStyle: ClaudeIconStyle = .default
@@ -55,9 +55,9 @@ struct UsageHUDView: View {
         .overlay(alignment: .bottomTrailing) { resetCountdown }
     }
 
-    // MARK: - 초기화 카운트다운
+    // MARK: - 다음 조회 카운트다운
 
-    /// 세션·주간 중 먼저 초기화되는 쪽까지 남은 시간을 초 단위로 보여준다.
+    /// 다음 사용량 조회까지 남은 시간.
     /// 초까지 움직여야 하므로 1초 주기지만, 이 작은 텍스트만 다시 그린다.
     @ViewBuilder private var resetCountdown: some View {
         if showsCountdown {
@@ -67,34 +67,33 @@ struct UsageHUDView: View {
 
     private var countdownBody: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            if let next = nextReset(now: context.date) {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(UsageColor.color(for: next.window.utilization))
-                        .frame(width: 4, height: 4)
-                    Text(RemainingTime.clockText(until: next.window.resetsAt, now: context.date))
-                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.white.opacity(0.6))
-                }
-                .help("\(next.title) 초기화까지 남은 시간")
+            HStack(spacing: 4) {
+                Text("조회")
+                    .font(.system(size: 8.5, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.38))
+                Text(countdownText(now: context.date))
+                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(.white.opacity(store.isRefreshing ? 0.35 : 0.62))
             }
+            .help(countdownHelp)
         }
         .padding(.trailing, 10)
         .padding(.bottom, 7)
     }
 
-    private func nextReset(now: Date) -> (title: String, window: UsageWindow)? {
-        let candidates: [(String, UsageWindow)] = [
-            ("세션", store.snapshot?.fiveHour),
-            ("주간", store.snapshot?.sevenDay),
-        ].compactMap { title, window in
-            guard let window, let resetsAt = window.resetsAt, resetsAt > now else { return nil }
-            return (title, window)
-        }
-        return candidates.min { lhs, rhs in
-            (lhs.1.resetsAt ?? .distantFuture) < (rhs.1.resetsAt ?? .distantFuture)
-        }
+    private func countdownText(now: Date) -> String {
+        guard let next = store.nextPollDate else { return "멈춤" }
+        // 타이머에 tolerance를 크게 줬기 때문에 예정 시각이 지나도 잠시 뒤에 울린다.
+        // 그동안 0:00으로 멈춘 것처럼 보이지 않게 한다.
+        guard next.timeIntervalSince(now) > 0 else { return "곧" }
+        return RemainingTime.clockText(until: next, now: now)
+    }
+
+    private var countdownHelp: String {
+        guard store.nextPollDate != nil else { return "화면이 꺼져 있어 조회를 멈춘 상태" }
+        if store.errorText != nil { return "다음 조회까지 남은 시간 (재시도 대기 중)" }
+        return "다음 사용량 조회까지 남은 시간"
     }
 
     // MARK: - 새로고침 버튼
