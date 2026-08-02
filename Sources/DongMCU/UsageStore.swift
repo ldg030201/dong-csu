@@ -77,6 +77,12 @@ final class UsageStore: ObservableObject {
         inFlight = true
         isRefreshing = true
 
+        // 조회가 실제로 나가는 시점부터 다음 주기를 다시 센다.
+        // 수동 새로고침이나 절전 복귀처럼 타이머 밖에서 조회된 경우에도
+        // 카운트다운이 맞고, 방금 조회했는데 곧바로 또 쏘는 일도 없어진다.
+        // 화면이 꺼져 폴링을 멈춘 상태(timer == nil)라면 여기서 다시 켜지 않는다.
+        if timer != nil { startTimer() }
+
         // Task는 감싼 @MainActor 컨텍스트를 물려받으므로 본문은 메인 액터에서 돈다.
         Task { [weak self] in
             do {
