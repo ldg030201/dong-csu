@@ -6,7 +6,7 @@ import Foundation
 @MainActor
 final class UsageStore: ObservableObject {
     /// 기본 폴링 주기. 사용량 API는 5분 단위 레이트리밋 창을 쓰므로 너무 조이면 429가 난다.
-    static let pollInterval: TimeInterval = 120
+    static let pollInterval: TimeInterval = 600
 
     @Published private(set) var snapshot: UsageSnapshot?
     @Published private(set) var errorText: String?

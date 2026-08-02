@@ -59,4 +59,16 @@ enum RemainingTime {
         if hours > 0 { return "\(hours)시간 \(minutes)분 남음" }
         return "\(minutes)분 남음"
     }
+
+    /// 초까지 보이는 시계 형식. 하루가 넘으면 시간으로 누적해서 보여준다(예: 26:05:12).
+    static func clockText(until date: Date?, now: Date) -> String {
+        guard let date else { return "–:--:--" }
+        let remaining = max(0, Int(date.timeIntervalSince(now)))
+        return String(
+            format: "%d:%02d:%02d",
+            remaining / 3600,
+            (remaining % 3600) / 60,
+            remaining % 60
+        )
+    }
 }

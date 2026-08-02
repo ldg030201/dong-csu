@@ -74,6 +74,7 @@ final class HUDController {
     private var cancellables: Set<AnyCancellable> = []
 
     private let hosting: FirstMouseHostingView<UsageHUDView>
+    private var iconStyle: ClaudeIconStyle
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
@@ -118,10 +119,12 @@ final class HUDController {
         backdrop.autoresizingMask = [.width, .height]
         container.addSubview(backdrop)
 
-        let iconStyle = ClaudeIconStyle(
+        iconStyle = ClaudeIconStyle(
             rawValue: UserDefaults.standard.string(forKey: Self.iconStyleKey) ?? ""
         ) ?? .default
-        hosting = FirstMouseHostingView(rootView: UsageHUDView(store: store, iconStyle: iconStyle))
+        hosting = FirstMouseHostingView(
+            rootView: UsageHUDView(store: store, iconStyle: iconStyle, showsCountdown: false)
+        )
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
         container.addSubview(hosting)
@@ -150,7 +153,7 @@ final class HUDController {
     /// 직전에 숨겨둔 상태였다면 그대로 숨긴 채로 시작한다(메뉴바 아이콘으로 다시 켤 수 있다).
     func show() {
         guard !UserDefaults.standard.bool(forKey: Self.hiddenKey) else { return }
-        panel.orderFrontRegardless()
+        setHUDVisible(true)
     }
 
     // MARK: - 위치
@@ -277,7 +280,7 @@ final class HUDController {
             let item = NSMenuItem(title: title, action: #selector(handleIconStyle(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = style.rawValue
-            item.state = hosting.rootView.iconStyle == style ? .on : .off
+            item.state = iconStyle == style ? .on : .off
             iconMenu.addItem(item)
         }
         let iconItem = NSMenuItem(title: "가운데 아이콘", action: nil, keyEquivalent: "")
@@ -306,13 +309,24 @@ final class HUDController {
             panel.orderOut(nil)
         }
         UserDefaults.standard.set(!visible, forKey: Self.hiddenKey)
+        rebuildRootView()
+    }
+
+    /// 표시 상태가 바뀌면 뷰를 다시 만든다. 숨겨져 있는 동안 카운트다운의 1초 타이머를 끄기 위해서다.
+    private func rebuildRootView() {
+        hosting.rootView = UsageHUDView(
+            store: store,
+            iconStyle: iconStyle,
+            showsCountdown: panel.isVisible
+        )
     }
 
     @objc private func handleIconStyle(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let style = ClaudeIconStyle(rawValue: raw) else { return }
         UserDefaults.standard.set(raw, forKey: Self.iconStyleKey)
-        hosting.rootView = UsageHUDView(store: store, iconStyle: style)
+        iconStyle = style
+        rebuildRootView()
     }
     @objc private func handleQuit() { NSApp.terminate(nil) }
 

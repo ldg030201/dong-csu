@@ -1,13 +1,16 @@
 import SwiftUI
 
 /// 오른쪽 위에 떠 있는 사용량 HUD.
-/// 왼쪽: 이중 링(바깥=주간, 안쪽=세션) + 가운데 Claude 마크.
+/// 왼쪽: 이중 링(바깥=세션, 안쪽=주간) + 가운데 Claude 마크.
 /// 오른쪽: 세션 / 주간 사용률과 초기화까지 남은 시간.
+/// 오른쪽 아래: 먼저 초기화되는 쪽까지 남은 시간(초 단위).
 struct UsageHUDView: View {
     @ObservedObject var store: UsageStore
     var iconStyle: ClaudeIconStyle = .default
+    /// HUD가 숨겨져 있으면 1초 타이머가 돌 이유가 없다.
+    var showsCountdown: Bool = true
 
-    static let size = CGSize(width: 206, height: 88)
+    static let size = CGSize(width: 240, height: 88)
     static let cornerRadius: CGFloat = 20
 
     /// 새로고침 버튼 자리. 이 영역만 드래그 오버레이가 클릭을 통과시킨다.
@@ -49,6 +52,49 @@ struct UsageHUDView: View {
         .padding(.trailing, 10)
         .frame(width: Self.size.width, height: Self.size.height)
         .overlay(alignment: .topTrailing) { refreshButton }
+        .overlay(alignment: .bottomTrailing) { resetCountdown }
+    }
+
+    // MARK: - 초기화 카운트다운
+
+    /// 세션·주간 중 먼저 초기화되는 쪽까지 남은 시간을 초 단위로 보여준다.
+    /// 초까지 움직여야 하므로 1초 주기지만, 이 작은 텍스트만 다시 그린다.
+    @ViewBuilder private var resetCountdown: some View {
+        if showsCountdown {
+            countdownBody
+        }
+    }
+
+    private var countdownBody: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            if let next = nextReset(now: context.date) {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(UsageColor.color(for: next.window.utilization))
+                        .frame(width: 4, height: 4)
+                    Text(RemainingTime.clockText(until: next.window.resetsAt, now: context.date))
+                        .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundStyle(.white.opacity(0.6))
+                }
+                .help("\(next.title) 초기화까지 남은 시간")
+            }
+        }
+        .padding(.trailing, 10)
+        .padding(.bottom, 7)
+    }
+
+    private func nextReset(now: Date) -> (title: String, window: UsageWindow)? {
+        let candidates: [(String, UsageWindow)] = [
+            ("세션", store.snapshot?.fiveHour),
+            ("주간", store.snapshot?.sevenDay),
+        ].compactMap { title, window in
+            guard let window, let resetsAt = window.resetsAt, resetsAt > now else { return nil }
+            return (title, window)
+        }
+        return candidates.min { lhs, rhs in
+            (lhs.1.resetsAt ?? .distantFuture) < (rhs.1.resetsAt ?? .distantFuture)
+        }
     }
 
     // MARK: - 새로고침 버튼
@@ -94,8 +140,8 @@ struct UsageHUDView: View {
         let innerDiameter = ringDiameter - outerLineWidth * 2 - 7
 
         return ZStack {
-            ring(window: store.snapshot?.sevenDay, diameter: ringDiameter, lineWidth: outerLineWidth)
-            ring(window: store.snapshot?.fiveHour, diameter: innerDiameter, lineWidth: innerLineWidth)
+            ring(window: store.snapshot?.fiveHour, diameter: ringDiameter, lineWidth: outerLineWidth)
+            ring(window: store.snapshot?.sevenDay, diameter: innerDiameter, lineWidth: innerLineWidth)
             ClaudeIconView(style: iconStyle, size: innerDiameter - innerLineWidth * 2 - 4)
         }
         .frame(width: ringDiameter, height: ringDiameter)
