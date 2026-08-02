@@ -10,6 +10,22 @@ struct UsageHUDView: View {
     static let size = CGSize(width: 206, height: 88)
     static let cornerRadius: CGFloat = 20
 
+    /// 새로고침 버튼 자리. 이 영역만 드래그 오버레이가 클릭을 통과시킨다.
+    static let refreshInset: CGFloat = 4
+    static let refreshHitSize: CGFloat = 20
+
+    /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역.
+    static var refreshHitRectInPanel: CGRect {
+        CGRect(
+            x: size.width - refreshInset - refreshHitSize,
+            y: size.height - refreshInset - refreshHitSize,
+            width: refreshHitSize,
+            height: refreshHitSize
+        )
+    }
+
+    @State private var isHoveringRefresh = false
+
     private let ringDiameter: CGFloat = 62
     private let outerLineWidth: CGFloat = 6
     private let innerLineWidth: CGFloat = 5
@@ -32,7 +48,43 @@ struct UsageHUDView: View {
         .padding(.leading, 13)
         .padding(.trailing, 10)
         .frame(width: Self.size.width, height: Self.size.height)
-        .overlay(alignment: .topTrailing) { staleIndicator }
+        .overlay(alignment: .topTrailing) { refreshButton }
+    }
+
+    // MARK: - 새로고침 버튼
+
+    private var refreshButton: some View {
+        Button {
+            store.refresh(force: true)
+        } label: {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 9.5, weight: .bold))
+                .foregroundStyle(refreshTint)
+                .frame(width: Self.refreshHitSize, height: Self.refreshHitSize)
+                .background {
+                    Circle().fill(Color.white.opacity(isHoveringRefresh ? 0.13 : 0))
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        // 갱신 중에는 흐리게. 회전 애니메이션은 유휴 상태에서 계속 도는 위험이 있어 쓰지 않는다.
+        .opacity(store.isRefreshing ? 0.35 : 1)
+        .onHover { isHoveringRefresh = $0 }
+        .help(refreshHelp)
+        .padding(Self.refreshInset)
+    }
+
+    /// 갱신에 실패해 화면 숫자가 오래된 값이면 버튼 자체를 경고색으로 물들인다.
+    private var refreshTint: Color {
+        if store.errorText != nil { return staleAmber }
+        return .white.opacity(isHoveringRefresh ? 0.95 : 0.45)
+    }
+
+    private var refreshHelp: String {
+        if let error = store.errorText {
+            return "갱신 실패: \(error) — 클릭해서 다시 시도"
+        }
+        return "새로고침"
     }
 
     // MARK: - 링
@@ -94,13 +146,4 @@ struct UsageHUDView: View {
         }
     }
 
-    /// 값은 있는데 갱신이 실패한 상태 표시(= 화면 숫자가 오래된 값이라는 뜻).
-    @ViewBuilder private var staleIndicator: some View {
-        if store.snapshot != nil, store.errorText != nil {
-            Circle()
-                .fill(staleAmber)
-                .frame(width: 5, height: 5)
-                .padding(8)
-        }
-    }
 }

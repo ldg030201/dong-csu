@@ -8,6 +8,21 @@ final class HUDPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// 패널이 key window가 되지 않기 때문에, 비활성 창의 첫 클릭이 삼켜지지 않도록
+/// 명시적으로 첫 클릭을 받는다. 이게 없으면 새로고침 버튼이 한 번에 안 눌린다.
+final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    required init(rootView: Content) {
+        super.init(rootView: rootView)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not used")
+    }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 /// 링을 감싸고 드래그 이동 / 우클릭 메뉴를 처리하는 투명 오버레이.
 /// 링 자체는 조작할 게 없으므로 마우스 이벤트를 전부 여기서 받는다.
 final class HUDInteractionView: NSView {
@@ -15,7 +30,18 @@ final class HUDInteractionView: NSView {
     var onDragEnded: (@MainActor () -> Void)?
     var menuBuilder: (@MainActor () -> NSMenu)?
 
+    /// 이 영역의 마우스 이벤트는 아래(SwiftUI)로 흘려보낸다. 새로고침 버튼용.
+    var passThroughRect: CGRect = .zero
+
     private var dragOrigin: NSPoint?
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // point는 superview 좌표계로 들어온다.
+        if passThroughRect.contains(convert(point, from: superview)) { return nil }
+        return super.hitTest(point)
+    }
 
     override func mouseDown(with event: NSEvent) {
         dragOrigin = NSEvent.mouseLocation
@@ -47,7 +73,7 @@ final class HUDController {
     private let interactionView = HUDInteractionView()
     private var cancellables: Set<AnyCancellable> = []
 
-    private let hosting: NSHostingView<UsageHUDView>
+    private let hosting: FirstMouseHostingView<UsageHUDView>
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
@@ -95,13 +121,14 @@ final class HUDController {
         let iconStyle = ClaudeIconStyle(
             rawValue: UserDefaults.standard.string(forKey: Self.iconStyleKey) ?? ""
         ) ?? .default
-        hosting = NSHostingView(rootView: UsageHUDView(store: store, iconStyle: iconStyle))
+        hosting = FirstMouseHostingView(rootView: UsageHUDView(store: store, iconStyle: iconStyle))
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
         container.addSubview(hosting)
 
         interactionView.frame = container.bounds
         interactionView.autoresizingMask = [.width, .height]
+        interactionView.passThroughRect = UsageHUDView.refreshHitRectInPanel
         container.addSubview(interactionView)
 
         panel.contentView = container
