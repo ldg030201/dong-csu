@@ -12,6 +12,8 @@ struct UsageHUDView: View {
     /// 접힌 상태에서는 링만 남기고 전부 감춘다.
     var isCollapsed: Bool = false
     var palette = HUDPalette(isDark: true)
+    /// 설정 창 열기. HUDController가 꽂아준다.
+    var onOpenSettings: (() -> Void)?
 
     static let expandedSize = CGSize(width: 240, height: 88)
     static let collapsedSize = CGSize(width: 86, height: 86)
@@ -29,19 +31,22 @@ struct UsageHUDView: View {
     static let refreshInset: CGFloat = 4
     static let refreshHitSize: CGFloat = 20
 
-    /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역. 접힌 상태에는 버튼이 없다.
-    static func refreshHitRectInPanel(collapsed: Bool) -> CGRect {
+    /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역. 설정·새로고침 두 개를 함께 덮는다.
+    /// 접힌 상태에는 버튼이 없다.
+    static func controlsHitRectInPanel(collapsed: Bool) -> CGRect {
         guard !collapsed else { return .zero }
         let size = expandedSize
+        let width = refreshHitSize * 2
         return CGRect(
-            x: size.width - refreshInset - refreshHitSize,
+            x: size.width - refreshInset - width,
             y: size.height - refreshInset - refreshHitSize,
-            width: refreshHitSize,
+            width: width,
             height: refreshHitSize
         )
     }
 
     @State private var isHoveringRefresh = false
+    @State private var isHoveringSettings = false
 
     private let ringDiameter: CGFloat = 62
     private let outerLineWidth: CGFloat = 6
@@ -82,7 +87,7 @@ struct UsageHUDView: View {
         .padding(.leading, 13)
         .padding(.trailing, 10)
         .frame(width: Self.expandedSize.width, height: Self.expandedSize.height)
-        .overlay(alignment: .topTrailing) { refreshButton }
+        .overlay(alignment: .topTrailing) { controlButtons }
         .overlay(alignment: .bottomTrailing) { resetCountdown }
     }
 
@@ -148,27 +153,57 @@ struct UsageHUDView: View {
         return "다음 사용량 조회까지 남은 시간"
     }
 
-    // MARK: - 새로고침 버튼
+    // MARK: - 우측 상단 버튼
+
+    private var controlButtons: some View {
+        HStack(spacing: 0) {
+            settingsButton
+            refreshButton
+        }
+        .padding(Self.refreshInset)
+    }
+
+    private var settingsButton: some View {
+        Button {
+            onOpenSettings?()
+        } label: {
+            controlLabel(
+                systemName: "gearshape.fill",
+                tint: isHoveringSettings ? palette.controlActive : palette.controlIdle,
+                hovering: isHoveringSettings
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHoveringSettings = $0 }
+        .help("설정")
+    }
+
+    private func controlLabel(systemName: String, tint: Color, hovering: Bool) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 9.5, weight: .bold))
+            .foregroundStyle(tint)
+            .frame(width: Self.refreshHitSize, height: Self.refreshHitSize)
+            .background {
+                Circle().fill(hovering ? palette.controlHoverFill : .clear)
+            }
+            .contentShape(Circle())
+    }
 
     private var refreshButton: some View {
         Button {
             store.refresh(force: true)
         } label: {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 9.5, weight: .bold))
-                .foregroundStyle(refreshTint)
-                .frame(width: Self.refreshHitSize, height: Self.refreshHitSize)
-                .background {
-                    Circle().fill(isHoveringRefresh ? palette.controlHoverFill : .clear)
-                }
-                .contentShape(Circle())
+            controlLabel(
+                systemName: "arrow.clockwise",
+                tint: refreshTint,
+                hovering: isHoveringRefresh
+            )
         }
         .buttonStyle(.plain)
         // 갱신 중에는 흐리게. 회전 애니메이션은 유휴 상태에서 계속 도는 위험이 있어 쓰지 않는다.
         .opacity(store.isRefreshing ? 0.35 : 1)
         .onHover { isHoveringRefresh = $0 }
         .help(refreshHelp)
-        .padding(Self.refreshInset)
     }
 
     /// 갱신에 실패해 화면 숫자가 오래된 값이면 버튼 자체를 경고색으로 물들인다.

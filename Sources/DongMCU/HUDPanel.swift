@@ -89,27 +89,24 @@ final class HUDController {
 
     private let hosting: FirstMouseHostingView<UsageHUDView>
     private let container: NSView
-    private var iconStyle: ClaudeIconStyle
-    private var isCollapsed: Bool
-    private var appearance: HUDAppearance
+    let settings: HUDSettings
+    /// 설정 창을 여는 동작. AppDelegate가 꽂아준다.
+    var onOpenSettings: (@MainActor () -> Void)?
     private let backdrop = NSView()
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
-    private static let iconStyleKey = "hud.iconStyle"
-    private static let hiddenKey = "hud.hidden"
-    private static let collapsedKey = "hud.collapsed"
-    private static let appearanceKey = "hud.appearance"
     private static let margin: CGFloat = 16
 
-    init(store: UsageStore) {
-        self.store = store
+    private var isCollapsed: Bool { settings.isCollapsed }
+    private var iconStyle: ClaudeIconStyle { settings.iconStyle }
+    private var appearance: HUDAppearance { settings.appearance }
 
-        isCollapsed = UserDefaults.standard.bool(forKey: Self.collapsedKey)
-        appearance = HUDAppearance(
-            rawValue: UserDefaults.standard.string(forKey: Self.appearanceKey) ?? ""
-        ) ?? .default
-        let size = UsageHUDView.size(collapsed: isCollapsed)
+    init(store: UsageStore, settings: HUDSettings) {
+        self.store = store
+        self.settings = settings
+
+        let size = UsageHUDView.size(collapsed: settings.isCollapsed)
         panel = HUDPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -124,11 +121,11 @@ final class HUDController {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        panel.appearance = appearance.nsAppearance
+        panel.appearance = settings.appearance.nsAppearance
 
         container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
-        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: isCollapsed)
+        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: settings.isCollapsed)
         container.layer?.masksToBounds = true
         container.layer?.borderWidth = 1
 
@@ -140,15 +137,12 @@ final class HUDController {
         backdrop.autoresizingMask = [.width, .height]
         container.addSubview(backdrop)
 
-        iconStyle = ClaudeIconStyle(
-            rawValue: UserDefaults.standard.string(forKey: Self.iconStyleKey) ?? ""
-        ) ?? .default
         hosting = FirstMouseHostingView(
             rootView: UsageHUDView(
                 store: store,
-                iconStyle: iconStyle,
+                iconStyle: settings.iconStyle,
                 showsCountdown: false,
-                isCollapsed: isCollapsed,
+                isCollapsed: settings.isCollapsed,
                 palette: HUDPalette(isDark: true)
             )
         )
@@ -158,7 +152,7 @@ final class HUDController {
 
         interactionView.frame = container.bounds
         interactionView.autoresizingMask = [.width, .height]
-        interactionView.passThroughRect = UsageHUDView.refreshHitRectInPanel(collapsed: isCollapsed)
+        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(collapsed: settings.isCollapsed)
         container.addSubview(interactionView)
 
         panel.contentView = container
@@ -185,12 +179,45 @@ final class HUDController {
             object: nil
         )
         observeStore()
+        observeSettings()
+    }
+
+    /// @Published는 값이 바뀌기 "직전"에 알림을 보낸다.
+    /// 다음 런루프로 미뤄서 읽어야 새 값이 들어와 있다.
+    private func observeSettings() {
+        settings.$appearance
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyAppearance() }
+            .store(in: &cancellables)
+
+        settings.$iconStyle
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.rebuildRootView() }
+            .store(in: &cancellables)
+
+        settings.$isCollapsed
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyCollapsed() }
+            .store(in: &cancellables)
+
+        settings.$isHUDVisible
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyHUDVisible() }
+            .store(in: &cancellables)
+    }
+
+    /// HUD가 실제로 놓여 있는 화면.
+    var currentScreen: NSScreen? {
+        NSScreen.screens.first { $0.frame.intersects(panel.frame) } ?? NSScreen.main
     }
 
     /// 직전에 숨겨둔 상태였다면 그대로 숨긴 채로 시작한다(메뉴바 아이콘으로 다시 켤 수 있다).
     func show() {
-        guard !UserDefaults.standard.bool(forKey: Self.hiddenKey) else { return }
-        setHUDVisible(true)
+        applyHUDVisible()
     }
 
     // MARK: - 위치
@@ -269,7 +296,7 @@ final class HUDController {
         )
     }
 
-    private func resetPosition() {
+    func resetPosition() {
         panel.setFrameOrigin(defaultOrigin())
         saveOrigin()
     }
@@ -293,6 +320,14 @@ final class HUDController {
         let refresh = NSMenuItem(title: "새로고침", action: #selector(handleRefresh), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
+
+        let settingsItem = NSMenuItem(
+            title: "설정…",
+            action: #selector(handleOpenSettings),
+            keyEquivalent: ","
+        )
+        settingsItem.target = self
+        menu.addItem(settingsItem)
 
         let login = NSMenuItem(
             title: "Claude Code 재로그인…",
@@ -368,6 +403,10 @@ final class HUDController {
 
     @objc private func handleRefresh() { store.refresh(force: true) }
 
+    func startLogin() {
+        handleLogin()
+    }
+
     @objc private func handleLogin() {
         guard ClaudeCLI.openLogin() else {
             NSApp.activate(ignoringOtherApps: true)
@@ -385,7 +424,7 @@ final class HUDController {
     @objc private func handleResetPosition() { resetPosition() }
 
     @objc private func handleToggleHUD() {
-        setHUDVisible(!panel.isVisible)
+        settings.isHUDVisible.toggle()
     }
 
     /// 패널 외형·배경색·팔레트를 현재 설정에 맞춘다.
@@ -406,20 +445,20 @@ final class HUDController {
     @objc private func handleAppearance(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let value = HUDAppearance(rawValue: raw) else { return }
-        appearance = value
-        UserDefaults.standard.set(raw, forKey: Self.appearanceKey)
-        applyAppearance()
+        settings.appearance = value
     }
 
     @objc private func handleToggleCollapse() {
-        setCollapsed(!isCollapsed)
+        settings.isCollapsed.toggle()
+    }
+
+    @objc private func handleOpenSettings() {
+        onOpenSettings?()
     }
 
     /// 접거나 펼친다. 오른쪽 위 모서리를 붙잡아 두어서 크기가 바뀌어도 자리가 튀지 않는다.
-    private func setCollapsed(_ collapsed: Bool) {
-        isCollapsed = collapsed
-        UserDefaults.standard.set(collapsed, forKey: Self.collapsedKey)
-
+    private func applyCollapsed() {
+        let collapsed = settings.isCollapsed
         let newSize = UsageHUDView.size(collapsed: collapsed)
         let old = panel.frame
         let origin = NSPoint(x: old.maxX - newSize.width, y: old.maxY - newSize.height)
@@ -429,12 +468,13 @@ final class HUDController {
         panel.setFrameOrigin(clampedOrigin(panel.frame.origin) ?? defaultOrigin())
 
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed)
-        interactionView.passThroughRect = UsageHUDView.refreshHitRectInPanel(collapsed: collapsed)
+        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(collapsed: collapsed)
         rebuildRootView()
         saveOrigin()
     }
 
-    private func setHUDVisible(_ visible: Bool) {
+    private func applyHUDVisible() {
+        let visible = settings.isHUDVisible
         if visible {
             // 숨겨둔 동안 화면 구성이 바뀌었을 수 있으니 위치를 다시 확인한다.
             panel.setFrameOrigin(clampedOrigin(panel.frame.origin) ?? defaultOrigin())
@@ -442,7 +482,6 @@ final class HUDController {
         } else {
             panel.orderOut(nil)
         }
-        UserDefaults.standard.set(!visible, forKey: Self.hiddenKey)
         rebuildRootView()
     }
 
@@ -453,16 +492,15 @@ final class HUDController {
             iconStyle: iconStyle,
             showsCountdown: panel.isVisible && !isCollapsed,
             isCollapsed: isCollapsed,
-            palette: HUDPalette(isDark: appearance.isDark)
+            palette: HUDPalette(isDark: appearance.isDark),
+            onOpenSettings: { [weak self] in self?.onOpenSettings?() }
         )
     }
 
     @objc private func handleIconStyle(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let style = ClaudeIconStyle(rawValue: raw) else { return }
-        UserDefaults.standard.set(raw, forKey: Self.iconStyleKey)
-        iconStyle = style
-        rebuildRootView()
+        settings.iconStyle = style
     }
     @objc private func handleQuit() { NSApp.terminate(nil) }
 

@@ -37,6 +37,16 @@ if CommandLine.arguments.contains("--probe") {
     exit(0)
 }
 
+// 설정 창을 PNG로 그려서 확인: dong-mcu --render-settings out.png [light]
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let path = CommandLine.arguments[flagIndex + 1]
+    let isDark = !CommandLine.arguments.contains("light")
+    let ok = HUDPreviewRenderer.writeSettings(to: path, isDark: isDark)
+    print(ok ? "rendered: \(path)" : "render failed")
+    exit(ok ? 0 : 1)
+}
+
 // HUD를 PNG로 그려서 확인: dong-mcu --render out.png [세션%] [주간%] [appIcon|mark]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
    flagIndex + 1 < CommandLine.arguments.count {

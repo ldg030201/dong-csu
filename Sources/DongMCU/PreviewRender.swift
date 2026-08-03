@@ -79,4 +79,31 @@ enum HUDPreviewRenderer {
             return false
         }
     }
+
+    /// 설정 창을 PNG로 렌더한다.
+    static func writeSettings(to path: String, isDark: Bool) -> Bool {
+        let snapshot = UsageSnapshot(
+            planName: "Max",
+            fiveHour: UsageWindow(utilization: 34, resetsAt: Date().addingTimeInterval(3 * 3600)),
+            sevenDay: UsageWindow(utilization: 61, resetsAt: Date().addingTimeInterval(26 * 3600)),
+            fetchedAt: Date()
+        )
+        let view = SettingsView(
+            settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-mcu.preview") ?? .standard),
+            store: UsageStore(preview: snapshot),
+            actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
+            version: dongMCUVersion
+        )
+        .preferredColorScheme(isDark ? .dark : .light)
+        .background(Color(nsColor: .windowBackgroundColor))
+
+        let renderer = ImageRenderer(content: view)
+        renderer.scale = 2
+        guard let image = renderer.nsImage,
+              let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:])
+        else { return false }
+        return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+    }
 }
