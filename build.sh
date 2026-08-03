@@ -6,6 +6,15 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${CONFIG:-release}"
 APP="$ROOT/build/dong-mcu.app"
 
+# 버전은 Info.plist와 main.swift 두 곳에 있다. 어긋난 채로 배포되면
+# `dong-mcu --version`이 태그와 다른 값을 뱉으므로 여기서 막는다.
+PLIST_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$ROOT/Resources/Info.plist")"
+SOURCE_VERSION="$(sed -n 's/^let dongMCUVersion = "\(.*\)"$/\1/p' "$ROOT/Sources/DongMCU/main.swift")"
+if [[ "$PLIST_VERSION" != "$SOURCE_VERSION" ]]; then
+  echo "버전 불일치: Info.plist=$PLIST_VERSION, main.swift=$SOURCE_VERSION" >&2
+  exit 1
+fi
+
 # Homebrew처럼 이미 샌드박스 안에서 도는 환경에서는 SwiftPM의 자체 샌드박스가 중첩되어
 # 실패한다. 그럴 때 SWIFT_BUILD_FLAGS="--disable-sandbox" 로 넘긴다.
 # 단어 분리를 의도한 것이라 따옴표를 씌우지 않는다.
