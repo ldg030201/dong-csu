@@ -257,6 +257,21 @@ final class HUDController {
         refresh.target = self
         menu.addItem(refresh)
 
+        let login = NSMenuItem(
+            title: "Claude Code 재로그인…",
+            action: #selector(handleLogin),
+            keyEquivalent: ""
+        )
+        login.target = self
+        // 토큰이 만료된 상태면 이게 해야 할 일이라는 걸 눈에 띄게 한다.
+        if store.needsReauth {
+            login.attributedTitle = NSAttributedString(
+                string: login.title,
+                attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)]
+            )
+        }
+        menu.addItem(login)
+
         let toggle = NSMenuItem(
             title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
             action: #selector(handleToggleHUD),
@@ -294,6 +309,21 @@ final class HUDController {
     }
 
     @objc private func handleRefresh() { store.refresh(force: true) }
+
+    @objc private func handleLogin() {
+        guard ClaudeCLI.openLogin() else {
+            NSApp.activate(ignoringOtherApps: true)
+            let alert = NSAlert()
+            alert.messageText = "Claude Code 실행 파일을 찾지 못했습니다"
+            alert.informativeText = "터미널에서 직접 claude auth login 을 실행해 주세요."
+            alert.runModal()
+            return
+        }
+        // 로그인이 끝나면 새 토큰이 키체인에 쓰인다. 잠시 뒤 한 번 더 시도한다.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+            self?.store.refresh(force: true)
+        }
+    }
     @objc private func handleResetPosition() { resetPosition() }
 
     @objc private func handleToggleHUD() {

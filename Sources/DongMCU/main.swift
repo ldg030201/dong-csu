@@ -1,5 +1,13 @@
 import AppKit
 
+let dongMCUVersion = "0.1.0"
+
+if CommandLine.arguments.contains("--version") {
+    let bundled = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    print("dong-mcu \(bundled ?? dongMCUVersion)")
+    exit(0)
+}
+
 // GUI 없이 사용량 조회만 확인하는 진단 모드: dong-mcu --probe
 if CommandLine.arguments.contains("--probe") {
     let done = DispatchSemaphore(value: 0)
