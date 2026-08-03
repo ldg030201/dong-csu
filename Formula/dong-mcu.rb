@@ -6,9 +6,13 @@ class DongMcu < Formula
   license "MIT"
   head "https://github.com/ldg030201/dong-mcu.git", branch: "main"
 
+  depends_on :macos
   depends_on macos: :sonoma
 
   def install
+    # Homebrew의 빌드 샌드박스 안에서는 SwiftPM이 매니페스트를 평가할 때 쓰는
+    # 자체 샌드박스가 중첩되어 실패한다.
+    ENV["SWIFT_BUILD_FLAGS"] = "--disable-sandbox"
     system "./build.sh"
     prefix.install "build/dong-mcu.app"
     bin.install_symlink prefix/"dong-mcu.app/Contents/MacOS/dong-mcu"

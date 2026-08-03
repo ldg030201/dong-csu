@@ -6,8 +6,13 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${CONFIG:-release}"
 APP="$ROOT/build/dong-mcu.app"
 
-swift build -c "$CONFIG" --package-path "$ROOT"
-BIN_DIR="$(swift build -c "$CONFIG" --package-path "$ROOT" --show-bin-path)"
+# Homebrew처럼 이미 샌드박스 안에서 도는 환경에서는 SwiftPM의 자체 샌드박스가 중첩되어
+# 실패한다. 그럴 때 SWIFT_BUILD_FLAGS="--disable-sandbox" 로 넘긴다.
+# 단어 분리를 의도한 것이라 따옴표를 씌우지 않는다.
+# shellcheck disable=SC2086
+swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-}
+# shellcheck disable=SC2086
+BIN_DIR="$(swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
