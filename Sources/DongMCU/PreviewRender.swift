@@ -20,7 +20,8 @@ enum HUDPreviewRenderer {
         iconStyle: ClaudeIconStyle,
         state: State,
         collapsed: Bool = false,
-        isDark: Bool = true
+        isDark: Bool = true,
+        side: HUDExpandSide = .right
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -48,7 +49,8 @@ enum HUDPreviewRenderer {
             store: store,
             iconStyle: iconStyle,
             isCollapsed: collapsed,
-            palette: palette
+            palette: palette,
+            expandSide: side
         )
             .background {
                 ZStack {

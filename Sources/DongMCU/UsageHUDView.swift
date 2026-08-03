@@ -16,10 +16,12 @@ struct UsageHUDView: View {
     var onOpenSettings: (() -> Void)?
     /// 접기/펼치기 토글.
     var onToggleCollapse: (() -> Void)?
+    /// 펼쳐지는 방향. 손잡이(링·버튼)가 붙는 쪽이 반대편이 된다.
+    var expandSide: HUDExpandSide = .default
 
     static let expandedSize = CGSize(width: 240, height: 88)
     /// 접은 모습: 링 + 오른쪽에 버튼 세 개가 세로로 붙는다.
-    static let collapsedSize = CGSize(width: 108, height: 86)
+    static let collapsedSize = CGSize(width: 108, height: 88)
 
     static func size(collapsed: Bool) -> CGSize {
         collapsed ? collapsedSize : expandedSize
@@ -35,20 +37,24 @@ struct UsageHUDView: View {
 
     /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역.
     /// 펼친 상태는 오른쪽 위 가로 세 칸, 접은 상태는 오른쪽 세로 세 칸이다.
-    static func controlsHitRectInPanel(collapsed: Bool) -> CGRect {
+    static func controlsHitRectInPanel(collapsed: Bool, side: HUDExpandSide) -> CGRect {
         let button = refreshHitSize
         if collapsed {
             let height = button * 3
+            let x = side == .right
+                ? collapsedSize.width - collapsedTrailing - button
+                : collapsedTrailing
             return CGRect(
-                x: collapsedSize.width - collapsedTrailing - button,
+                x: x,
                 y: (collapsedSize.height - height) / 2,
                 width: button,
                 height: height
             )
         }
         let width = button * 3
+        let x = side == .right ? expandedSize.width - refreshInset - width : refreshInset
         return CGRect(
-            x: expandedSize.width - refreshInset - width,
+            x: x,
             y: expandedSize.height - refreshInset - button,
             width: width,
             height: button
@@ -73,44 +79,65 @@ struct UsageHUDView: View {
         }
     }
 
-    /// 접힌 모습: 링 + 세로 버튼 열.
+    /// 접힌 모습: 링 + 세로 버튼 열. 버튼은 펼쳐질 방향 쪽에 붙는다.
     private var collapsedBody: some View {
         HStack(spacing: 8) {
-            rings
-                .opacity(store.isStale ? 0.45 : 1)
-            VStack(spacing: 0) {
-                collapseButton
-                settingsButton
-                refreshButton
+            if expandSide == .right {
+                ringsView
+                buttonColumn
+            } else {
+                buttonColumn
+                ringsView
             }
         }
-        .padding(.leading, 12)
-        .padding(.trailing, Self.collapsedTrailing)
+        .padding(.leading, expandSide == .right ? 12 : Self.collapsedTrailing)
+        .padding(.trailing, expandSide == .right ? Self.collapsedTrailing : 12)
         .frame(width: Self.collapsedSize.width, height: Self.collapsedSize.height)
+    }
+
+    private var buttonColumn: some View {
+        VStack(spacing: 0) {
+            collapseButton
+            settingsButton
+            refreshButton
+        }
+    }
+
+    /// 마지막 성공값을 보여주는 중이면 링·숫자를 흐리게 해서 지금 값이 아님을 드러낸다.
+    private var ringsView: some View {
+        rings.opacity(store.isStale ? 0.45 : 1)
     }
 
     private var expandedBody: some View {
         HStack(spacing: 13) {
-            // 마지막 성공값을 보여주는 중이면 링·숫자를 흐리게 해서 지금 값이 아님을 드러낸다.
-            rings
-                .opacity(store.isStale ? 0.45 : 1)
-            // 남은 시간 문구만 시간에 따라 바뀐다. 링·아이콘은 타임라인 밖에 두어
-            // 주기적 갱신 때 다시 평가되지 않게 한다. 표시 단위가 분이라 60초면 충분하다.
-            TimelineView(.periodic(from: .now, by: 60)) { context in
-                VStack(alignment: .leading, spacing: 8) {
-                    metric(title: "세션", window: store.snapshot?.fiveHour, now: context.date)
-                    metric(title: "주간", window: store.snapshot?.sevenDay, now: context.date)
-                }
-                .shadow(color: palette.textShadow, radius: 2, y: 0.5)
-                .opacity(store.isStale ? 0.45 : 1)
+            if expandSide == .right {
+                ringsView
+                metricsView
+                Spacer(minLength: 0)
+            } else {
+                Spacer(minLength: 0)
+                metricsView
+                ringsView
             }
-            Spacer(minLength: 0)
         }
-        .padding(.leading, 13)
-        .padding(.trailing, 10)
+        .padding(.leading, expandSide == .right ? 13 : 10)
+        .padding(.trailing, expandSide == .right ? 10 : 13)
         .frame(width: Self.expandedSize.width, height: Self.expandedSize.height)
-        .overlay(alignment: .topTrailing) { controlButtons }
-        .overlay(alignment: .bottomTrailing) { resetCountdown }
+        .overlay(alignment: expandSide == .right ? .topTrailing : .topLeading) { controlButtons }
+        .overlay(alignment: expandSide == .right ? .bottomTrailing : .bottomLeading) { resetCountdown }
+    }
+
+    /// 남은 시간 문구만 시간에 따라 바뀐다. 링·아이콘은 타임라인 밖에 두어
+    /// 주기적 갱신 때 다시 평가되지 않게 한다. 표시 단위가 분이라 60초면 충분하다.
+    private var metricsView: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            VStack(alignment: .leading, spacing: 8) {
+                metric(title: "세션", window: store.snapshot?.fiveHour, now: context.date)
+                metric(title: "주간", window: store.snapshot?.sevenDay, now: context.date)
+            }
+            .shadow(color: palette.textShadow, radius: 2, y: 0.5)
+            .opacity(store.isStale ? 0.45 : 1)
+        }
     }
 
     // MARK: - 다음 조회 카운트다운
@@ -145,7 +172,7 @@ struct UsageHUDView: View {
             }
             .help(countdownHelp)
         }
-        .padding(.trailing, 10)
+        .padding(.horizontal, 10)
         .padding(.bottom, 7)
     }
 
@@ -191,9 +218,7 @@ struct UsageHUDView: View {
             onToggleCollapse?()
         } label: {
             controlLabel(
-                systemName: isCollapsed
-                    ? "arrow.up.left.and.arrow.down.right"
-                    : "arrow.down.right.and.arrow.up.left",
+                systemName: chevronName,
                 tint: isHoveringCollapse ? palette.controlActive : palette.controlIdle,
                 hovering: isHoveringCollapse
             )
@@ -216,6 +241,11 @@ struct UsageHUDView: View {
         .buttonStyle(.plain)
         .onHover { isHoveringSettings = $0 }
         .help("설정")
+    }
+
+    /// 눌렀을 때 패널이 움직일 방향을 가리킨다.
+    private var chevronName: String {
+        (isCollapsed == (expandSide == .right)) ? "chevron.right" : "chevron.left"
     }
 
     private func controlLabel(systemName: String, tint: Color, hovering: Bool) -> some View {

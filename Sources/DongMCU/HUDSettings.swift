@@ -1,6 +1,23 @@
 import Combine
 import Foundation
 
+/// HUD가 펼쳐지는 방향. 접힌 링을 손잡이 삼아 서랍처럼 열린다.
+enum HUDExpandSide: String, CaseIterable {
+    /// 왼쪽 가장자리를 고정하고 오른쪽으로 펼친다.
+    case right
+    /// 오른쪽 가장자리를 고정하고 왼쪽으로 펼친다.
+    case left
+
+    static let `default` = HUDExpandSide.right
+
+    var title: String {
+        switch self {
+        case .right: return "오른쪽으로 펼치기"
+        case .left: return "왼쪽으로 펼치기"
+        }
+    }
+}
+
 /// 사용자가 바꿀 수 있는 설정을 한곳에 모은다.
 ///
 /// 메뉴·설정 창·HUD가 모두 이 객체를 보고 움직인다. 예전처럼 컨트롤러 곳곳에서
@@ -23,6 +40,10 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(!isHUDVisible, forKey: Keys.hidden) }
     }
 
+    @Published var expandSide: HUDExpandSide {
+        didSet { defaults.set(expandSide.rawValue, forKey: Keys.expandSide) }
+    }
+
     private let defaults: UserDefaults
 
     private enum Keys {
@@ -30,6 +51,7 @@ final class HUDSettings: ObservableObject {
         static let iconStyle = "hud.iconStyle"
         static let collapsed = "hud.collapsed"
         static let hidden = "hud.hidden"
+        static let expandSide = "hud.expandSide"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -38,6 +60,7 @@ final class HUDSettings: ObservableObject {
         iconStyle = ClaudeIconStyle(rawValue: defaults.string(forKey: Keys.iconStyle) ?? "") ?? .default
         isCollapsed = defaults.bool(forKey: Keys.collapsed)
         isHUDVisible = !defaults.bool(forKey: Keys.hidden)
+        expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
     }
 }
 

@@ -146,13 +146,14 @@ final class HUDController {
                 palette: HUDPalette(isDark: true)
             )
         )
-        hosting.frame = container.bounds
-        hosting.autoresizingMask = [.width, .height]
         container.addSubview(hosting)
 
         interactionView.frame = container.bounds
         interactionView.autoresizingMask = [.width, .height]
-        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(collapsed: settings.isCollapsed)
+        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
+            collapsed: settings.isCollapsed,
+            side: settings.expandSide
+        )
         container.addSubview(interactionView)
 
         panel.contentView = container
@@ -163,6 +164,7 @@ final class HUDController {
         interactionView.onDoubleClick = { [weak self] in self?.handleToggleCollapse() }
 
         applyAppearance()
+        layoutHosting(for: size)
 
         panel.setFrameOrigin(restoredOrigin())
         // 시스템 테마가 바뀌면 .system 설정일 때만 따라간다.
@@ -208,6 +210,54 @@ final class HUDController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyHUDVisible() }
             .store(in: &cancellables)
+
+        settings.$expandSide
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyExpandSide() }
+            .store(in: &cancellables)
+    }
+
+    /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
+    private func applyExpandSide() {
+        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
+            collapsed: settings.isCollapsed,
+            side: settings.expandSide
+        )
+        rebuildRootView()
+        layoutHosting(for: UsageHUDView.size(collapsed: settings.isCollapsed))
+    }
+
+    /// 크기가 바뀔 때 고정할 모서리를 정한다.
+    /// 오른쪽으로 펼치면 왼쪽 변을, 왼쪽으로 펼치면 오른쪽 변을 붙잡는다. 위쪽은 항상 고정.
+    private func targetFrame(for size: CGSize) -> NSRect {
+        let old = panel.frame
+        let x = settings.expandSide == .right ? old.minX : old.maxX - size.width
+        let origin = NSPoint(x: x, y: old.maxY - size.height)
+        return NSRect(origin: clampedOrigin(origin, size: size) ?? origin, size: size)
+    }
+
+    /// 내용 뷰를 고정 크기로 두고 컨테이너가 잘라내게 한다.
+    /// 이래야 창이 커지고 작아지는 동안 글자가 다시 배치되지 않고 서랍처럼 드러난다.
+    private func layoutHosting(for size: CGSize) {
+        let bounds = container.bounds
+        hosting.autoresizingMask = settings.expandSide == .left
+            ? [.minXMargin, .minYMargin]
+            : [.maxXMargin, .minYMargin]
+        hosting.frame = CGRect(
+            x: settings.expandSide == .left ? bounds.width - size.width : 0,
+            y: bounds.height - size.height,
+            width: size.width,
+            height: size.height
+        )
+    }
+
+    private func animate(to frame: NSRect, completion: (() -> Void)?) {
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = 0.22
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(frame, display: true)
+        }, completionHandler: completion)
     }
 
     /// HUD가 실제로 놓여 있는 화면.
@@ -251,7 +301,10 @@ final class HUDController {
     /// 저장된 위치가 화면 밖으로 걸치면 화면 안쪽으로 밀어 넣는다.
     /// HUD 크기가 바뀌거나 모니터 구성이 달라졌을 때 잘려 보이는 걸 막는다.
     private func clampedOrigin(_ origin: NSPoint) -> NSPoint? {
-        let size = panel.frame.size
+        clampedOrigin(origin, size: panel.frame.size)
+    }
+
+    private func clampedOrigin(_ origin: NSPoint, size: NSSize) -> NSPoint? {
         let frame = NSRect(origin: origin, size: size)
         let center = NSPoint(x: frame.midX, y: frame.midY)
 
@@ -460,17 +513,28 @@ final class HUDController {
     private func applyCollapsed() {
         let collapsed = settings.isCollapsed
         let newSize = UsageHUDView.size(collapsed: collapsed)
-        let old = panel.frame
-        let origin = NSPoint(x: old.maxX - newSize.width, y: old.maxY - newSize.height)
-        let target = NSRect(origin: origin, size: newSize)
-
-        panel.setFrame(target, display: true)
-        panel.setFrameOrigin(clampedOrigin(panel.frame.origin) ?? defaultOrigin())
+        let target = targetFrame(for: newSize)
 
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed)
-        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(collapsed: collapsed)
-        rebuildRootView()
-        saveOrigin()
+        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
+            collapsed: collapsed,
+            side: settings.expandSide
+        )
+
+        if collapsed {
+            // 접을 때는 펼친 내용을 그대로 둔 채 창만 줄여서, 서랍이 밀려 들어가는 것처럼 보이게 한다.
+            animate(to: target) { [weak self] in
+                guard let self else { return }
+                self.rebuildRootView()
+                self.layoutHosting(for: newSize)
+                self.saveOrigin()
+            }
+        } else {
+            // 펼칠 때는 내용을 먼저 깔아두고 창을 키워서 드러나게 한다.
+            rebuildRootView()
+            layoutHosting(for: newSize)
+            animate(to: target) { [weak self] in self?.saveOrigin() }
+        }
     }
 
     private func applyHUDVisible() {
@@ -494,7 +558,8 @@ final class HUDController {
             isCollapsed: isCollapsed,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
-            onToggleCollapse: { [weak self] in self?.handleToggleCollapse() }
+            onToggleCollapse: { [weak self] in self?.handleToggleCollapse() },
+            expandSide: settings.expandSide
         )
     }
 

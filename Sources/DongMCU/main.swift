@@ -65,6 +65,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     let extras = arguments.dropFirst(flagIndex + 5)
     let collapsed = extras.contains("collapsed")
     let isDark = !extras.contains("light")
+    let side: HUDExpandSide = extras.contains("expandLeft") ? .left : .right
 
     let succeeded = HUDPreviewRenderer.write(
         to: path,
@@ -72,7 +73,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
         iconStyle: iconStyle,
         state: state,
         collapsed: collapsed,
-        isDark: isDark
+        isDark: isDark,
+        side: side
     )
     print(succeeded ? "rendered: \(path)" : "render failed")
     exit(succeeded ? 0 : 1)

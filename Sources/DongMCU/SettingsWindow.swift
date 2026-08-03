@@ -87,6 +87,12 @@ struct SettingsView: View {
                 }
             }
 
+            Picker("펼침 방향", selection: $settings.expandSide) {
+                ForEach(HUDExpandSide.allCases, id: \.self) { value in
+                    Text(value.title).tag(value)
+                }
+            }
+
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
             Toggle("접어서 링만 보기", isOn: $settings.isCollapsed)
                 .disabled(!settings.isHUDVisible)
