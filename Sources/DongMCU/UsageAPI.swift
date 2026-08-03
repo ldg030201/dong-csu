@@ -188,6 +188,8 @@ enum UsageAPI {
 
         var request = URLRequest(url: endpoint, timeoutInterval: 15)
         request.httpMethod = "GET"
+        // 매번 서버 값을 받아야 한다. 캐시된 응답이 돌아오면 새로고침이 먹히지 않는 것처럼 보인다.
+        request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("Bearer \(credentials.accessToken)", forHTTPHeaderField: "Authorization")
         request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
         request.setValue("claude-code/2.1", forHTTPHeaderField: "User-Agent")
