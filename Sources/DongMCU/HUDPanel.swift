@@ -6,6 +6,13 @@ import SwiftUI
 final class HUDPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
+
+    /// AppKit은 창이 현재 화면을 벗어나지 않도록 프레임을 자동으로 잡아당긴다.
+    /// 그 보정 때문에 HUD를 다른 모니터로 끌어다 놓을 수 없어서, 제안된 위치를 그대로 쓴다.
+    /// 화면 밖으로 완전히 나가는 건 HUDController의 clampedOrigin이 따로 막는다.
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        frameRect
+    }
 }
 
 /// 패널이 key window가 되지 않기 때문에, 비활성 창의 첫 클릭이 삼켜지지 않도록
