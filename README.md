@@ -18,12 +18,12 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 ### Homebrew
 
 ```bash
-brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu
-brew trust ldg030201/dong-mcu
-brew install dong-mcu
+brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu &&
+  brew trust ldg030201/dong-mcu &&
+  brew install dong-mcu
 ```
 
-`brew trust`가 필요한 이유는 Homebrew가 서드파티 tap의 formula를 기본적으로 거부하기 때문이다.
+`brew trust`는 Homebrew가 서드파티 tap의 formula를 기본적으로 거부하기 때문에 필요하다.
 설치는 소스에서 빌드하므로 코드 서명·공증 문제가 없다.
 
 ```bash
