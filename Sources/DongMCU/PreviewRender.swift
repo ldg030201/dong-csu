@@ -19,7 +19,8 @@ enum HUDPreviewRenderer {
         utilization: (session: Double, weekly: Double),
         iconStyle: ClaudeIconStyle,
         state: State,
-        collapsed: Bool = false
+        collapsed: Bool = false,
+        isDark: Bool = true
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -42,11 +43,17 @@ enum HUDPreviewRenderer {
             error: state == .ok ? nil : "토큰 만료 — Claude Code 재로그인 필요",
             needsReauth: state == .reauth
         )
-        let content = UsageHUDView(store: store, iconStyle: iconStyle, isCollapsed: collapsed)
+        let palette = HUDPalette(isDark: isDark)
+        let content = UsageHUDView(
+            store: store,
+            iconStyle: iconStyle,
+            isCollapsed: collapsed,
+            palette: palette
+        )
             .background {
                 ZStack {
-                    Color(white: 0.42)
-                    Color(white: 0.09).opacity(0.92)
+                    Color(white: isDark ? 0.42 : 0.55)
+                    Color(nsColor: palette.backdrop)
                 }
             }
             .clipShape(

@@ -32,8 +32,10 @@ struct ClawdMark: View {
     static let columns = 11
     static let lines = 8
 
+    static let defaultEyeColor = Color.black.opacity(0.88)
+
     var bodyColor: Color = ClawdMark.bodyColor
-    var eyeColor: Color = Color.black.opacity(0.88)
+    var eyeColor: Color = ClawdMark.defaultEyeColor
 
     var body: some View {
         Canvas { context, size in

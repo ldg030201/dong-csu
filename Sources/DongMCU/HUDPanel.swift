@@ -91,18 +91,24 @@ final class HUDController {
     private let container: NSView
     private var iconStyle: ClaudeIconStyle
     private var isCollapsed: Bool
+    private var appearance: HUDAppearance
+    private let backdrop = NSView()
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
     private static let iconStyleKey = "hud.iconStyle"
     private static let hiddenKey = "hud.hidden"
     private static let collapsedKey = "hud.collapsed"
+    private static let appearanceKey = "hud.appearance"
     private static let margin: CGFloat = 16
 
     init(store: UsageStore) {
         self.store = store
 
         isCollapsed = UserDefaults.standard.bool(forKey: Self.collapsedKey)
+        appearance = HUDAppearance(
+            rawValue: UserDefaults.standard.string(forKey: Self.appearanceKey) ?? ""
+        ) ?? .default
         let size = UsageHUDView.size(collapsed: isCollapsed)
         panel = HUDPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -118,22 +124,19 @@ final class HUDController {
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        // 시스템이 라이트 모드여도 배경을 어둡게 유지한다. 흰 글자 가독성이 여기서 나온다.
-        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.appearance = appearance.nsAppearance
 
         container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: isCollapsed)
         container.layer?.masksToBounds = true
         container.layer?.borderWidth = 1
-        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
 
         // 배경은 단색 반투명. NSVisualEffectView의 behindWindow 블러를 쓰면
         // 항상 위에 떠 있는 창이라 뒤 내용이 바뀔 때마다 WindowServer가 계속
         // 블러를 다시 합성한다. 어두운 카드에서는 눈에 차이가 없고 비용만 든다.
-        let backdrop = NSView(frame: container.bounds)
+        backdrop.frame = container.bounds
         backdrop.wantsLayer = true
-        backdrop.layer?.backgroundColor = NSColor(calibratedWhite: 0.09, alpha: 0.92).cgColor
         backdrop.autoresizingMask = [.width, .height]
         container.addSubview(backdrop)
 
@@ -145,7 +148,8 @@ final class HUDController {
                 store: store,
                 iconStyle: iconStyle,
                 showsCountdown: false,
-                isCollapsed: isCollapsed
+                isCollapsed: isCollapsed,
+                palette: HUDPalette(isDark: true)
             )
         )
         hosting.frame = container.bounds
@@ -164,7 +168,16 @@ final class HUDController {
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
         interactionView.onDoubleClick = { [weak self] in self?.handleToggleCollapse() }
 
+        applyAppearance()
+
         panel.setFrameOrigin(restoredOrigin())
+        // 시스템 테마가 바뀌면 .system 설정일 때만 따라간다.
+        DistributedNotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSystemThemeChange),
+            name: NSNotification.Name("AppleInterfaceThemeChangedNotification"),
+            object: nil
+        )
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleScreenChange),
@@ -335,6 +348,18 @@ final class HUDController {
         iconItem.submenu = iconMenu
         menu.addItem(iconItem)
 
+        let themeMenu = NSMenu()
+        for value in HUDAppearance.allCases {
+            let item = NSMenuItem(title: value.title, action: #selector(handleAppearance(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = value.rawValue
+            item.state = appearance == value ? .on : .off
+            themeMenu.addItem(item)
+        }
+        let themeItem = NSMenuItem(title: "테마", action: nil, keyEquivalent: "")
+        themeItem.submenu = themeMenu
+        menu.addItem(themeItem)
+
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "dong-mcu 종료", action: #selector(handleQuit), keyEquivalent: "q")
         quit.target = self
@@ -361,6 +386,29 @@ final class HUDController {
 
     @objc private func handleToggleHUD() {
         setHUDVisible(!panel.isVisible)
+    }
+
+    /// 패널 외형·배경색·팔레트를 현재 설정에 맞춘다.
+    private func applyAppearance() {
+        panel.appearance = appearance.nsAppearance
+        let palette = HUDPalette(isDark: appearance.isDark)
+        backdrop.layer?.backgroundColor = palette.backdrop.cgColor
+        container.layer?.borderColor = palette.border.cgColor
+        rebuildRootView()
+    }
+
+    @objc private func handleSystemThemeChange() {
+        guard appearance == .system else { return }
+        // 알림이 올 때 NSApp.effectiveAppearance가 아직 갱신되지 않은 경우가 있어 한 턴 미룬다.
+        DispatchQueue.main.async { [weak self] in self?.applyAppearance() }
+    }
+
+    @objc private func handleAppearance(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let value = HUDAppearance(rawValue: raw) else { return }
+        appearance = value
+        UserDefaults.standard.set(raw, forKey: Self.appearanceKey)
+        applyAppearance()
     }
 
     @objc private func handleToggleCollapse() {
@@ -404,7 +452,8 @@ final class HUDController {
             store: store,
             iconStyle: iconStyle,
             showsCountdown: panel.isVisible && !isCollapsed,
-            isCollapsed: isCollapsed
+            isCollapsed: isCollapsed,
+            palette: HUDPalette(isDark: appearance.isDark)
         )
     }
 

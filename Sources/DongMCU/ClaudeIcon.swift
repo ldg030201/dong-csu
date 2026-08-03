@@ -42,13 +42,14 @@ enum ClaudeIcon {
 struct ClaudeIconView: View {
     var style: ClaudeIconStyle
     var size: CGFloat
+    var eyeColor: Color = ClawdMark.defaultEyeColor
 
     private let claudeOrange = Color(red: 0.85, green: 0.46, blue: 0.34)
 
     var body: some View {
         switch style {
         case .clawd:
-            ClawdMark()
+            ClawdMark(eyeColor: eyeColor)
                 .frame(width: size)
                 .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
         case .appIcon:

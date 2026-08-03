@@ -11,6 +11,7 @@ struct UsageHUDView: View {
     var showsCountdown: Bool = true
     /// 접힌 상태에서는 링만 남기고 전부 감춘다.
     var isCollapsed: Bool = false
+    var palette = HUDPalette(isDark: true)
 
     static let expandedSize = CGSize(width: 240, height: 88)
     static let collapsedSize = CGSize(width: 86, height: 86)
@@ -45,7 +46,6 @@ struct UsageHUDView: View {
     private let ringDiameter: CGFloat = 62
     private let outerLineWidth: CGFloat = 6
     private let innerLineWidth: CGFloat = 5
-    private let staleAmber = Color(red: 0.95, green: 0.72, blue: 0.27)
 
     var body: some View {
         if isCollapsed {
@@ -74,7 +74,7 @@ struct UsageHUDView: View {
                     metric(title: "세션", window: store.snapshot?.fiveHour, now: context.date)
                     metric(title: "주간", window: store.snapshot?.sevenDay, now: context.date)
                 }
-                .shadow(color: .black.opacity(0.55), radius: 2, y: 0.5)
+                .shadow(color: palette.textShadow, radius: 2, y: 0.5)
                 .opacity(store.isStale ? 0.45 : 1)
             }
             Spacer(minLength: 0)
@@ -103,16 +103,16 @@ struct UsageHUDView: View {
                     // 화면 숫자가 지금 값이 아니면, 남은 시간 대신 그 사실을 알린다.
                     Text(warning)
                         .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                        .foregroundStyle(staleAmber)
+                        .foregroundStyle(palette.warning)
                 } else {
                     HStack(spacing: 4) {
                         Text("조회")
                             .font(.system(size: 8.5, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.38))
+                            .foregroundStyle(palette.faintText)
                         Text(countdownText(now: context.date))
                             .font(.system(size: 9.5, weight: .medium, design: .rounded))
                             .monospacedDigit()
-                            .foregroundStyle(.white.opacity(store.isRefreshing ? 0.35 : 0.62))
+                            .foregroundStyle(palette.tertiaryText.opacity(store.isRefreshing ? 0.55 : 1))
                     }
                 }
             }
@@ -159,7 +159,7 @@ struct UsageHUDView: View {
                 .foregroundStyle(refreshTint)
                 .frame(width: Self.refreshHitSize, height: Self.refreshHitSize)
                 .background {
-                    Circle().fill(Color.white.opacity(isHoveringRefresh ? 0.13 : 0))
+                    Circle().fill(isHoveringRefresh ? palette.controlHoverFill : .clear)
                 }
                 .contentShape(Circle())
         }
@@ -173,8 +173,8 @@ struct UsageHUDView: View {
 
     /// 갱신에 실패해 화면 숫자가 오래된 값이면 버튼 자체를 경고색으로 물들인다.
     private var refreshTint: Color {
-        if store.errorText != nil { return staleAmber }
-        return .white.opacity(isHoveringRefresh ? 0.95 : 0.45)
+        if store.errorText != nil { return palette.warning }
+        return isHoveringRefresh ? palette.controlActive : palette.controlIdle
     }
 
     private var refreshHelp: String {
@@ -193,7 +193,7 @@ struct UsageHUDView: View {
         return ZStack {
             ring(window: store.snapshot?.fiveHour, diameter: ringDiameter, lineWidth: outerLineWidth)
             ring(window: store.snapshot?.sevenDay, diameter: innerDiameter, lineWidth: innerLineWidth)
-            ClaudeIconView(style: iconStyle, size: innerDiameter - innerLineWidth * 2 - 4)
+            ClaudeIconView(style: iconStyle, size: innerDiameter - innerLineWidth * 2 - 4, eyeColor: palette.markEye)
         }
         .frame(width: ringDiameter, height: ringDiameter)
     }
@@ -204,7 +204,7 @@ struct UsageHUDView: View {
 
         return ZStack {
             Circle()
-                .stroke(Color.white.opacity(0.15), lineWidth: lineWidth)
+                .stroke(palette.ringTrack, lineWidth: lineWidth)
             Circle()
                 .trim(from: 0, to: max(0.004, fraction))
                 .stroke(color, style: StrokeStyle(lineWidth: lineWidth, lineCap: .round))
@@ -227,19 +227,19 @@ struct UsageHUDView: View {
         return VStack(alignment: .leading, spacing: 1) {
             HStack(spacing: 5) {
                 Circle()
-                    .fill(window == nil ? Color.white.opacity(0.28) : color)
+                    .fill(window == nil ? palette.mutedDot : color)
                     .frame(width: 5, height: 5)
                 Text(title)
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.68))
+                    .foregroundStyle(palette.secondaryText)
                 Text(utilization.map { "\(Int($0.rounded()))%" } ?? "—")
                     .font(.system(size: 14, weight: .bold, design: .rounded))
                     .monospacedDigit()
-                    .foregroundStyle(.white)
+                    .foregroundStyle(palette.primaryText)
             }
             Text(RemainingTime.text(until: window?.resetsAt, now: now))
                 .font(.system(size: 9.5, weight: .medium))
-                .foregroundStyle(.white.opacity(0.62))
+                .foregroundStyle(palette.tertiaryText)
         }
     }
 
