@@ -493,7 +493,8 @@ final class HUDController {
             showsCountdown: panel.isVisible && !isCollapsed,
             isCollapsed: isCollapsed,
             palette: HUDPalette(isDark: appearance.isDark),
-            onOpenSettings: { [weak self] in self?.onOpenSettings?() }
+            onOpenSettings: { [weak self] in self?.onOpenSettings?() },
+            onToggleCollapse: { [weak self] in self?.handleToggleCollapse() }
         )
     }
 

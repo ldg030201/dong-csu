@@ -14,39 +14,52 @@ struct UsageHUDView: View {
     var palette = HUDPalette(isDark: true)
     /// 설정 창 열기. HUDController가 꽂아준다.
     var onOpenSettings: (() -> Void)?
+    /// 접기/펼치기 토글.
+    var onToggleCollapse: (() -> Void)?
 
     static let expandedSize = CGSize(width: 240, height: 88)
-    static let collapsedSize = CGSize(width: 86, height: 86)
+    /// 접은 모습: 링 + 오른쪽에 버튼 세 개가 세로로 붙는다.
+    static let collapsedSize = CGSize(width: 108, height: 86)
 
     static func size(collapsed: Bool) -> CGSize {
         collapsed ? collapsedSize : expandedSize
     }
 
-    /// 접으면 원형으로 만든다.
     static func cornerRadius(collapsed: Bool) -> CGFloat {
-        collapsed ? collapsedSize.height / 2 : 20
+        collapsed ? 26 : 20
     }
 
     /// 새로고침 버튼 자리. 이 영역만 드래그 오버레이가 클릭을 통과시킨다.
     static let refreshInset: CGFloat = 4
     static let refreshHitSize: CGFloat = 20
 
-    /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역. 설정·새로고침 두 개를 함께 덮는다.
-    /// 접힌 상태에는 버튼이 없다.
+    /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역.
+    /// 펼친 상태는 오른쪽 위 가로 세 칸, 접은 상태는 오른쪽 세로 세 칸이다.
     static func controlsHitRectInPanel(collapsed: Bool) -> CGRect {
-        guard !collapsed else { return .zero }
-        let size = expandedSize
-        let width = refreshHitSize * 2
+        let button = refreshHitSize
+        if collapsed {
+            let height = button * 3
+            return CGRect(
+                x: collapsedSize.width - collapsedTrailing - button,
+                y: (collapsedSize.height - height) / 2,
+                width: button,
+                height: height
+            )
+        }
+        let width = button * 3
         return CGRect(
-            x: size.width - refreshInset - width,
-            y: size.height - refreshInset - refreshHitSize,
+            x: expandedSize.width - refreshInset - width,
+            y: expandedSize.height - refreshInset - button,
             width: width,
-            height: refreshHitSize
+            height: button
         )
     }
 
+    static let collapsedTrailing: CGFloat = 6
+
     @State private var isHoveringRefresh = false
     @State private var isHoveringSettings = false
+    @State private var isHoveringCollapse = false
 
     private let ringDiameter: CGFloat = 62
     private let outerLineWidth: CGFloat = 6
@@ -60,11 +73,20 @@ struct UsageHUDView: View {
         }
     }
 
-    /// 접힌 모습: 링만.
+    /// 접힌 모습: 링 + 세로 버튼 열.
     private var collapsedBody: some View {
-        rings
-            .opacity(store.isStale ? 0.45 : 1)
-            .frame(width: Self.collapsedSize.width, height: Self.collapsedSize.height)
+        HStack(spacing: 8) {
+            rings
+                .opacity(store.isStale ? 0.45 : 1)
+            VStack(spacing: 0) {
+                collapseButton
+                settingsButton
+                refreshButton
+            }
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, Self.collapsedTrailing)
+        .frame(width: Self.collapsedSize.width, height: Self.collapsedSize.height)
     }
 
     private var expandedBody: some View {
@@ -157,10 +179,28 @@ struct UsageHUDView: View {
 
     private var controlButtons: some View {
         HStack(spacing: 0) {
+            collapseButton
             settingsButton
             refreshButton
         }
         .padding(Self.refreshInset)
+    }
+
+    private var collapseButton: some View {
+        Button {
+            onToggleCollapse?()
+        } label: {
+            controlLabel(
+                systemName: isCollapsed
+                    ? "arrow.up.left.and.arrow.down.right"
+                    : "arrow.down.right.and.arrow.up.left",
+                tint: isHoveringCollapse ? palette.controlActive : palette.controlIdle,
+                hovering: isHoveringCollapse
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHoveringCollapse = $0 }
+        .help(isCollapsed ? "펼치기" : "접기")
     }
 
     private var settingsButton: some View {
