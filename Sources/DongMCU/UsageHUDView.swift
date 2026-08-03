@@ -36,7 +36,9 @@ struct UsageHUDView: View {
 
     var body: some View {
         HStack(spacing: 13) {
+            // 마지막 성공값을 보여주는 중이면 링·숫자를 흐리게 해서 지금 값이 아님을 드러낸다.
             rings
+                .opacity(store.isStale ? 0.45 : 1)
             // 남은 시간 문구만 시간에 따라 바뀐다. 링·아이콘은 타임라인 밖에 두어
             // 주기적 갱신 때 다시 평가되지 않게 한다. 표시 단위가 분이라 60초면 충분하다.
             TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -45,6 +47,7 @@ struct UsageHUDView: View {
                     metric(title: "주간", window: store.snapshot?.sevenDay, now: context.date)
                 }
                 .shadow(color: .black.opacity(0.55), radius: 2, y: 0.5)
+                .opacity(store.isStale ? 0.45 : 1)
             }
             Spacer(minLength: 0)
         }
@@ -67,19 +70,35 @@ struct UsageHUDView: View {
 
     private var countdownBody: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(spacing: 4) {
-                Text("조회")
-                    .font(.system(size: 8.5, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.38))
-                Text(countdownText(now: context.date))
-                    .font(.system(size: 9.5, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .foregroundStyle(.white.opacity(store.isRefreshing ? 0.35 : 0.62))
+            Group {
+                if let warning = staleLabel(now: context.date) {
+                    // 화면 숫자가 지금 값이 아니면, 남은 시간 대신 그 사실을 알린다.
+                    Text(warning)
+                        .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                        .foregroundStyle(staleAmber)
+                } else {
+                    HStack(spacing: 4) {
+                        Text("조회")
+                            .font(.system(size: 8.5, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.38))
+                        Text(countdownText(now: context.date))
+                            .font(.system(size: 9.5, weight: .medium, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white.opacity(store.isRefreshing ? 0.35 : 0.62))
+                    }
+                }
             }
             .help(countdownHelp)
         }
         .padding(.trailing, 10)
         .padding(.bottom, 7)
+    }
+
+    /// 재로그인이 필요하거나 마지막 성공값을 보여주는 중이면 그 문구를 돌려준다.
+    private func staleLabel(now: Date) -> String? {
+        if store.needsReauth { return "재로그인 필요" }
+        guard store.isStale, let fetchedAt = store.snapshot?.fetchedAt else { return nil }
+        return RemainingTime.ageText(since: fetchedAt, now: now)
     }
 
     private func countdownText(now: Date) -> String {
@@ -91,8 +110,13 @@ struct UsageHUDView: View {
     }
 
     private var countdownHelp: String {
+        if store.needsReauth {
+            return "Claude Code 재로그인이 필요하다 — \(store.errorText ?? "")"
+        }
+        if let error = store.errorText {
+            return "갱신 실패로 마지막 성공값을 보여주는 중 — \(error)"
+        }
         guard store.nextPollDate != nil else { return "화면이 꺼져 있어 조회를 멈춘 상태" }
-        if store.errorText != nil { return "다음 조회까지 남은 시간 (재시도 대기 중)" }
         return "다음 사용량 조회까지 남은 시간"
     }
 

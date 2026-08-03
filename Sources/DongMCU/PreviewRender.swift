@@ -5,10 +5,20 @@ import SwiftUI
 /// 앱을 띄우지 않고 레이아웃·색·아이콘을 확인하려고 둔 디버그 통로.
 @MainActor
 enum HUDPreviewRenderer {
+    /// 미리보기에서 재현할 상태.
+    enum State: String {
+        case ok
+        /// 갱신에 실패해 마지막 성공값을 보여주는 중.
+        case stale
+        /// 토큰 만료 등으로 재로그인이 필요한 상태.
+        case reauth
+    }
+
     static func write(
         to path: String,
         utilization: (session: Double, weekly: Double),
-        iconStyle: ClaudeIconStyle
+        iconStyle: ClaudeIconStyle,
+        state: State
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -20,14 +30,16 @@ enum HUDPreviewRenderer {
                 utilization: utilization.weekly,
                 resetsAt: Date().addingTimeInterval(26 * 3600)
             ),
-            fetchedAt: Date()
+            fetchedAt: Date().addingTimeInterval(state == .ok ? 0 : -13 * 3600)
         )
 
         // 실제 창과 같은 배경(반투명 단색)을 쓰고, 그 뒤에 회색 바탕을 깔아
         // 데스크톱 위에 얹힌 상태를 흉내낸다.
         let store = UsageStore(
             preview: snapshot,
-            nextPoll: Date().addingTimeInterval(7 * 60 + 12)
+            nextPoll: Date().addingTimeInterval(7 * 60 + 12),
+            error: state == .ok ? nil : "토큰 만료 — Claude Code 재로그인 필요",
+            needsReauth: state == .reauth
         )
         let content = UsageHUDView(store: store, iconStyle: iconStyle)
             .background {

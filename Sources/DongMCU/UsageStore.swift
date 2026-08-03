@@ -11,6 +11,11 @@ final class UsageStore: ObservableObject {
     @Published private(set) var snapshot: UsageSnapshot?
     @Published private(set) var errorText: String?
     @Published private(set) var isRefreshing = false
+    /// 자격증명이 없거나 만료됐다. 재시도해도 소용없고 Claude Code 재로그인이 필요하다.
+    @Published private(set) var needsReauth = false
+
+    /// 화면에 떠 있는 숫자가 마지막 성공값(= 지금 값이 아닐 수 있음)인지.
+    var isStale: Bool { snapshot != nil && errorText != nil }
 
     private var timer: Timer?
     private var backoffUntil: Date?
@@ -20,9 +25,16 @@ final class UsageStore: ObservableObject {
     init() {}
 
     /// 렌더 확인용. 네트워크 없이 고정값으로 채운 저장소.
-    init(preview snapshot: UsageSnapshot, nextPoll: Date? = nil) {
+    init(
+        preview snapshot: UsageSnapshot,
+        nextPoll: Date? = nil,
+        error: String? = nil,
+        needsReauth: Bool = false
+    ) {
         self.snapshot = snapshot
         self.previewNextPoll = nextPoll
+        self.errorText = error
+        self.needsReauth = needsReauth
     }
 
     /// 렌더 확인용 고정값. 실제 실행에서는 항상 nil이다.
@@ -90,6 +102,7 @@ final class UsageStore: ObservableObject {
                 guard let self else { return }
                 self.snapshot = result
                 self.errorText = nil
+                self.needsReauth = false
                 self.consecutiveRateLimits = 0
                 self.backoffUntil = nil
             } catch {
@@ -138,6 +151,7 @@ final class UsageStore: ObservableObject {
     private func apply(error: Error) {
         let usageError = error as? UsageError
         errorText = usageError?.description ?? error.localizedDescription
+        needsReauth = usageError?.isTerminal ?? false
 
         guard let usageError, case .rateLimited(let retryAfter) = usageError else {
             consecutiveRateLimits = 0

@@ -60,6 +60,15 @@ enum RemainingTime {
         return "\(minutes)분 남음"
     }
 
+    /// 값을 가져온 지 얼마나 지났는지. 화면 숫자가 언제 것인지 알려줄 때 쓴다.
+    static func ageText(since date: Date, now: Date) -> String {
+        let elapsed = Int(max(0, now.timeIntervalSince(date)))
+        if elapsed < 60 { return "방금 값" }
+        if elapsed < 3600 { return "\(elapsed / 60)분 전 값" }
+        if elapsed < 24 * 3600 { return "\(elapsed / 3600)시간 전 값" }
+        return "\(elapsed / (24 * 3600))일 전 값"
+    }
+
     /// 초까지 보이는 카운트다운. 1시간 미만이면 `분:초`, 넘으면 `시:분:초`.
     static func clockText(until date: Date?, now: Date) -> String {
         guard let date else { return "--:--" }

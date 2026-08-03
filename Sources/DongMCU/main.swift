@@ -40,10 +40,15 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
         ? ClaudeIconStyle(rawValue: arguments[flagIndex + 4]) ?? .default
         : .default
 
+    let state = arguments.count > flagIndex + 5
+        ? HUDPreviewRenderer.State(rawValue: arguments[flagIndex + 5]) ?? .ok
+        : .ok
+
     let succeeded = HUDPreviewRenderer.write(
         to: path,
         utilization: (session, weekly),
-        iconStyle: iconStyle
+        iconStyle: iconStyle,
+        state: state
     )
     print(succeeded ? "rendered: \(path)" : "render failed")
     exit(succeeded ? 0 : 1)
