@@ -44,6 +44,22 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(expandSide.rawValue, forKey: Keys.expandSide) }
     }
 
+    /// HUD 배경 불투명도. 너무 투명하면 글자가 안 읽혀서 아래를 막아둔다.
+    @Published var backdropOpacity: Double {
+        didSet {
+            let clamped = min(Self.maxOpacity, max(Self.minOpacity, backdropOpacity))
+            if clamped != backdropOpacity {
+                backdropOpacity = clamped
+                return
+            }
+            defaults.set(backdropOpacity, forKey: Keys.backdropOpacity)
+        }
+    }
+
+    static let minOpacity = 0.35
+    static let maxOpacity = 1.0
+    static let defaultOpacity = 0.92
+
     private let defaults: UserDefaults
 
     private enum Keys {
@@ -52,6 +68,7 @@ final class HUDSettings: ObservableObject {
         static let collapsed = "hud.collapsed"
         static let hidden = "hud.hidden"
         static let expandSide = "hud.expandSide"
+        static let backdropOpacity = "hud.backdropOpacity"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -61,6 +78,8 @@ final class HUDSettings: ObservableObject {
         isCollapsed = defaults.bool(forKey: Keys.collapsed)
         isHUDVisible = !defaults.bool(forKey: Keys.hidden)
         expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
+        let stored = defaults.object(forKey: Keys.backdropOpacity) as? Double
+        backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
     }
 }
 

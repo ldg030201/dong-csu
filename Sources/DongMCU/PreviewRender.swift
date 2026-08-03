@@ -21,7 +21,8 @@ enum HUDPreviewRenderer {
         state: State,
         collapsed: Bool = false,
         isDark: Bool = true,
-        side: HUDExpandSide = .right
+        side: HUDExpandSide = .right,
+        opacity: Double = 0.92
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -55,7 +56,7 @@ enum HUDPreviewRenderer {
             .background {
                 ZStack {
                     Color(white: isDark ? 0.42 : 0.55)
-                    Color(nsColor: palette.backdrop)
+                    Color(nsColor: palette.backdrop(opacity: opacity))
                 }
             }
             .clipShape(

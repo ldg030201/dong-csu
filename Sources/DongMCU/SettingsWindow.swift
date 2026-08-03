@@ -3,6 +3,9 @@ import SwiftUI
 
 /// 설정 창의 내용.
 struct SettingsView: View {
+    /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
+    static let size = CGSize(width: 380, height: 660)
+
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
     let actions: SettingsActions
@@ -10,6 +13,11 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
+            Text("설정")
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+                .padding(.bottom, 2)
             statusSection
             Divider()
 
@@ -24,7 +32,7 @@ struct SettingsView: View {
             Divider()
             footer
         }
-        .frame(width: 380, height: 460)
+        .frame(width: Self.size.width, height: Self.size.height)
     }
 
     // MARK: - 현재 상태
@@ -81,16 +89,29 @@ struct SettingsView: View {
                 }
             }
 
-            Picker("가운데 아이콘", selection: $settings.iconStyle) {
-                ForEach(ClaudeIconStyle.allCases, id: \.self) { value in
-                    Text(value.title).tag(value)
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("가운데 아이콘")
+                iconChooser
             }
 
             Picker("펼침 방향", selection: $settings.expandSide) {
                 ForEach(HUDExpandSide.allCases, id: \.self) { value in
                     Text(value.title).tag(value)
                 }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text("배경 불투명도")
+                    Spacer()
+                    Text("\(Int((settings.backdropOpacity * 100).rounded()))%")
+                        .font(.system(size: 11).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Slider(
+                    value: $settings.backdropOpacity,
+                    in: HUDSettings.minOpacity...HUDSettings.maxOpacity
+                )
             }
 
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
@@ -103,6 +124,37 @@ struct SettingsView: View {
                 Text("HUD는 드래그로 옮길 수 있고, 더블클릭하면 접힌다.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// 세 가지 아이콘을 실제로 그려서 보여주고 고르게 한다.
+    private var iconChooser: some View {
+        HStack(spacing: 10) {
+            ForEach(ClaudeIconStyle.allCases, id: \.self) { style in
+                Button {
+                    settings.iconStyle = style
+                } label: {
+                    VStack(spacing: 5) {
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color(white: 0.16))
+                            ClaudeIconView(style: style, size: 28)
+                        }
+                        .frame(height: 50)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .strokeBorder(
+                                    settings.iconStyle == style ? Color.accentColor : Color.clear,
+                                    lineWidth: 2
+                                )
+                        }
+                        Text(style.shortTitle)
+                            .font(.system(size: 10))
+                            .foregroundStyle(settings.iconStyle == style ? .primary : .secondary)
+                    }
+                }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -184,13 +236,18 @@ final class SettingsWindowController {
             )
 
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 380, height: 460),
+                contentRect: NSRect(origin: .zero, size: SettingsView.size),
                 styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
             window.title = "dong-mcu 설정"
-            window.contentView = NSHostingView(rootView: view)
+            // 제목은 본문 안에 그린다. 타이틀바에 짧게 잘려 보이는 걸 없애기 위해서다.
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.contentViewController = NSHostingController(rootView: view)
+            // NSHostingController는 레이아웃 전에 크기를 모른다. 명시하지 않으면 창이 0으로 찌그러진다.
+            window.setContentSize(SettingsView.size)
             window.isReleasedWhenClosed = false
             self.window = window
         }

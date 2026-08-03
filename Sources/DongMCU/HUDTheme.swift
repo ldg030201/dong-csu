@@ -73,10 +73,8 @@ struct HUDPalette {
 
     // MARK: - 창 레이어에 쓰는 AppKit 색
 
-    var backdrop: NSColor {
-        isDark
-            ? NSColor(calibratedWhite: 0.09, alpha: 0.92)
-            : NSColor(calibratedWhite: 0.97, alpha: 0.92)
+    func backdrop(opacity: Double = 0.92) -> NSColor {
+        NSColor(calibratedWhite: isDark ? 0.09 : 0.97, alpha: opacity)
     }
 
     var border: NSColor {

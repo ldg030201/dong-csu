@@ -216,6 +216,12 @@ final class HUDController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyExpandSide() }
             .store(in: &cancellables)
+
+        settings.$backdropOpacity
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyAppearance() }
+            .store(in: &cancellables)
     }
 
     /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
@@ -484,7 +490,7 @@ final class HUDController {
     private func applyAppearance() {
         panel.appearance = appearance.nsAppearance
         let palette = HUDPalette(isDark: appearance.isDark)
-        backdrop.layer?.backgroundColor = palette.backdrop.cgColor
+        backdrop.layer?.backgroundColor = palette.backdrop(opacity: settings.backdropOpacity).cgColor
         container.layer?.borderColor = palette.border.cgColor
         rebuildRootView()
     }

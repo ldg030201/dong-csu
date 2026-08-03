@@ -18,6 +18,15 @@ enum ClaudeIconStyle: String, CaseIterable {
         case .mark: return "버스트 마크"
         }
     }
+
+    /// 미리보기 타일 밑에 붙일 짧은 이름.
+    var shortTitle: String {
+        switch self {
+        case .clawd: return "Clawd"
+        case .appIcon: return "앱 아이콘"
+        case .mark: return "버스트"
+        }
+    }
 }
 
 enum ClaudeIcon {
