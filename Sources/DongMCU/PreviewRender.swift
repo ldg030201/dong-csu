@@ -18,7 +18,8 @@ enum HUDPreviewRenderer {
         to path: String,
         utilization: (session: Double, weekly: Double),
         iconStyle: ClaudeIconStyle,
-        state: State
+        state: State,
+        collapsed: Bool = false
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -41,14 +42,19 @@ enum HUDPreviewRenderer {
             error: state == .ok ? nil : "토큰 만료 — Claude Code 재로그인 필요",
             needsReauth: state == .reauth
         )
-        let content = UsageHUDView(store: store, iconStyle: iconStyle)
+        let content = UsageHUDView(store: store, iconStyle: iconStyle, isCollapsed: collapsed)
             .background {
                 ZStack {
                     Color(white: 0.42)
                     Color(white: 0.09).opacity(0.92)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: UsageHUDView.cornerRadius, style: .continuous))
+            .clipShape(
+                RoundedRectangle(
+                    cornerRadius: UsageHUDView.cornerRadius(collapsed: collapsed),
+                    style: .continuous
+                )
+            )
 
         let renderer = ImageRenderer(content: content)
         renderer.scale = 3

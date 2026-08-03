@@ -9,17 +9,30 @@ struct UsageHUDView: View {
     var iconStyle: ClaudeIconStyle = .default
     /// HUD가 숨겨져 있으면 1초 타이머가 돌 이유가 없다.
     var showsCountdown: Bool = true
+    /// 접힌 상태에서는 링만 남기고 전부 감춘다.
+    var isCollapsed: Bool = false
 
-    static let size = CGSize(width: 240, height: 88)
-    static let cornerRadius: CGFloat = 20
+    static let expandedSize = CGSize(width: 240, height: 88)
+    static let collapsedSize = CGSize(width: 86, height: 86)
+
+    static func size(collapsed: Bool) -> CGSize {
+        collapsed ? collapsedSize : expandedSize
+    }
+
+    /// 접으면 원형으로 만든다.
+    static func cornerRadius(collapsed: Bool) -> CGFloat {
+        collapsed ? collapsedSize.height / 2 : 20
+    }
 
     /// 새로고침 버튼 자리. 이 영역만 드래그 오버레이가 클릭을 통과시킨다.
     static let refreshInset: CGFloat = 4
     static let refreshHitSize: CGFloat = 20
 
-    /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역.
-    static var refreshHitRectInPanel: CGRect {
-        CGRect(
+    /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역. 접힌 상태에는 버튼이 없다.
+    static func refreshHitRectInPanel(collapsed: Bool) -> CGRect {
+        guard !collapsed else { return .zero }
+        let size = expandedSize
+        return CGRect(
             x: size.width - refreshInset - refreshHitSize,
             y: size.height - refreshInset - refreshHitSize,
             width: refreshHitSize,
@@ -35,6 +48,21 @@ struct UsageHUDView: View {
     private let staleAmber = Color(red: 0.95, green: 0.72, blue: 0.27)
 
     var body: some View {
+        if isCollapsed {
+            collapsedBody
+        } else {
+            expandedBody
+        }
+    }
+
+    /// 접힌 모습: 링만.
+    private var collapsedBody: some View {
+        rings
+            .opacity(store.isStale ? 0.45 : 1)
+            .frame(width: Self.collapsedSize.width, height: Self.collapsedSize.height)
+    }
+
+    private var expandedBody: some View {
         HStack(spacing: 13) {
             // 마지막 성공값을 보여주는 중이면 링·숫자를 흐리게 해서 지금 값이 아님을 드러낸다.
             rings
@@ -53,7 +81,7 @@ struct UsageHUDView: View {
         }
         .padding(.leading, 13)
         .padding(.trailing, 10)
-        .frame(width: Self.size.width, height: Self.size.height)
+        .frame(width: Self.expandedSize.width, height: Self.expandedSize.height)
         .overlay(alignment: .topTrailing) { refreshButton }
         .overlay(alignment: .bottomTrailing) { resetCountdown }
     }

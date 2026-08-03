@@ -52,11 +52,14 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
         ? HUDPreviewRenderer.State(rawValue: arguments[flagIndex + 5]) ?? .ok
         : .ok
 
+    let collapsed = arguments.count > flagIndex + 6 && arguments[flagIndex + 6] == "collapsed"
+
     let succeeded = HUDPreviewRenderer.write(
         to: path,
         utilization: (session, weekly),
         iconStyle: iconStyle,
-        state: state
+        state: state,
+        collapsed: collapsed
     )
     print(succeeded ? "rendered: \(path)" : "render failed")
     exit(succeeded ? 0 : 1)

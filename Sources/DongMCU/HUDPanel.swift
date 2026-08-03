@@ -36,6 +36,7 @@ final class HUDInteractionView: NSView {
     var onDrag: (@MainActor (CGSize) -> Void)?
     var onDragEnded: (@MainActor () -> Void)?
     var menuBuilder: (@MainActor () -> NSMenu)?
+    var onDoubleClick: (@MainActor () -> Void)?
 
     /// 이 영역의 마우스 이벤트는 아래(SwiftUI)로 흘려보낸다. 새로고침 버튼용.
     var passThroughRect: CGRect = .zero
@@ -51,6 +52,12 @@ final class HUDInteractionView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        // 더블클릭으로 접었다 폈다 한다. 이때는 드래그를 시작하지 않는다.
+        if event.clickCount == 2 {
+            dragOrigin = nil
+            onDoubleClick?()
+            return
+        }
         dragOrigin = NSEvent.mouseLocation
     }
 
@@ -81,18 +88,22 @@ final class HUDController {
     private var cancellables: Set<AnyCancellable> = []
 
     private let hosting: FirstMouseHostingView<UsageHUDView>
+    private let container: NSView
     private var iconStyle: ClaudeIconStyle
+    private var isCollapsed: Bool
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
     private static let iconStyleKey = "hud.iconStyle"
     private static let hiddenKey = "hud.hidden"
+    private static let collapsedKey = "hud.collapsed"
     private static let margin: CGFloat = 16
 
     init(store: UsageStore) {
         self.store = store
 
-        let size = UsageHUDView.size
+        isCollapsed = UserDefaults.standard.bool(forKey: Self.collapsedKey)
+        let size = UsageHUDView.size(collapsed: isCollapsed)
         panel = HUDPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -110,9 +121,9 @@ final class HUDController {
         // 시스템이 라이트 모드여도 배경을 어둡게 유지한다. 흰 글자 가독성이 여기서 나온다.
         panel.appearance = NSAppearance(named: .darkAqua)
 
-        let container = NSView(frame: NSRect(origin: .zero, size: size))
+        container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
-        container.layer?.cornerRadius = UsageHUDView.cornerRadius
+        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: isCollapsed)
         container.layer?.masksToBounds = true
         container.layer?.borderWidth = 1
         container.layer?.borderColor = NSColor.white.withAlphaComponent(0.10).cgColor
@@ -130,7 +141,12 @@ final class HUDController {
             rawValue: UserDefaults.standard.string(forKey: Self.iconStyleKey) ?? ""
         ) ?? .default
         hosting = FirstMouseHostingView(
-            rootView: UsageHUDView(store: store, iconStyle: iconStyle, showsCountdown: false)
+            rootView: UsageHUDView(
+                store: store,
+                iconStyle: iconStyle,
+                showsCountdown: false,
+                isCollapsed: isCollapsed
+            )
         )
         hosting.frame = container.bounds
         hosting.autoresizingMask = [.width, .height]
@@ -138,7 +154,7 @@ final class HUDController {
 
         interactionView.frame = container.bounds
         interactionView.autoresizingMask = [.width, .height]
-        interactionView.passThroughRect = UsageHUDView.refreshHitRectInPanel
+        interactionView.passThroughRect = UsageHUDView.refreshHitRectInPanel(collapsed: isCollapsed)
         container.addSubview(interactionView)
 
         panel.contentView = container
@@ -146,6 +162,7 @@ final class HUDController {
         interactionView.onDrag = { [weak self] delta in self?.move(by: delta) }
         interactionView.onDragEnded = { [weak self] in self?.saveOrigin() }
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
+        interactionView.onDoubleClick = { [weak self] in self?.handleToggleCollapse() }
 
         panel.setFrameOrigin(restoredOrigin())
         NotificationCenter.default.addObserver(
@@ -279,6 +296,15 @@ final class HUDController {
         }
         menu.addItem(login)
 
+        let collapse = NSMenuItem(
+            title: isCollapsed ? "펼치기" : "접기",
+            action: #selector(handleToggleCollapse),
+            keyEquivalent: ""
+        )
+        collapse.target = self
+        collapse.isEnabled = panel.isVisible
+        menu.addItem(collapse)
+
         let toggle = NSMenuItem(
             title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
             action: #selector(handleToggleHUD),
@@ -337,6 +363,29 @@ final class HUDController {
         setHUDVisible(!panel.isVisible)
     }
 
+    @objc private func handleToggleCollapse() {
+        setCollapsed(!isCollapsed)
+    }
+
+    /// 접거나 펼친다. 오른쪽 위 모서리를 붙잡아 두어서 크기가 바뀌어도 자리가 튀지 않는다.
+    private func setCollapsed(_ collapsed: Bool) {
+        isCollapsed = collapsed
+        UserDefaults.standard.set(collapsed, forKey: Self.collapsedKey)
+
+        let newSize = UsageHUDView.size(collapsed: collapsed)
+        let old = panel.frame
+        let origin = NSPoint(x: old.maxX - newSize.width, y: old.maxY - newSize.height)
+        let target = NSRect(origin: origin, size: newSize)
+
+        panel.setFrame(target, display: true)
+        panel.setFrameOrigin(clampedOrigin(panel.frame.origin) ?? defaultOrigin())
+
+        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed)
+        interactionView.passThroughRect = UsageHUDView.refreshHitRectInPanel(collapsed: collapsed)
+        rebuildRootView()
+        saveOrigin()
+    }
+
     private func setHUDVisible(_ visible: Bool) {
         if visible {
             // 숨겨둔 동안 화면 구성이 바뀌었을 수 있으니 위치를 다시 확인한다.
@@ -354,7 +403,8 @@ final class HUDController {
         hosting.rootView = UsageHUDView(
             store: store,
             iconStyle: iconStyle,
-            showsCountdown: panel.isVisible
+            showsCountdown: panel.isVisible && !isCollapsed,
+            isCollapsed: isCollapsed
         )
     }
 
