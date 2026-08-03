@@ -119,6 +119,19 @@ dong-mcu --render out.png 100 71 clawd reauth   # 실패 상태까지 재현
 에디터는 VS Code + [Swift 확장](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode)
 기준으로 `.vscode/`에 태스크를 넣어뒀다.
 
+### 릴리스
+
+버전은 Git 태그로 관리한다. Homebrew formula가 특정 태그의 tarball과 그 sha256을 가리키므로,
+`main`에 미출시 커밋이 쌓여도 설치하는 사람은 마지막 태그를 받는다.
+
+```bash
+./release.sh 0.2.0
+```
+
+버전을 `Resources/Info.plist`와 `Sources/DongMCU/main.swift` 양쪽에 올리고, 빌드로 검증한 뒤
+커밋·태그·푸시하고, 올라간 태그의 tarball 해시로 formula까지 갱신한다. `gh`가 있으면
+GitHub 릴리스도 만든다. main이 아니거나 작업 트리가 지저분하거나 태그가 겹치면 중단한다.
+
 ## 라이선스
 
 MIT. [LICENSE](LICENSE) 참고.
