@@ -6,7 +6,6 @@ class DongMcu < Formula
   license "MIT"
   head "https://github.com/ldg030201/dong-mcu.git", branch: "main"
 
-  depends_on :macos
   depends_on macos: :sonoma
 
   def install
