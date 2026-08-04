@@ -50,6 +50,21 @@ enum ClaudeIconStyle: String, CaseIterable {
         }
     }
 
+    /// 움직이는 그림인지.
+    ///
+    /// **Claude 쪽 그림에는 애니메이션을 넣지 않는다.** 저작권이 Anthropic에 있어서
+    /// 우리가 새 자세를 만들어 붙일 그림이 아니다. 움직이는 건 이 앱이 직접 만든
+    /// 캐릭터뿐이다.
+    ///
+    /// `group == .character`로 판단하지 않는다. 캐릭터를 새로 그려도 자세와 기분을
+    /// 만들기 전까지는 정지 그림이라, 그때 여기에 한 줄을 더하는 게 맞다.
+    var isAnimated: Bool {
+        switch self {
+        case .owl: return true
+        case .clawd, .appIcon, .mark: return false
+        }
+    }
+
     /// 미리보기 타일 밑에 붙일 짧은 이름.
     var shortTitle: String {
         switch self {

@@ -395,12 +395,12 @@ final class HUDController {
         }
     }
 
-    /// 부엉이가 눈에 보일 때만 자세를 넘긴다.
-    /// 접혀 있어도 링은 남아 있어서 부엉이는 계속 보인다 — 접힘은 조건이 아니다.
+    /// 움직이는 캐릭터가 눈에 보일 때만 자세를 넘긴다.
+    /// 접혀 있어도 링은 남아 있어서 캐릭터는 계속 보인다 — 접힘은 조건이 아니다.
     private func syncOwlAnimator(visible: Bool? = nil) {
         let isVisible = visible ?? panel.isVisible
 
-        if isVisible, !areScreensAsleep, settings.iconStyle == .owl {
+        if isVisible, !areScreensAsleep, settings.iconStyle.isAnimated {
             owlAnimator.start()
         } else {
             owlAnimator.stop()
