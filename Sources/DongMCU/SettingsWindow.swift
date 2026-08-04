@@ -4,7 +4,7 @@ import SwiftUI
 /// 설정 창의 내용.
 struct SettingsView: View {
     /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
-    static let size = CGSize(width: 380, height: 718)
+    static let size = CGSize(width: 380, height: 830)
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
@@ -143,35 +143,52 @@ struct SettingsView: View {
         }
     }
 
-    /// 세 가지 아이콘을 실제로 그려서 보여주고 고르게 한다.
+    /// 아이콘을 실제로 그려서 보여주고 고르게 한다.
+    /// 출처가 다른 그림이 섞이지 않도록 묶음별로 나눠 놓는다.
     private var iconChooser: some View {
-        HStack(spacing: 10) {
-            ForEach(ClaudeIconStyle.allCases, id: \.self) { style in
-                Button {
-                    settings.iconStyle = style
-                } label: {
-                    VStack(spacing: 5) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color(white: 0.16))
-                            ClaudeIconView(style: style, size: 28)
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(IconStyleGroup.allCases, id: \.self) { group in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(group.title)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 10) {
+                        ForEach(group.styles, id: \.self) { style in
+                            iconTile(style)
                         }
-                        .frame(height: 50)
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .strokeBorder(
-                                    settings.iconStyle == style ? Color.accentColor : Color.clear,
-                                    lineWidth: 2
-                                )
-                        }
-                        Text(style.shortTitle)
-                            .font(.system(size: 10))
-                            .foregroundStyle(settings.iconStyle == style ? .primary : .secondary)
+                        // 묶음마다 개수가 달라도 타일 크기가 흔들리지 않게 남는 폭을 밀어낸다.
+                        Spacer(minLength: 0)
                     }
                 }
-                .buttonStyle(.plain)
             }
         }
+    }
+
+    private func iconTile(_ style: ClaudeIconStyle) -> some View {
+        Button {
+            settings.iconStyle = style
+        } label: {
+            VStack(spacing: 5) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color(white: 0.16))
+                    ClaudeIconView(style: style, size: 28)
+                }
+                .frame(width: 76, height: 50)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .strokeBorder(
+                            settings.iconStyle == style ? Color.accentColor : Color.clear,
+                            lineWidth: 2
+                        )
+                }
+                Text(style.shortTitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(settings.iconStyle == style ? .primary : .secondary)
+            }
+            .frame(width: 76)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - 계정

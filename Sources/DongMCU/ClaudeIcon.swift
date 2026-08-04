@@ -1,6 +1,27 @@
 import AppKit
 import SwiftUI
 
+/// 가운데 아이콘을 묶는 단위.
+///
+/// dong-mcu가 직접 만든 캐릭터와 Claude 쪽 그림은 출처가 다르다. 섞어 두면
+/// 어느 게 이 앱 것인지 알 수 없어서 나눠 보여준다. 캐릭터를 더 만들면
+/// `.character` 쪽에 붙으므로 목록을 손볼 자리는 없다.
+enum IconStyleGroup: String, CaseIterable {
+    case character
+    case claude
+
+    var title: String {
+        switch self {
+        case .character: return "캐릭터"
+        case .claude: return "Claude"
+        }
+    }
+
+    var styles: [ClaudeIconStyle] {
+        ClaudeIconStyle.allCases.filter { $0.group == self }
+    }
+}
+
 enum ClaudeIconStyle: String, CaseIterable {
     /// dong-mcu 마스코트 부엉이.
     case owl
@@ -13,11 +34,18 @@ enum ClaudeIconStyle: String, CaseIterable {
 
     static let `default` = ClaudeIconStyle.owl
 
+    var group: IconStyleGroup {
+        switch self {
+        case .owl: return .character
+        case .clawd, .appIcon, .mark: return .claude
+        }
+    }
+
     var title: String {
         switch self {
         case .owl: return "부엉이 (dong-mcu 마스코트)"
         case .clawd: return "Clawd (Claude Code 마스코트)"
-        case .appIcon: return "Claude 앱 아이콘"
+        case .appIcon: return "Claude 아이콘"
         case .mark: return "버스트 마크"
         }
     }
@@ -27,7 +55,7 @@ enum ClaudeIconStyle: String, CaseIterable {
         switch self {
         case .owl: return "부엉이"
         case .clawd: return "Clawd"
-        case .appIcon: return "앱 아이콘"
+        case .appIcon: return "Claude 아이콘"
         case .mark: return "버스트"
         }
     }

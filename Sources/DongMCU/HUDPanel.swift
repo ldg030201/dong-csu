@@ -457,16 +457,19 @@ final class HUDController {
         menu.addItem(reset)
 
         let iconMenu = NSMenu()
-        for style in ClaudeIconStyle.allCases {
-            let item = NSMenuItem(
-                title: style.title,
-                action: #selector(handleIconStyle(_:)),
-                keyEquivalent: ""
-            )
-            item.target = self
-            item.representedObject = style.rawValue
-            item.state = iconStyle == style ? .on : .off
-            iconMenu.addItem(item)
+        for group in IconStyleGroup.allCases {
+            iconMenu.addItem(NSMenuItem.sectionHeader(title: group.title))
+            for style in group.styles {
+                let item = NSMenuItem(
+                    title: style.title,
+                    action: #selector(handleIconStyle(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = style.rawValue
+                item.state = iconStyle == style ? .on : .off
+                iconMenu.addItem(item)
+            }
         }
         let iconItem = NSMenuItem(title: "가운데 아이콘", action: nil, keyEquivalent: "")
         iconItem.submenu = iconMenu
