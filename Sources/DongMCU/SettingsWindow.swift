@@ -11,6 +11,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case display
     case icon
     case account
+    case changelog
 
     var id: String { rawValue }
 
@@ -20,6 +21,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .display: return "표시"
         case .icon: return "아이콘"
         case .account: return "계정"
+        case .changelog: return "변경 내역"
         }
     }
 
@@ -29,6 +31,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .display: return "slider.horizontal.3"
         case .icon: return "face.smiling"
         case .account: return "person.crop.circle"
+        case .changelog: return "clock.arrow.circlepath"
         }
     }
 }
@@ -45,21 +48,28 @@ struct SettingsView: View {
     @ObservedObject var store: UsageStore
     let actions: SettingsActions
     let version: String
+    /// 미리보기 렌더는 ScrollView 안을 그리지 못한다. 그럴 때는 스크롤을 벗겨서
+    /// 내용이 잘리더라도 보이게 한다.
+    var isPreviewRender = false
 
-    @State private var tab: SettingsTab
+    /// 어느 탭이 열려 있는지. 메뉴에서 "변경 내역…"을 누르면 창 밖에서 바꾸므로
+    /// 뷰 안의 @State가 아니라 설정 객체가 들고 있다.
+    private var tab: SettingsTab { settings.settingsTab }
 
     init(
         settings: HUDSettings,
         store: UsageStore,
         actions: SettingsActions,
         version: String,
-        initialTab: SettingsTab = .status
+        initialTab: SettingsTab? = nil,
+        isPreviewRender: Bool = false
     ) {
         self.settings = settings
         self.store = store
         self.actions = actions
         self.version = version
-        _tab = State(initialValue: initialTab)
+        self.isPreviewRender = isPreviewRender
+        if let initialTab { settings.settingsTab = initialTab }
     }
 
     var body: some View {
@@ -95,7 +105,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 2) {
             ForEach(SettingsTab.allCases) { item in
                 Button {
-                    tab = item
+                    settings.settingsTab = item
                 } label: {
                     HStack(spacing: 7) {
                         Image(systemName: item.symbol)
@@ -131,6 +141,7 @@ struct SettingsView: View {
         case .display: displaySection
         case .icon: iconSection
         case .account: accountSection
+        case .changelog: changelogSection
         }
     }
 
@@ -327,6 +338,53 @@ struct SettingsView: View {
             .frame(width: 76)
         }
         .buttonStyle(.plain)
+    }
+
+    // MARK: - 변경 내역
+
+    @ViewBuilder
+    private var changelogSection: some View {
+        if isPreviewRender {
+            changelogList
+        } else {
+            ScrollView { changelogList }
+                .frame(maxHeight: .infinity)
+        }
+    }
+
+    private var changelogList: some View {
+        VStack(alignment: .leading, spacing: 14) {
+                ForEach(Changelog.entries, id: \.version) { entry in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(entry.version)
+                                .font(.system(size: 12, weight: .semibold))
+                            Text(entry.date)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                            if entry.version == AppInfo.version {
+                                Text("지금 버전")
+                                    .font(.system(size: 9, weight: .medium))
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1)
+                                    .background {
+                                        Capsule().fill(Color.accentColor.opacity(0.20))
+                                    }
+                            }
+                        }
+                        ForEach(entry.notes, id: \.self) { note in
+                            HStack(alignment: .top, spacing: 5) {
+                                Text("·")
+                                Text(note)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - 계정

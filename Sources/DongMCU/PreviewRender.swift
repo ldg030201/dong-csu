@@ -100,8 +100,9 @@ enum HUDPreviewRenderer {
             // 상태 탭이 조회 카운트다운을 그리므로 예정 시각까지 넣어야 실제와 같아진다.
             store: UsageStore(preview: snapshot, nextPoll: Date().addingTimeInterval(7 * 60 + 12)),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
-            version: "dong-mcu \(dongMCUVersion)",
-            initialTab: tab
+            version: "\(AppInfo.name) \(dongMCUVersion)",
+            initialTab: tab,
+            isPreviewRender: true
         )
         .content
         .preferredColorScheme(isDark ? .dark : .light)

@@ -506,6 +506,14 @@ final class HUDController {
         scaleItem.submenu = scaleMenu
         menu.addItem(scaleItem)
 
+        let changelog = NSMenuItem(
+            title: "변경 내역…",
+            action: #selector(handleChangelog),
+            keyEquivalent: ""
+        )
+        changelog.target = self
+        menu.addItem(changelog)
+
         let themeMenu = NSMenu()
         for value in HUDAppearance.allCases {
             let item = NSMenuItem(title: value.title, action: #selector(handleAppearance(_:)), keyEquivalent: "")
@@ -656,6 +664,12 @@ final class HUDController {
         guard let raw = sender.representedObject as? String,
               let style = ClaudeIconStyle(rawValue: raw) else { return }
         settings.iconStyle = style
+    }
+
+    /// 설정 창을 변경 내역 탭으로 연다.
+    @objc private func handleChangelog() {
+        settings.settingsTab = .changelog
+        onOpenSettings?()
     }
 
     @objc private func handleScale(_ sender: NSMenuItem) {

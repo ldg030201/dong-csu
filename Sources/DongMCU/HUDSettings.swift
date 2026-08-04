@@ -114,6 +114,10 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(pollInterval.rawValue, forKey: Keys.pollInterval) }
     }
 
+    /// 설정 창에서 열려 있는 탭. 메뉴에서 특정 탭을 바로 열 수 있어야 해서
+    /// 창 밖에 둔다. 다음 실행까지 기억할 값은 아니라 저장하지 않는다.
+    @Published var settingsTab: SettingsTab = .status
+
     /// HUD 왼쪽 아래에 이 앱의 CPU·메모리를 표시할지.
     @Published var showsProcessStats: Bool {
         didSet { defaults.set(showsProcessStats, forKey: Keys.showsProcessStats) }
