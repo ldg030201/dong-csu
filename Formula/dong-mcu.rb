@@ -1,8 +1,8 @@
 class DongMcu < Formula
   desc "Claude 사용량을 화면 위에 항상 띄워두는 macOS HUD"
   homepage "https://github.com/ldg030201/dong-mcu"
-  url "https://github.com/ldg030201/dong-mcu/archive/refs/tags/v1.3.1.1.tar.gz"
-  sha256 "d10826c1a0cbb538a3a9f97f97c639999b9c01ee81e3b86bfe678eb80a0567f7"
+  url "https://github.com/ldg030201/dong-mcu/archive/refs/tags/v1.4.0.tar.gz"
+  sha256 "4cdf3f798a337202d9415887883842d1f96806454ee31dd6281367176881f75c"
   license "MIT"
   head "https://github.com/ldg030201/dong-mcu.git", branch: "main"
 
