@@ -41,7 +41,8 @@ enum Changelog {
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(version: "1.4.0", date: nil, notes: [
-            "부엉이 애니메이션 추가 (눈 깜빡임 · 지침 · 탈진 · 연결 끊김 · 드래그)",
+            "부엉이 애니메이션 추가 (눈 깜빡임 · 지침 · 탈진 · 연결 끊김)",
+            "HUD를 끌 때 마우스 방향·속도를 따르는 부엉이 동작 추가",
         ]),
         ChangelogEntry(version: "1.3.1.1", date: "2026-08-04", notes: [
             "지원 범위를 macOS 14(Sonoma) 이상으로 조정",
