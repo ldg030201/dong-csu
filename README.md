@@ -76,6 +76,32 @@ rm -rf /Applications/DongMCU.app && brew uninstall dong-mcu && brew untap ldg030
 defaults delete com.ldg.dong-mcu
 ```
 
+#### 완전히 지우고 다시 설치
+
+옛 버전에서 올라오다 꼬였을 때 쓴다. `sha256 mismatch`가 나거나, 앱이 뜨지 않거나,
+Launchpad에 보이지 않거나, `brew install`이 자꾸 옛 버전을 잡는 경우다.
+설치 흔적을 남김없이 지운다.
+
+```bash
+pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*
+```
+
+명령을 `;`로 이었다. 이미 없는 것을 지우다 실패해도 나머지가 계속 돌아야 하기 때문이다.
+
+| 지우는 것 | 왜 |
+| --- | --- |
+| 실행 중인 앱 | 파일을 지우는 동안 떠 있으면 안 된다 |
+| `/Applications/DongMCU.app` | 복사본 |
+| `/Applications/dong-mcu.app` | 1.0.0 이전의 옛 이름. 심볼릭 링크로 걸었다면 깨진 채 남아 있다 |
+| brew 패키지 · tap · trust | 설치 기록. tap이 남아 있으면 옛 formula를 계속 쓴다 |
+| Homebrew 캐시 | 받아둔 tarball. `sha256 mismatch`의 원인이 대부분 이것이다 |
+
+설정까지 지우려면 위의 `defaults delete`도 함께 실행한다.
+그 다음 맨 위의 설치 명령을 그대로 다시 실행하면 된다.
+
+> 이미 설치돼 있으면 `already installed and up-to-date`가 뜨고 설치 명령이 멈춘다.
+> 새 버전으로 올리려는 것이라면 설치가 아니라 **업데이트** 명령을 써야 한다.
+
 ### 소스에서 빌드
 
 ```bash
