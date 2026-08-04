@@ -490,13 +490,32 @@ struct OwlMarkView: View {
                 )
             }
 
+            // 레이어를 먼저 한 장으로 눌러서 칸마다 최종 글자 하나만 남긴다.
+            // 뒤 레이어가 앞을 덮으므로 결과는 그대로이고, 가려질 칸을 그리지 않는다.
+            var grid = [[Character]](
+                repeating: [Character](repeating: ".", count: OwlMark.columns),
+                count: OwlMark.lines
+            )
             for layer in pose.layers {
                 for (y, row) in layer.enumerated() {
-                    for (x, character) in row.enumerated() {
-                        guard let fill = palette.color(for: character) else { continue }
-                        context.fill(Path(rect(x: x, y: y)), with: .color(fill))
+                    for (x, character) in row.enumerated() where character != "." {
+                        grid[y][x] = character
                     }
                 }
+            }
+
+            // 같은 색 칸을 하나의 Path로 모아 색마다 한 번씩만 칠한다.
+            // 칸마다 Path를 만들어 fill을 부르면 한 프레임에 200번이 되는데,
+            // 그 호출 비용이 애니메이션 CPU의 대부분이었다.
+            var paths: [Character: Path] = [:]
+            for (y, row) in grid.enumerated() {
+                for (x, character) in row.enumerated() where character != "." {
+                    paths[character, default: Path()].addRect(rect(x: x, y: y))
+                }
+            }
+            for (character, path) in paths {
+                guard let fill = palette.color(for: character) else { continue }
+                context.fill(path, with: .color(fill))
             }
         }
         .aspectRatio(OwlMark.aspectRatio, contentMode: .fit)
