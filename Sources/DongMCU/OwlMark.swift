@@ -80,6 +80,24 @@ enum OwlMark {
         "...............",
     ]
 
+    /// 반쯤 든 날개. 접힘과 펼침 사이다.
+    /// 늘어뜨림 → 접힘 → 듦 → 펼침 순으로 조금씩 올라가서, 얼마나 들렸는지가 단계로 보인다.
+    static let wingsLift = [
+        "...............",
+        ".dd.........dd.",
+        ".dd.........dd.",
+        "..dd.......dd..",
+        "..dd.......dd..",
+        "..dd.......dd..",
+        "..dd.......dd..",
+        "..dd.......dd..",
+        "..dd.......dd..",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+    ]
+
     static let belly = [
         "...............",
         "...............",
@@ -376,7 +394,7 @@ extension OwlMark {
 /// 부엉이의 한 자세. 레이어 조합만 바꿔 애니메이션 프레임을 만든다.
 struct OwlPose: Equatable {
     enum Eyes { case open, half, closed, dizzy }
-    enum Wings { case folded, spread, droop }
+    enum Wings { case folded, spread, droop, lift }
     enum Feet { case stand, stepA, stepB, dangle }
 
     var eyes: Eyes = .open
@@ -415,6 +433,7 @@ struct OwlPose: Equatable {
             case .folded: return OwlMark.wingsFolded
             case .spread: return OwlMark.wingsSpread
             case .droop: return OwlMark.wingsDroop
+            case .lift: return OwlMark.wingsLift
             }
         }()
         let feetLayer: [String] = {
@@ -450,10 +469,16 @@ struct OwlPose: Equatable {
     ///
     /// `face`와 `feet`은 화면에서의 자리다. `faceLean`은 몸에 더해지는 값이라
     /// 여기서 몸 기울기를 빼서 넘긴다.
-    static func carried(lean: Int, face: Int, feet: Int, eyes: Eyes = .open) -> OwlPose {
+    static func carried(
+        lean: Int,
+        face: Int,
+        feet: Int,
+        eyes: Eyes = .open,
+        wings: Wings = .droop
+    ) -> OwlPose {
         OwlPose(
             eyes: eyes,
-            wings: .droop,
+            wings: wings,
             feet: .dangle,
             lean: lean,
             faceLean: face - lean,

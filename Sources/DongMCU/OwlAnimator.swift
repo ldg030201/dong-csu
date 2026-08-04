@@ -41,7 +41,7 @@ enum OwlMood: String, CaseIterable {
             // 눈을 뜬 채 한참 있다가 두어 프레임만 깜빡인다.
             // 지터가 없으면 정확히 같은 박자로 깜빡여서 시계처럼 보인다.
             return [
-                OwlFrame(OwlPose(), duration: 3.0, jitter: 3.5),
+                OwlFrame(OwlPose(), duration: 2.0, jitter: 1.6),
                 OwlFrame(OwlPose(eyes: .half), duration: 0.05),
                 OwlFrame(OwlPose(eyes: .closed), duration: 0.08),
                 OwlFrame(OwlPose(eyes: .half), duration: 0.05),
@@ -78,6 +78,7 @@ enum OwlMood: String, CaseIterable {
             //
             // 날개는 늘어뜨리고 다리는 모아 내린다. 퍼덕이며 다리를 벌리면 도망치려는
             // 몸부림이 되는데, 힘을 뺀 채 들려 있는 쪽이 부엉이답고 덜 사납다.
+            // 뒤쪽 두 프레임은 위아래로 움직일 때 날개가 올라가는 모습이다.
             return [
                 OwlFrame(.carried(lean: -1, face: 0, feet: 0), duration: 0.18),
                 OwlFrame(.carried(lean: -1, face: -1, feet: 0), duration: 0.18),
@@ -85,6 +86,8 @@ enum OwlMood: String, CaseIterable {
                 OwlFrame(.carried(lean: 1, face: 0, feet: -1), duration: 0.18),
                 OwlFrame(.carried(lean: 1, face: 1, feet: 0), duration: 0.18),
                 OwlFrame(.carried(lean: 0, face: 1, feet: 1), duration: 0.18),
+                OwlFrame(.carried(lean: 0, face: 0, feet: 0, wings: .lift), duration: 0.30),
+                OwlFrame(.carried(lean: 0, face: 0, feet: 0, wings: .spread), duration: 0.30),
             ]
 
         case .dizzy:
@@ -156,7 +159,7 @@ final class OwlAnimator: ObservableObject {
     // 끌림만은 시간표가 아니라 마우스가 자세를 정한다. 어느 쪽으로 얼마나 빨리
     // 움직이는지에 따라 몸이 반대로 처지고, 얼굴과 다리가 차례로 뒤따라온다.
 
-    private var dragVelocity: CGFloat = 0
+    private var dragVelocity: CGVector = .zero
     private var dragVelocityAt: Date = .distantPast
     /// 한 틱 전과 두 틱 전의 몸 기울기. 얼굴과 다리가 각각 여기에 남는다.
     private var previousLean = 0
@@ -169,6 +172,9 @@ final class OwlAnimator: ObservableObject {
     private static let dragIdle: TimeInterval = 0.13
     /// 이 속도(pt/s)를 넘어야 몸이 처진다. 느리게 움직이면 그냥 매달려 있다.
     private static let dragLeanSpeed: CGFloat = 140
+    /// 위아래로 이만큼 빠르면 날개가 한 단계 움직인다(pt/s).
+    private static let wingLiftSpeed: CGFloat = 200
+    private static let wingSpreadSpeed: CGFloat = 620
     /// 몇 틱마다 깜빡일지. 눈을 붙박아 두기만 하면 노려보는 것처럼 보인다.
     private static let blinkInterval = 22
 
@@ -179,6 +185,7 @@ final class OwlAnimator: ObservableObject {
 
     private var dizziness = 0.0
     private var lastVelocitySign = 0
+    private var lastVerticalSign = 0
     private var dizzyUntil = Date.distantPast
 
     /// 방향이 뒤집힐 때 한 번에 오르는 값. 셋을 채우면 문턱을 넘는다.
@@ -197,29 +204,42 @@ final class OwlAnimator: ObservableObject {
     private var isDizzy: Bool { dizzyUntil > Date() }
 
     /// 이번 틱의 흔들림을 점수에 반영한다.
-    private func accumulateDizziness(velocity: CGFloat) {
+    /// 방향 뒤집힘은 가로만 보고, 빠르기는 위아래를 합친 값으로 본다 —
+    /// 위아래로만 마구 흔들어도 어지러워져야 한다.
+    private func accumulateDizziness(velocity: CGVector) {
         dizziness = max(0, dizziness - Self.dizzinessDecay)
 
-        let sign = abs(velocity) > Self.reversalSpeed ? (velocity > 0 ? 1 : -1) : 0
+        let speed = (velocity.dx * velocity.dx + velocity.dy * velocity.dy).squareRoot()
+        let sign = abs(velocity.dx) > Self.reversalSpeed ? (velocity.dx > 0 ? 1 : -1) : 0
         if sign != 0 {
             if lastVelocitySign != 0 && sign != lastVelocitySign {
                 dizziness += Self.reversalGain
             }
             lastVelocitySign = sign
         }
-        if abs(velocity) > Self.spinSpeed { dizziness += Self.spinGain }
+        let verticalSign = abs(velocity.dy) > Self.reversalSpeed ? (velocity.dy > 0 ? 1 : -1) : 0
+        if verticalSign != 0 {
+            if lastVerticalSign != 0 && verticalSign != lastVerticalSign {
+                dizziness += Self.reversalGain
+            }
+            lastVerticalSign = verticalSign
+        }
+        if speed > Self.spinSpeed { dizziness += Self.spinGain }
 
         guard dizziness >= Self.dizzinessThreshold else { return }
         dizziness = 0
         lastVelocitySign = 0
+        lastVerticalSign = 0
         dizzyUntil = Date().addingTimeInterval(Self.dizzyDuration)
     }
 
     var palette: OwlPalette { mood.palette }
 
-    /// 끌려가는 동안 마우스의 가로 속도(pt/s). 부호는 **마우스가 가는 쪽**이고,
-    /// 부엉이는 그 반대로 처진다 — 들고 오른쪽으로 가면 몸이 왼쪽으로 뒤처진다.
-    func setDragVelocity(_ velocity: CGFloat) {
+    /// 끌려가는 동안 마우스의 속도(pt/s). 부호는 **마우스가 가는 쪽**이다.
+    ///
+    /// 가로는 몸이 처지는 방향을 정한다 — 오른쪽으로 가면 몸이 왼쪽으로 뒤처진다.
+    /// 세로는 날개 높이를 정한다 — 들어 올리면 날개를 들고, 세게 내리면 활짝 편다.
+    func setDragVelocity(_ velocity: CGVector) {
         dragVelocity = velocity
         dragVelocityAt = Date()
     }
@@ -271,6 +291,7 @@ final class OwlAnimator: ObservableObject {
         // 갑자기 어지러워지면 무엇 때문인지 알 수 없다.
         dizziness = 0
         lastVelocitySign = 0
+        lastVerticalSign = 0
 
         if isRunning {
             advance()
@@ -308,11 +329,17 @@ final class OwlAnimator: ObservableObject {
     /// 이 시차가 매달린 것을 들고 움직일 때의 뒤따라옴이 된다.
     private func advanceDrag() {
         let moving = Date().timeIntervalSince(dragVelocityAt) < Self.dragIdle
-        let velocity = moving ? dragVelocity : 0
+        let velocity = moving ? dragVelocity : .zero
         accumulateDizziness(velocity: velocity)
-        let lean = Self.lean(for: velocity)
 
-        pose = .carried(lean: lean, face: previousLean, feet: olderLean, eyes: draggedEyes)
+        let lean = Self.lean(for: velocity.dx)
+        pose = .carried(
+            lean: lean,
+            face: previousLean,
+            feet: olderLean,
+            eyes: draggedEyes,
+            wings: Self.wings(for: velocity.dy)
+        )
         olderLean = previousLean
         previousLean = lean
 
@@ -335,6 +362,17 @@ final class OwlAnimator: ObservableObject {
     private static func lean(for velocity: CGFloat) -> Int {
         guard abs(velocity) > dragLeanSpeed else { return 0 }
         return velocity > 0 ? -1 : 1
+    }
+
+    /// 위아래로 얼마나 빨리 움직이는지에서 날개 높이를 정한다.
+    ///
+    /// **들어 올리면 날개를 든다.** 매달린 게 위로 딸려 올라가면 날개가 버티듯 올라오고,
+    /// 세게 내리면 떨어지지 않으려고 활짝 편다. 화면 좌표는 위가 양수다.
+    private static func wings(for velocity: CGFloat) -> OwlPose.Wings {
+        if velocity > wingLiftSpeed { return .lift }
+        if velocity < -wingSpreadSpeed { return .spread }
+        if velocity < -wingLiftSpeed { return .lift }
+        return .droop
     }
 
     private func schedule(after delay: TimeInterval) {
