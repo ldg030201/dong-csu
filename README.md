@@ -157,6 +157,20 @@ VARIANT=test ./build.sh    # dong-mcu-test.app  (dev.sh의 기본값)
 dong-mcu --render out.png 100 71 owl reauth   # 실패 상태까지 재현
 ```
 
+### 마스코트와 앱 아이콘
+
+가운데 기본 아이콘과 앱 아이콘은 dong-mcu 마스코트인 부엉이다.
+[`OwlMark.swift`](Sources/DongMCU/OwlMark.swift)에 몸통·날개·눈·부리·발이 각각 문자열
+그리드로 나뉘어 있고, `OwlPose`로 조합해서 그린다. 눈만 갈아끼우면 깜빡이고 날개
+레이어만 바꾸면 펴진다.
+
+앱 아이콘 그림은 [`AppIconArt.swift`](Sources/DongMCU/AppIconArt.swift)에 있다. 고쳤으면
+아래로 `.icns`를 다시 만든다. 결과물은 커밋해 두고 `build.sh`는 복사만 한다.
+
+```bash
+./make-icon.sh
+```
+
 에디터는 VS Code + [Swift 확장](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode)
 기준으로 `.vscode/`에 태스크를 넣어뒀다.
 

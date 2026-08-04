@@ -47,6 +47,18 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
     exit(ok ? 0 : 1)
 }
 
+// 앱 아이콘을 PNG로 뽑는다: dong-mcu --render-icon out.png [한변]
+// .icns는 이 PNG들을 iconutil로 묶어 만든다. make-icon.sh 참고.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-icon"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let arguments = CommandLine.arguments
+    let path = arguments[flagIndex + 1]
+    let side = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 1024 : 1024
+    let ok = AppIconRenderer.write(to: path, side: side)
+    print(ok ? "rendered: \(path)" : "render failed")
+    exit(ok ? 0 : 1)
+}
+
 // HUD를 PNG로 그려서 확인: dong-mcu --render out.png [세션%] [주간%] [appIcon|mark]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
    flagIndex + 1 < CommandLine.arguments.count {

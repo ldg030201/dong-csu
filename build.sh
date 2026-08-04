@@ -53,6 +53,11 @@ if [[ -f "$ROOT/Resources/claude-icon.png" ]]; then
   cp "$ROOT/Resources/claude-icon.png" "$APP/Contents/Resources/claude-icon.png"
 fi
 
+# 앱 아이콘. 그림을 고쳤으면 ./make-icon.sh 로 다시 만든다.
+if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
+  cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+fi
+
 # ad-hoc 서명. 개발자 계정 없이 로컬 실행에 필요한 최소 서명이다.
 codesign --force --sign - "$APP"
 
