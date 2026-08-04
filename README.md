@@ -25,7 +25,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 설치부터 `/Applications` 등록, 실행까지 한 번에:
 
 ```bash
-brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && ln -sfn "$(brew --prefix)/opt/dong-mcu/DongMCU.app" /Applications/DongMCU.app && open /Applications/DongMCU.app
+brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && ln -sfn "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
 ```
 
 각 단계가 하는 일:
@@ -53,6 +53,8 @@ brew update && brew upgrade dong-mcu
 
 `/Applications` 링크는 `opt` 경로를 가리키므로 버전이 올라가도 그대로 유지된다.
 앱 이름 자체가 바뀐 버전으로 올릴 때만 위의 `ln -sfn` 줄을 다시 실행하면 된다.
+
+`brew --prefix dong-mcu`는 `$(brew --prefix)/opt/dong-mcu`와 같은 경로를 돌려준다.
 
 #### 로그인할 때 자동으로 켜기
 
