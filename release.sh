@@ -19,8 +19,9 @@ ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$ROOT"
 
 VERSION="${1:-}"
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "사용법: ./release.sh <버전>    예: ./release.sh 0.2.0" >&2
+# 네 번째 자리는 긴급 수정용이다. 0.2.0 다음 핫픽스는 0.2.0.1.
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+  echo "사용법: ./release.sh <버전>    예: ./release.sh 0.2.0  또는  ./release.sh 0.2.0.1" >&2
   exit 1
 fi
 TAG="v$VERSION"

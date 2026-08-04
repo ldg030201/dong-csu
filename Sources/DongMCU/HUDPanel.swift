@@ -194,48 +194,50 @@ final class HUDController {
         observeSettings()
     }
 
-    /// @Published는 값이 바뀌기 "직전"에 알림을 보낸다.
-    /// 다음 런루프로 미뤄서 읽어야 새 값이 들어와 있다.
+    /// @Published는 값이 바뀌기 "직전"에 알림을 보낸다. 그래서 한 턴 미뤄서 읽어야
+    /// 새 값이 들어와 있다. 이때 RunLoop.main을 쓰면 안 된다 — 기본 모드에서만 돌기 때문에
+    /// 마우스를 누르고 있는 동안(이벤트 추적 모드)에는 실행이 미뤄져서, 버튼을 눌러도
+    /// 손을 뗄 때까지 반응이 없다. DispatchQueue.main은 모드와 무관하게 처리된다.
     private func observeSettings() {
         settings.$appearance
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.applyAppearance() }
             .store(in: &cancellables)
 
         settings.$iconStyle
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.rebuildRootView() }
             .store(in: &cancellables)
 
         settings.$isCollapsed
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.applyCollapsed() }
             .store(in: &cancellables)
 
         settings.$isHUDVisible
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.applyHUDVisible() }
             .store(in: &cancellables)
 
         settings.$expandSide
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.applyExpandSide() }
             .store(in: &cancellables)
 
         settings.$backdropOpacity
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.applyAppearance() }
             .store(in: &cancellables)
 
         settings.$showsProcessStats
             .dropFirst()
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.applyProcessStats() }
             .store(in: &cancellables)
     }
@@ -601,7 +603,10 @@ final class HUDController {
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
             onToggleCollapse: { [weak self] in self?.handleToggleCollapse() },
             expandSide: settings.expandSide,
-            usageMonitor: usageMonitor.isRunning ? usageMonitor : nil
+            // 표본 타이머가 도는지가 아니라 "표시 설정"을 봐야 한다.
+            // 접기 애니메이션 동안에는 타이머를 잠시 멈추는데, 그때 뷰를 다시 만들면
+            // 줄이 통째로 사라져서 펼친 뒤에도 안 보였다.
+            usageMonitor: settings.showsProcessStats && !isCollapsed ? usageMonitor : nil
         )
     }
 
@@ -614,7 +619,7 @@ final class HUDController {
 
     private func observeStore() {
         store.objectWillChange
-            .receive(on: RunLoop.main)
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.updateTooltip() }
             .store(in: &cancellables)
         updateTooltip()
