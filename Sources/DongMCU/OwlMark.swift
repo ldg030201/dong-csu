@@ -145,6 +145,24 @@ enum OwlMark {
         "...............",
     ]
 
+    /// 흔들린 뒤 풀린 눈. 좌우가 맞물린 대각선이라 초점이 어긋나 보인다.
+    /// 3칸짜리 눈에 소용돌이는 안 들어가고, ✕는 기절한 것처럼 읽혀서 이 모양으로 갔다.
+    static let eyesDizzy = [
+        "...............",
+        "...............",
+        "...............",
+        "....kkw.wkk....",
+        "....wkw.wkw....",
+        "....wkk.kkw....",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+    ]
+
     static let beak = [
         "...............",
         "...............",
@@ -357,7 +375,7 @@ extension OwlMark {
 
 /// 부엉이의 한 자세. 레이어 조합만 바꿔 애니메이션 프레임을 만든다.
 struct OwlPose: Equatable {
-    enum Eyes { case open, half, closed }
+    enum Eyes { case open, half, closed, dizzy }
     enum Wings { case folded, spread, droop }
     enum Feet { case stand, stepA, stepB, dangle }
 
@@ -389,6 +407,7 @@ struct OwlPose: Equatable {
             case .open: return OwlMark.eyesOpen
             case .half: return OwlMark.eyesHalf
             case .closed: return OwlMark.eyesClosed
+            case .dizzy: return OwlMark.eyesDizzy
             }
         }()
         let wingLayer: [String] = {

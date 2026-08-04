@@ -15,6 +15,8 @@ enum OwlMood: String, CaseIterable {
     case offline
     /// 목덜미를 잡혀 끌려가는 중. 다리가 버둥거린다.
     case dragged
+    /// 마구 흔들린 직후. 눈이 풀리고 비틀거린다.
+    case dizzy
 
     var title: String {
         switch self {
@@ -23,6 +25,7 @@ enum OwlMood: String, CaseIterable {
         case .exhausted: return "탈진"
         case .offline: return "끊김"
         case .dragged: return "끌림"
+        case .dizzy: return "어지러움"
         }
     }
 
@@ -82,6 +85,16 @@ enum OwlMood: String, CaseIterable {
                 OwlFrame(.carried(lean: 1, face: 0, feet: -1), duration: 0.18),
                 OwlFrame(.carried(lean: 1, face: 1, feet: 0), duration: 0.18),
                 OwlFrame(.carried(lean: 0, face: 1, feet: 1), duration: 0.18),
+            ]
+
+        case .dizzy:
+            // 내려놓고도 한동안 비틀거린다. 몸과 얼굴이 번갈아 쏠려서 중심을 못 잡는다.
+            // 오르내림(`bob`)으로 흔들면 다리가 몸에 들어갔다 나왔다 해서 쓰지 않는다.
+            return [
+                OwlFrame(OwlPose(eyes: .dizzy, lean: -1), duration: 0.13),
+                OwlFrame(OwlPose(eyes: .dizzy, faceLean: -1), duration: 0.13),
+                OwlFrame(OwlPose(eyes: .dizzy, lean: 1), duration: 0.13),
+                OwlFrame(OwlPose(eyes: .dizzy, faceLean: 1), duration: 0.13),
             ]
         }
     }
@@ -159,6 +172,49 @@ final class OwlAnimator: ObservableObject {
     /// 몇 틱마다 깜빡일지. 눈을 붙박아 두기만 하면 노려보는 것처럼 보인다.
     private static let blinkInterval = 22
 
+    // MARK: - 어지러움
+    //
+    // 흔들린 정도를 점수로 쌓는다. 방향이 홱 바뀔 때 크게 오르고, 아주 빠르게 끌면
+    // 조금씩 오른다. 가만히 두면 내려간다. 문턱을 넘으면 한동안 어지러워한다.
+
+    private var dizziness = 0.0
+    private var lastVelocitySign = 0
+    private var dizzyUntil = Date.distantPast
+
+    /// 방향이 뒤집힐 때 한 번에 오르는 값. 셋을 채우면 문턱을 넘는다.
+    private static let reversalGain = 1.1
+    /// 방향 뒤집힘으로 치려면 이만큼은 빨라야 한다(pt/s). 손 떨림은 세지 않는다.
+    private static let reversalSpeed: CGFloat = 320
+    /// 뒤집지 않아도 이보다 빠르면 조금씩 쌓인다(pt/s).
+    private static let spinSpeed: CGFloat = 950
+    private static let spinGain = 0.07
+    /// 한 틱마다 빠지는 값. 천천히 옮기는 동안 저절로 쌓이지 않게 한다.
+    private static let dizzinessDecay = 0.06
+    private static let dizzinessThreshold = 3.0
+    /// 문턱을 넘고 나서 어지러워하는 시간.
+    private static let dizzyDuration: TimeInterval = 2.4
+
+    private var isDizzy: Bool { dizzyUntil > Date() }
+
+    /// 이번 틱의 흔들림을 점수에 반영한다.
+    private func accumulateDizziness(velocity: CGFloat) {
+        dizziness = max(0, dizziness - Self.dizzinessDecay)
+
+        let sign = abs(velocity) > Self.reversalSpeed ? (velocity > 0 ? 1 : -1) : 0
+        if sign != 0 {
+            if lastVelocitySign != 0 && sign != lastVelocitySign {
+                dizziness += Self.reversalGain
+            }
+            lastVelocitySign = sign
+        }
+        if abs(velocity) > Self.spinSpeed { dizziness += Self.spinGain }
+
+        guard dizziness >= Self.dizzinessThreshold else { return }
+        dizziness = 0
+        lastVelocitySign = 0
+        dizzyUntil = Date().addingTimeInterval(Self.dizzyDuration)
+    }
+
     var palette: OwlPalette { mood.palette }
 
     /// 끌려가는 동안 마우스의 가로 속도(pt/s). 부호는 **마우스가 가는 쪽**이고,
@@ -182,15 +238,40 @@ final class OwlAnimator: ObservableObject {
         timer = nil
     }
 
+    /// 사용량·연결 상태·드래그에서 정해지는 기분. 어지러움은 여기 안 들어온다.
+    private var requestedMood: OwlMood = .idle
+
     func setMood(_ newMood: OwlMood) {
-        guard newMood != mood else { return }
-        mood = newMood
+        guard newMood != requestedMood else { return }
+        requestedMood = newMood
+        applyMood()
+    }
+
+    /// 어지러움은 사용량이나 연결 상태가 아니라 **이 앱이 어떻게 다뤄졌는지**에서 나온다.
+    /// 그래서 바깥이 정하지 않고 여기서 덮어쓴다.
+    ///
+    /// 끌리는 동안에는 끌림이 이긴다 — 손에 들려 있는데 바닥에서 비틀거리면 앞뒤가
+    /// 안 맞는다. 대신 그때는 눈만 풀린 채로 끌려간다.
+    private var effectiveMood: OwlMood {
+        guard requestedMood != .dragged, isDizzy else { return requestedMood }
+        return .dizzy
+    }
+
+    private func applyMood() {
+        let next = effectiveMood
+        guard next != mood else { return }
+        mood = next
         frameIndex = 0
         // 지난번에 끌던 기울기가 남아 있으면 집어 든 순간 몸이 한쪽으로 튄다.
         previousLean = 0
         olderLean = 0
         dragVelocityAt = .distantPast
         blinkCountdown = Self.blinkInterval
+        // 흔들림 점수는 끌 때마다 새로 센다. 사이를 두고 조금씩 흔든 게 쌓여서
+        // 갑자기 어지러워지면 무엇 때문인지 알 수 없다.
+        dizziness = 0
+        lastVelocitySign = 0
+
         if isRunning {
             advance()
         } else {
@@ -198,12 +279,15 @@ final class OwlAnimator: ObservableObject {
             // 그래야 다시 보일 때 옛 기분의 자세가 한 순간 스치지 않는다.
             timer?.invalidate()
             timer = nil
-            pose = newMood.frames[0].pose
+            pose = next.frames[0].pose
         }
     }
 
     /// 지금 프레임을 화면에 올리고, 그 길이만큼 뒤에 다음 프레임을 예약한다.
     private func advance() {
+        // 어지러움이 풀렸으면 원래 기분으로 돌아간다. 시간이 정하는 상태라
+        // 바깥에서 알려줄 사람이 없어서 틱마다 스스로 확인한다.
+        if mood == .dizzy, !isDizzy { return applyMood() }
         guard mood != .dragged else { return advanceDrag() }
 
         let frames = mood.frames
@@ -224,22 +308,27 @@ final class OwlAnimator: ObservableObject {
     /// 이 시차가 매달린 것을 들고 움직일 때의 뒤따라옴이 된다.
     private func advanceDrag() {
         let moving = Date().timeIntervalSince(dragVelocityAt) < Self.dragIdle
-        let lean = moving ? Self.lean(for: dragVelocity) : 0
+        let velocity = moving ? dragVelocity : 0
+        accumulateDizziness(velocity: velocity)
+        let lean = Self.lean(for: velocity)
 
-        blinkCountdown -= 1
-        let eyes: OwlPose.Eyes
-        switch blinkCountdown {
-        case 1: eyes = .closed
-        case 0, 2: eyes = .half
-        default: eyes = .open
-        }
-        if blinkCountdown <= 0 { blinkCountdown = Self.blinkInterval }
-
-        pose = .carried(lean: lean, face: previousLean, feet: olderLean, eyes: eyes)
+        pose = .carried(lean: lean, face: previousLean, feet: olderLean, eyes: draggedEyes)
         olderLean = previousLean
         previousLean = lean
 
         schedule(after: Self.dragTick)
+    }
+
+    /// 끌려가는 동안의 눈. 흔들려 놨으면 풀린 채로, 아니면 이따금 깜빡인다.
+    private var draggedEyes: OwlPose.Eyes {
+        if isDizzy { return .dizzy }
+        blinkCountdown -= 1
+        defer { if blinkCountdown <= 0 { blinkCountdown = Self.blinkInterval } }
+        switch blinkCountdown {
+        case 1: return .closed
+        case 0, 2: return .half
+        default: return .open
+        }
     }
 
     /// 마우스가 가는 반대쪽으로 처진다. 매달린 것은 손보다 늦게 따라오기 때문이다.

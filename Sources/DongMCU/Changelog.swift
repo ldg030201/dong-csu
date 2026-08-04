@@ -42,6 +42,7 @@ enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(version: "1.4.0", date: nil, notes: [
             "부엉이 애니메이션 추가 (눈 깜빡임 · 지침 · 탈진 · 연결 끊김)",
+            "마구 흔들면 부엉이가 어지러워하는 동작 추가",
             "HUD를 끌 때 마우스 방향·속도를 따르는 부엉이 동작 추가",
         ]),
         ChangelogEntry(version: "1.3.1.1", date: "2026-08-04", notes: [
