@@ -92,6 +92,8 @@ struct ClaudeIconView: View {
     var style: ClaudeIconStyle
     var size: CGFloat
     var eyeColor: Color = ClawdMark.defaultEyeColor
+    /// 부엉이를 움직이게 할 애니메이터. 없으면 정지 자세로 그린다(렌더 통로).
+    var owlAnimator: OwlAnimator?
 
     private let claudeOrange = Color(red: 0.85, green: 0.46, blue: 0.34)
 
@@ -100,7 +102,7 @@ struct ClaudeIconView: View {
         case .owl:
             // 부엉이는 날개를 펼 좌우 여백까지 그리므로 가로가 더 길다.
             // 링 안에 들어가야 하니 높이를 기준으로 맞춘다.
-            OwlMarkView()
+            owl
                 .frame(height: size)
                 .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
         case .clawd:
@@ -120,6 +122,14 @@ struct ClaudeIconView: View {
             }
         case .mark:
             mark
+        }
+    }
+
+    @ViewBuilder private var owl: some View {
+        if let owlAnimator {
+            AnimatedOwlView(animator: owlAnimator)
+        } else {
+            OwlMarkView()
         }
     }
 

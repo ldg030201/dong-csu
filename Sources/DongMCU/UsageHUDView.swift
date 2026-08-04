@@ -26,6 +26,8 @@ struct UsageHUDView: View {
     var showsUpdateBadge: Bool = false
     /// 그 표시를 눌렀을 때. 버전 화면을 연다.
     var onOpenUpdates: (() -> Void)?
+    /// 가운데 부엉이를 움직이게 할 애니메이터. 없으면 정지 자세로 그린다.
+    var owlAnimator: OwlAnimator?
 
     /// 배율 1 기준 길이를 실제 길이로.
     private func s(_ value: CGFloat) -> CGFloat { value * scale }
@@ -441,7 +443,8 @@ struct UsageHUDView: View {
             ClaudeIconView(
                 style: iconStyle,
                 size: innerDiameter - innerLineWidth * 2 - s(4),
-                eyeColor: palette.markEye
+                eyeColor: palette.markEye,
+                owlAnimator: owlAnimator
             )
         }
         .frame(width: ringDiameter, height: ringDiameter)

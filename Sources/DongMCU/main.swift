@@ -81,8 +81,22 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-menubar"),
     let arguments = CommandLine.arguments
     let path = arguments[flagIndex + 1]
     let height = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 16 : 16
-    let bodyTint: NSColor? = arguments.contains("test") ? AppInfo.testBuildTint : nil
-    let ok = OwlMark.statusItemImage(height: height, bodyTint: bodyTint).writePNG(to: path)
+    let palette: OwlPalette = arguments.contains("test")
+        ? .tinted(body: AppInfo.testBuildTint)
+        : .normal
+    let ok = OwlMark.statusItemImage(height: height, palette: palette).writePNG(to: path)
+    print(ok ? "rendered: \(path)" : "render failed")
+    exit(ok ? 0 : 1)
+}
+
+// 부엉이 애니메이션을 한 장에 펼친다: dong-mcu --render-owl out.png [칸높이]
+// 움직이는 그림은 정지 화면 한 장으로는 확인할 수 없어서, 기분별 프레임을 전부 늘어놓는다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let arguments = CommandLine.arguments
+    let path = arguments[flagIndex + 1]
+    let cell = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 64 : 64
+    let ok = MainActor.assumeIsolated { OwlSheetRenderer.write(to: path, cell: cell) }
     print(ok ? "rendered: \(path)" : "render failed")
     exit(ok ? 0 : 1)
 }

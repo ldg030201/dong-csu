@@ -22,6 +22,50 @@ extension ImageRenderer {
     }
 }
 
+/// `dong-mcu --render-owl out.png` — 부엉이 애니메이션을 한 장에 펼친다.
+///
+/// 기분마다 프레임이 가로로, 기분끼리는 세로로 늘어선다. 앱을 띄우고 몇 초씩
+/// 기다리지 않고도 어느 프레임에서 형태가 깨지는지 한눈에 볼 수 있다.
+@MainActor
+enum OwlSheetRenderer {
+    static func write(to path: String, cell: CGFloat) -> Bool {
+        let content = VStack(alignment: .leading, spacing: cell * 0.18) {
+            ForEach(OwlMood.allCases, id: \.self) { mood in
+                HStack(alignment: .top, spacing: cell * 0.12) {
+                    Text(mood.title)
+                        .font(.system(size: cell * 0.2, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: cell * 0.9, alignment: .leading)
+                        .padding(.top, cell * 0.35)
+
+                    ForEach(Array(mood.frames.enumerated()), id: \.offset) { _, frame in
+                        VStack(spacing: cell * 0.06) {
+                            OwlMarkView(pose: frame.pose, palette: mood.palette)
+                                .frame(height: cell)
+                            Text(durationText(frame))
+                                .font(.system(size: cell * 0.14, design: .rounded))
+                                .monospacedDigit()
+                                .foregroundStyle(.white.opacity(0.55))
+                        }
+                    }
+                }
+            }
+        }
+        .padding(cell * 0.4)
+        .background(Color(white: 0.13))
+
+        return ImageRenderer(content: content).writePNG(to: path, scale: 2)
+    }
+
+    /// 프레임이 얼마나 머무는지. 지터가 있으면 범위로 적는다.
+    private static func durationText(_ frame: OwlFrame) -> String {
+        guard frame.duration > 0 else { return "정지" }
+        let start = String(format: "%.2f", frame.duration)
+        guard frame.jitter > 0 else { return "\(start)s" }
+        return "\(start)~\(String(format: "%.2f", frame.duration + frame.jitter))s"
+    }
+}
+
 /// `dong-mcu --render out.png` — HUD를 고정값으로 그려 PNG로 저장한다.
 /// 앱을 띄우지 않고 레이아웃·색·아이콘을 확인하려고 둔 디버그 통로.
 @MainActor
@@ -69,6 +113,11 @@ enum HUDPreviewRenderer {
             error: state == .ok ? nil : "토큰 만료 — Claude Code 재로그인 필요",
             needsReauth: state == .reauth
         )
+        // 실제 앱과 같은 판정을 태워서, 넘긴 사용률·상태에 맞는 기분으로 그린다.
+        // 멈춘 애니메이터는 그 기분의 첫 프레임에 머물러 있어 정지 그림이 된다.
+        let animator = OwlAnimator()
+        animator.setMood(OwlMood.resolve(store: store, isDragging: false))
+
         let palette = HUDPalette(isDark: isDark)
         let content = UsageHUDView(
             store: store,
@@ -78,7 +127,8 @@ enum HUDPreviewRenderer {
             expandSide: side,
             usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil,
             scale: scale.factor,
-            showsUpdateBadge: showsUpdateBadge
+            showsUpdateBadge: showsUpdateBadge,
+            owlAnimator: animator
         )
             .background {
                 ZStack {

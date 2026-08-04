@@ -50,6 +50,10 @@ enum OwlMark {
         "...............",
     ]
 
+    /// 지쳤을 때 축 늘어뜨린 날개. 접은 날개를 한 칸 내린 것이다.
+    /// 리터럴로 한 벌 더 적어 두면 접은 날개를 손볼 때 이쪽만 옛 모양으로 남는다.
+    static let wingsDroop = shifted(wingsFolded, dy: 1)
+
     /// 펼친 날개는 좌우 여백까지 써서 어깨 위로 뻗는다.
     static let wingsSpread = [
         "dd...........dd",
@@ -196,45 +200,85 @@ enum OwlMark {
         "....###..###...",
     ]
 
-    // MARK: - 색
+    /// 레이어를 밀어서 옮긴다. `dy`는 양수가 아래쪽이고, 캔버스 밖으로 나간 칸은 버린다.
+    static func shifted(_ layer: [String], dx: Int = 0, dy: Int = 0) -> [String] {
+        guard dx != 0 || dy != 0 else { return layer }
+
+        let empty = [Character](repeating: ".", count: columns)
+        var output = [[Character]](repeating: empty, count: lines)
+        for (y, row) in layer.enumerated() {
+            let movedY = y + dy
+            guard movedY >= 0, movedY < lines else { continue }
+            for (x, character) in row.enumerated() where character != "." {
+                let movedX = x + dx
+                guard movedX >= 0, movedX < columns else { continue }
+                output[movedY][movedX] = character
+            }
+        }
+        return output.map { String($0) }
+    }
+}
+
+// MARK: - 색
+
+/// 부엉이 한 마리의 색 한 벌.
+///
+/// 색을 상수로 박아 두면 회색으로 물러앉히거나 테스트판을 구분할 방법이 없다.
+/// 그림(그리드)과 색을 갈라 두어서, 같은 자세를 팔레트만 바꿔 다시 그린다.
+struct OwlPalette: Equatable {
+    var body: Color
+    var wing: Color
+    var belly: Color
+    var face: Color
+    var pupil: Color
+    var beak: Color
 
     /// 날개는 몸통보다 어둡되, 다크 배경 위에서도 실루엣이 남을 만큼은 밝아야 한다.
-    static let bodyColor = Color(red: 0x3A / 255, green: 0x72 / 255, blue: 0xC4 / 255)
-    static let wingColor = Color(red: 0x27 / 255, green: 0x54 / 255, blue: 0x8F / 255)
-    static let bellyColor = Color(red: 0x9F / 255, green: 0xC4 / 255, blue: 0xEE / 255)
-    static let faceColor = Color(red: 0xFF / 255, green: 0xF3 / 255, blue: 0xE0 / 255)
-    static let pupilColor = Color(red: 0x0E / 255, green: 0x1B / 255, blue: 0x2E / 255)
-    static let beakColor = Color(red: 0xF6 / 255, green: 0xA6 / 255, blue: 0x23 / 255)
+    static let normal = OwlPalette(
+        body: Color(red: 0x3A / 255, green: 0x72 / 255, blue: 0xC4 / 255),
+        wing: Color(red: 0x27 / 255, green: 0x54 / 255, blue: 0x8F / 255),
+        belly: Color(red: 0x9F / 255, green: 0xC4 / 255, blue: 0xEE / 255),
+        face: Color(red: 0xFF / 255, green: 0xF3 / 255, blue: 0xE0 / 255),
+        pupil: Color(red: 0x0E / 255, green: 0x1B / 255, blue: 0x2E / 255),
+        beak: Color(red: 0xF6 / 255, green: 0xA6 / 255, blue: 0x23 / 255)
+    )
 
-    static func color(for character: Character) -> Color? {
+    /// 조회가 안 되는 동안. 채도를 빼서 화면 뒤로 물러나 보이게 한다.
+    /// 얼굴과 부리는 형태가 남을 만큼의 밝기 차이를 유지한다 — 아예 한 덩어리로
+    /// 뭉개면 무슨 그림인지 알 수 없어서, 앱이 고장난 것처럼 읽힌다.
+    static let offline = OwlPalette(
+        body: Color(white: 0.40),
+        wing: Color(white: 0.26),
+        belly: Color(white: 0.60),
+        face: Color(white: 0.84),
+        pupil: Color(white: 0.12),
+        beak: Color(white: 0.68)
+    )
+
+    /// 몸통과 날개만 다른 색으로. 눈·부리는 그대로 두어 얼굴이 남는다.
+    /// 단색으로 칠해 버리면 눈까지 사라져서 무슨 그림인지 알 수 없다.
+    static func tinted(body tint: NSColor) -> OwlPalette {
+        var palette = normal
+        palette.body = Color(nsColor: tint)
+        palette.wing = Color(nsColor: tint.shadow(withLevel: 0.3) ?? tint)
+        return palette
+    }
+
+    func color(for character: Character) -> Color? {
         switch character {
-        case "#": return bodyColor
-        case "d": return wingColor
-        case "l": return bellyColor
-        case "w": return faceColor
-        case "k": return pupilColor
-        case "y": return beakColor
+        case "#": return body
+        case "d": return wing
+        case "l": return belly
+        case "w": return face
+        case "k": return pupil
+        case "y": return beak
         default: return nil
         }
     }
 
     /// AppKit으로 그릴 때(메뉴바 등) 쓰는 같은 색.
-    static func nsColor(for character: Character) -> NSColor? {
+    func nsColor(for character: Character) -> NSColor? {
         color(for: character).map(NSColor.init)
-    }
-
-    /// 레이어를 좌우로 민다. 캔버스 밖으로 나간 칸은 버린다.
-    static func shifted(_ layer: [String], by dx: Int) -> [String] {
-        guard dx != 0 else { return layer }
-        return layer.map { row in
-            let characters = Array(row)
-            var output = [Character](repeating: ".", count: characters.count)
-            for (index, character) in characters.enumerated() where character != "." {
-                let moved = index + dx
-                if moved >= 0 && moved < characters.count { output[moved] = character }
-            }
-            return String(output)
-        }
     }
 }
 
@@ -249,10 +293,8 @@ extension OwlMark {
     /// 눈과 부리까지 살아남는다. 한 칸을 정수로 맞춰야 형태가 유지되므로
     /// 실제 그림 높이는 요청한 높이보다 작을 수 있다.
     ///
-    /// `bodyTint`를 주면 몸통과 날개만 그 색으로 바꾼다. 눈·부리는 그대로 두어
-    /// 얼굴이 남는다. 테스트판을 색으로 구분할 때 쓴다. 단색으로 칠해 버리면
-    /// 눈까지 사라져서 무슨 그림인지 알 수 없다.
-    static func statusItemImage(height: CGFloat, bodyTint: NSColor? = nil) -> NSImage {
+    /// 테스트판을 색으로 구분할 때는 `palette`에 `OwlPalette.tinted(body:)`를 넘긴다.
+    static func statusItemImage(height: CGFloat, palette: OwlPalette = .normal) -> NSImage {
         let cell = max(1, floor(height / CGFloat(lines)))
         let size = NSSize(width: cell * CGFloat(columns), height: cell * CGFloat(lines))
 
@@ -264,13 +306,7 @@ extension OwlMark {
                     // NSImage 좌표계는 아래가 0이므로 행 순서를 뒤집는다.
                     let flipped = lines - 1 - y
                     for (x, character) in row.enumerated() {
-                        let fill: NSColor?
-                        switch (bodyTint, character) {
-                        case (let tint?, "#"): fill = tint
-                        case (let tint?, "d"): fill = tint.shadow(withLevel: 0.3) ?? tint
-                        default: fill = nsColor(for: character)
-                        }
-                        guard let fill else { continue }
+                        guard let fill = palette.nsColor(for: character) else { continue }
                         context.setFillColor(fill.cgColor)
                         context.fill(CGRect(
                             x: CGFloat(x) * cell,
@@ -292,7 +328,7 @@ extension OwlMark {
 /// 부엉이의 한 자세. 레이어 조합만 바꿔 애니메이션 프레임을 만든다.
 struct OwlPose: Equatable {
     enum Eyes { case open, half, closed }
-    enum Wings { case folded, spread }
+    enum Wings { case folded, spread, droop }
     enum Feet { case stand, stepA, stepB }
 
     var eyes: Eyes = .open
@@ -300,6 +336,9 @@ struct OwlPose: Equatable {
     var feet: Feet = .stand
     /// 몸통만 좌우로 기울인다(발은 제자리). 걸을 때 뒤뚱거리게 하는 값.
     var lean: Int = 0
+    /// 몸통만 위아래로 움직인다(발은 제자리). 양수면 발 위로 주저앉는다.
+    /// 숨을 쉬는 것처럼 보이게 하거나 지쳐서 내려앉을 때 쓴다.
+    var bob: Int = 0
 
     static let idle = OwlPose()
 
@@ -312,7 +351,13 @@ struct OwlPose: Equatable {
             case .closed: return OwlMark.eyesClosed
             }
         }()
-        let wingLayer = wings == .folded ? OwlMark.wingsFolded : OwlMark.wingsSpread
+        let wingLayer: [String] = {
+            switch wings {
+            case .folded: return OwlMark.wingsFolded
+            case .spread: return OwlMark.wingsSpread
+            case .droop: return OwlMark.wingsDroop
+            }
+        }()
         let feetLayer: [String] = {
             switch feet {
             case .stand: return OwlMark.feetStand
@@ -321,15 +366,16 @@ struct OwlPose: Equatable {
             }
         }()
 
-        // 발은 땅에 붙어 있어야 해서 기울임에서 뺀다.
-        let leaning = [OwlMark.body, wingLayer, OwlMark.belly, eyeLayer, OwlMark.beak]
-            .map { OwlMark.shifted($0, by: lean) }
-        return leaning + [feetLayer]
+        // 발은 땅에 붙어 있어야 해서 기울임·오르내림에서 뺀다.
+        let moving = [OwlMark.body, wingLayer, OwlMark.belly, eyeLayer, OwlMark.beak]
+            .map { OwlMark.shifted($0, dx: lean, dy: bob) }
+        return moving + [feetLayer]
     }
 }
 
 struct OwlMarkView: View {
     var pose: OwlPose = .idle
+    var palette: OwlPalette = .normal
 
     var body: some View {
         Canvas { context, size in
@@ -358,7 +404,7 @@ struct OwlMarkView: View {
             for layer in pose.layers {
                 for (y, row) in layer.enumerated() {
                     for (x, character) in row.enumerated() {
-                        guard let fill = OwlMark.color(for: character) else { continue }
+                        guard let fill = palette.color(for: character) else { continue }
                         context.fill(Path(rect(x: x, y: y)), with: .color(fill))
                     }
                 }
