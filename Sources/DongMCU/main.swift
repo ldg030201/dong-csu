@@ -68,6 +68,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     let side: HUDExpandSide = extras.contains("expandLeft") ? .left : .right
     // 0~1 사이 숫자를 하나 끼워 넣으면 배경 불투명도로 쓴다.
     let opacity = extras.compactMap(Double.init).first { $0 > 0 && $0 <= 1 } ?? 0.92
+    let showsStats = extras.contains("stats")
 
     let succeeded = HUDPreviewRenderer.write(
         to: path,
@@ -77,7 +78,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
         collapsed: collapsed,
         isDark: isDark,
         side: side,
-        opacity: opacity
+        opacity: opacity,
+        showsStats: showsStats
     )
     print(succeeded ? "rendered: \(path)" : "render failed")
     exit(succeeded ? 0 : 1)

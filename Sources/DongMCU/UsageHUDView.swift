@@ -18,13 +18,20 @@ struct UsageHUDView: View {
     var onToggleCollapse: (() -> Void)?
     /// 펼쳐지는 방향. 손잡이(링·버튼)가 붙는 쪽이 반대편이 된다.
     var expandSide: HUDExpandSide = .default
+    /// 왼쪽 아래에 이 앱의 CPU·메모리를 표시할지.
+    var usageMonitor: ProcessUsageMonitor?
 
     static let expandedSize = CGSize(width: 240, height: 88)
+    /// 자원 사용량 줄을 붙일 때 늘어나는 높이.
+    static let statsRowHeight: CGFloat = 17
     /// 접은 모습: 링 + 오른쪽에 버튼 세 개가 세로로 붙는다.
     static let collapsedSize = CGSize(width: 108, height: 88)
 
-    static func size(collapsed: Bool) -> CGSize {
-        collapsed ? collapsedSize : expandedSize
+    static func size(collapsed: Bool, showsStats: Bool = false) -> CGSize {
+        // 접은 상태에는 자리가 없어서 자원 사용량을 붙이지 않는다.
+        guard !collapsed else { return collapsedSize }
+        guard showsStats else { return expandedSize }
+        return CGSize(width: expandedSize.width, height: expandedSize.height + statsRowHeight)
     }
 
     static func cornerRadius(collapsed: Bool) -> CGFloat {
@@ -109,6 +116,20 @@ struct UsageHUDView: View {
     }
 
     private var expandedBody: some View {
+        VStack(spacing: 0) {
+            mainRow
+            if let usageMonitor {
+                bottomBar(monitor: usageMonitor)
+                    .frame(height: Self.statsRowHeight)
+            }
+        }
+        .frame(
+            width: Self.expandedSize.width,
+            height: Self.size(collapsed: false, showsStats: usageMonitor != nil).height
+        )
+    }
+
+    private var mainRow: some View {
         HStack(spacing: 13) {
             if expandSide == .right {
                 ringsView
@@ -124,7 +145,27 @@ struct UsageHUDView: View {
         .padding(.trailing, expandSide == .right ? 10 : 13)
         .frame(width: Self.expandedSize.width, height: Self.expandedSize.height)
         .overlay(alignment: expandSide == .right ? .topTrailing : .topLeading) { controlButtons }
-        .overlay(alignment: expandSide == .right ? .bottomTrailing : .bottomLeading) { resetCountdown }
+        // 아래 줄이 생기면 카운트다운도 거기로 내려가 자원 사용량과 같은 높이에 놓인다.
+        .overlay(alignment: expandSide == .right ? .bottomTrailing : .bottomLeading) {
+            if usageMonitor == nil { resetCountdown }
+        }
+    }
+
+    /// 자원 사용량과 조회 카운트다운을 한 줄에 놓는다. 방향 설정에 따라 좌우가 뒤집힌다.
+    private func bottomBar(monitor: ProcessUsageMonitor) -> some View {
+        HStack(spacing: 0) {
+            if expandSide == .right {
+                ProcessStatsRow(monitor: monitor, palette: palette)
+                Spacer(minLength: 8)
+                countdownContent
+            } else {
+                countdownContent
+                Spacer(minLength: 8)
+                ProcessStatsRow(monitor: monitor, palette: palette)
+            }
+        }
+        .padding(.horizontal, 13)
+        .padding(.bottom, 4)
     }
 
     /// 남은 시간 문구만 시간에 따라 바뀐다. 링·아이콘은 타임라인 밖에 두어
@@ -170,10 +211,16 @@ struct UsageHUDView: View {
                     }
                 }
             }
-            .help(countdownHelp)
         }
+        // help 문구는 시간과 무관하다. 안에 두면 1초마다 문자열을 새로 만든다.
+        .help(countdownHelp)
         .padding(.horizontal, 10)
         .padding(.bottom, 7)
+    }
+
+    /// 아래 줄에 들어갈 때 쓰는, 패딩 없는 카운트다운.
+    @ViewBuilder private var countdownContent: some View {
+        if showsCountdown { countdownBody.padding(.bottom, -7).padding(.horizontal, -10) }
     }
 
     /// 재로그인이 필요하거나 마지막 성공값을 보여주는 중이면 그 문구를 돌려준다.
@@ -348,4 +395,31 @@ struct UsageHUDView: View {
         }
     }
 
+}
+
+/// HUD 왼쪽 아래에 붙는 이 앱의 자원 사용량.
+struct ProcessStatsRow: View {
+    @ObservedObject var monitor: ProcessUsageMonitor
+    let palette: HUDPalette
+
+    var body: some View {
+        HStack(spacing: 6) {
+            label("CPU", value: monitor.usage.cpuText)
+            label("MEM", value: monitor.usage.footprintText)
+            Spacer(minLength: 0)
+        }
+        .help("dong-mcu 자신이 쓰는 CPU와 메모리")
+    }
+
+    private func label(_ title: String, value: String) -> some View {
+        HStack(spacing: 3) {
+            Text(title)
+                .font(.system(size: 8, weight: .semibold))
+                .foregroundStyle(palette.faintText)
+            Text(value)
+                .font(.system(size: 9, weight: .medium, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(palette.tertiaryText)
+        }
+    }
 }

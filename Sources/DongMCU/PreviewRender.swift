@@ -22,7 +22,8 @@ enum HUDPreviewRenderer {
         collapsed: Bool = false,
         isDark: Bool = true,
         side: HUDExpandSide = .right,
-        opacity: Double = 0.92
+        opacity: Double = 0.92,
+        showsStats: Bool = false
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -51,7 +52,8 @@ enum HUDPreviewRenderer {
             iconStyle: iconStyle,
             isCollapsed: collapsed,
             palette: palette,
-            expandSide: side
+            expandSide: side,
+            usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil
         )
             .background {
                 ZStack {

@@ -98,6 +98,7 @@ final class HUDController {
     /// 설정 창을 여는 동작. AppDelegate가 꽂아준다.
     var onOpenSettings: (@MainActor () -> Void)?
     private let backdrop = NSView()
+    private let usageMonitor = ProcessUsageMonitor()
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
@@ -111,7 +112,10 @@ final class HUDController {
         self.store = store
         self.settings = settings
 
-        let size = UsageHUDView.size(collapsed: settings.isCollapsed)
+        let size = UsageHUDView.size(
+            collapsed: settings.isCollapsed,
+            showsStats: settings.showsProcessStats
+        )
         panel = HUDPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -170,6 +174,7 @@ final class HUDController {
 
         applyAppearance()
         layoutHosting(for: size)
+        syncUsageMonitor(visible: true)
 
         panel.setFrameOrigin(restoredOrigin())
         // 시스템 테마가 바뀌면 .system 설정일 때만 따라간다.
@@ -227,6 +232,30 @@ final class HUDController {
             .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.applyAppearance() }
             .store(in: &cancellables)
+
+        settings.$showsProcessStats
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.applyProcessStats() }
+            .store(in: &cancellables)
+    }
+
+    /// 자원 사용량 표시를 켜고 끈다. 크기까지 바뀌므로 레이아웃도 다시 잡는다.
+    private func applyProcessStats() {
+        syncUsageMonitor()
+        applyCollapsed()
+    }
+
+    /// 보이지도 않는데 표본을 뜰 이유가 없다. 조건이 바뀌는 자리마다 이걸 부른다.
+    private func syncUsageMonitor(collapsed: Bool? = nil, visible: Bool? = nil) {
+        let isCollapsed = collapsed ?? settings.isCollapsed
+        let isVisible = visible ?? panel.isVisible
+
+        if settings.showsProcessStats, isVisible, !isCollapsed {
+            usageMonitor.start()
+        } else {
+            usageMonitor.stop()
+        }
     }
 
     /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
@@ -236,7 +265,7 @@ final class HUDController {
             side: settings.expandSide
         )
         rebuildRootView()
-        layoutHosting(for: UsageHUDView.size(collapsed: settings.isCollapsed))
+        layoutHosting(for: UsageHUDView.size(collapsed: settings.isCollapsed, showsStats: settings.showsProcessStats))
     }
 
     /// 크기가 바뀔 때 고정할 모서리를 정한다.
@@ -516,9 +545,12 @@ final class HUDController {
     /// 접거나 펼친다. 오른쪽 위 모서리를 붙잡아 두어서 크기가 바뀌어도 자리가 튀지 않는다.
     private func applyCollapsed() {
         let collapsed = settings.isCollapsed
-        let newSize = UsageHUDView.size(collapsed: collapsed)
+        let newSize = UsageHUDView.size(collapsed: collapsed, showsStats: settings.showsProcessStats)
         let target = targetFrame(for: newSize)
 
+        // 애니메이션 도중에 표본이 갱신되면 화면이 다시 배치되면서 끊겨 보인다.
+        // 잠시 멈추고 끝난 뒤에 다시 맞춘다.
+        usageMonitor.stop()
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed)
         interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
             collapsed: collapsed,
@@ -532,12 +564,16 @@ final class HUDController {
                 self.rebuildRootView()
                 self.layoutHosting(for: newSize)
                 self.saveOrigin()
+                self.syncUsageMonitor()
             }
         } else {
             // 펼칠 때는 내용을 먼저 깔아두고 창을 키워서 드러나게 한다.
             rebuildRootView()
             layoutHosting(for: newSize)
-            animate(to: target) { [weak self] in self?.saveOrigin() }
+            animate(to: target) { [weak self] in
+                self?.saveOrigin()
+                self?.syncUsageMonitor()
+            }
         }
     }
 
@@ -550,6 +586,7 @@ final class HUDController {
         } else {
             panel.orderOut(nil)
         }
+        syncUsageMonitor(visible: visible)
         rebuildRootView()
     }
 
@@ -563,7 +600,8 @@ final class HUDController {
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
             onToggleCollapse: { [weak self] in self?.handleToggleCollapse() },
-            expandSide: settings.expandSide
+            expandSide: settings.expandSide,
+            usageMonitor: usageMonitor.isRunning ? usageMonitor : nil
         )
     }
 

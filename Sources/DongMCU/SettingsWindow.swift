@@ -114,6 +114,9 @@ struct SettingsView: View {
                 )
             }
 
+            Toggle("왼쪽 아래에 CPU·메모리 표시", isOn: $settings.showsProcessStats)
+                .disabled(!settings.isHUDVisible || settings.isCollapsed)
+
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
             Toggle("접어서 링만 보기", isOn: $settings.isCollapsed)
                 .disabled(!settings.isHUDVisible)

@@ -56,6 +56,11 @@ final class HUDSettings: ObservableObject {
         }
     }
 
+    /// HUD 왼쪽 아래에 이 앱의 CPU·메모리를 표시할지.
+    @Published var showsProcessStats: Bool {
+        didSet { defaults.set(showsProcessStats, forKey: Keys.showsProcessStats) }
+    }
+
     static let minOpacity = 0.35
     static let maxOpacity = 1.0
     static let defaultOpacity = 0.92
@@ -69,6 +74,7 @@ final class HUDSettings: ObservableObject {
         static let hidden = "hud.hidden"
         static let expandSide = "hud.expandSide"
         static let backdropOpacity = "hud.backdropOpacity"
+        static let showsProcessStats = "hud.showsProcessStats"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -80,6 +86,7 @@ final class HUDSettings: ObservableObject {
         expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
         let stored = defaults.object(forKey: Keys.backdropOpacity) as? Double
         backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
+        showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)
     }
 }
 
