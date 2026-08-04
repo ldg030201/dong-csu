@@ -1,0 +1,103 @@
+name: bottle
+
+# 미리 빌드한 결과물(bottle)을 릴리스에 올린다.
+# 이게 없으면 설치할 때마다 각자 컴퓨터에서 Swift를 컴파일해 30초쯤 걸린다.
+# bottle이 있으면 압축만 풀어서 몇 초로 끝난다. 맞는 bottle이 없는 환경은
+# Homebrew가 알아서 소스 빌드로 넘어가므로 이 워크플로가 실패해도 설치는 된다.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "bottle을 만들 태그 (예: v1.3.1)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13   # x86_64 Ventura
+          - os: macos-14   # arm64 Sonoma
+          - os: macos-15   # arm64 Sequoia
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Homebrew 준비
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: tap 추가
+        run: |
+          brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu
+          brew trust ldg030201/dong-mcu || true
+
+      - name: bottle 빌드
+        run: |
+          brew install --build-bottle ldg030201/dong-mcu/dong-mcu
+          brew bottle --json --no-rebuild ldg030201/dong-mcu/dong-mcu
+
+      - name: 결과 수집
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottle-${{ matrix.os }}
+          path: |
+            *.bottle.tar.gz
+            *.bottle.json
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Homebrew 준비
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: tap 추가
+        run: |
+          brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu
+          brew trust ldg030201/dong-mcu || true
+
+      - name: bottle 내려받기
+        uses: actions/download-artifact@v4
+        with:
+          path: bottles
+          merge-multiple: true
+
+      - name: formula에 bottle 블록 쓰기
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          cd bottles
+          # 파일 이름의 -- 는 업로드 후 URL과 맞추기 위해 - 로 바꾼다.
+          for f in *.bottle.tar.gz; do mv "$f" "${f/--/-}"; done
+          brew bottle --merge --write --no-commit \
+            --root-url="https://github.com/ldg030201/dong-mcu/releases/download/$TAG" \
+            *.bottle.json
+          cd ..
+          # --write 는 tap 클론 쪽 formula를 고친다. 저장소로 되가져온다.
+          cp "$(brew --repository ldg030201/dong-mcu)/Formula/dong-mcu.rb" Formula/dong-mcu.rb
+          git diff --stat
+
+      - name: 릴리스에 올리기
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          gh release upload "$TAG" bottles/*.bottle.tar.gz --clobber
+
+      - name: formula 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/dong-mcu.rb
+          git diff --cached --quiet || git commit -m "📦 bottle 추가"
+          git push

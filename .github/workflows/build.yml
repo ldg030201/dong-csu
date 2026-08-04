@@ -1,0 +1,55 @@
+name: build
+
+# 여러 macOS·Swift 조합에서 컴파일되는지 확인한다.
+# 개발 머신 하나에서만 빌드해 보면 옛 컴파일러에서만 나는 오류를 놓친다
+# (1.2.0이 Swift 5.10에서 안 되던 일이 그래서 생겼다).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Sources/**"
+      - "Package.swift"
+      - "build.sh"
+      - ".github/workflows/build.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13   # x86_64 Ventura — 지원 하한
+          - os: macos-14   # arm64 Sonoma
+          - os: macos-15   # arm64 Sequoia
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 도구 버전
+        run: swift --version
+
+      - name: 빌드
+        run: swift build -c release
+
+      - name: 앱 번들 만들기
+        run: ./build.sh
+
+      - name: 렌더 통로 확인
+        run: |
+          BIN=./build/DongMCU.app/Contents/MacOS/DongMCU
+          "$BIN" --version
+          "$BIN" --render /tmp/hud.png 34 61 owl ok
+          "$BIN" --render-icon /tmp/icon.png 128
+          "$BIN" --render-menubar /tmp/menubar.png 16
+          "$BIN" --dump-changelog /tmp/changelog.json
+          test -s /tmp/hud.png && test -s /tmp/icon.png
+          test -s /tmp/menubar.png && test -s /tmp/changelog.json
+
+      - name: 변경 내역 파일이 소스와 맞는지
+        run: |
+          ./build/DongMCU.app/Contents/MacOS/DongMCU --dump-changelog /tmp/fresh.json
+          diff -q /tmp/fresh.json docs/changelog.json \
+            || { echo "docs/changelog.json 이 Changelog.swift 와 다르다 — --dump-changelog 로 다시 뽑아라"; exit 1; }
