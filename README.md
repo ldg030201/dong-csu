@@ -83,10 +83,14 @@ Launchpad에 보이지 않거나, `brew install`이 자꾸 옛 버전을 잡는 
 설치 흔적을 남김없이 지운다.
 
 ```bash
-pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*
+pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap https://github.com/ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*
 ```
 
 명령을 `;`로 이었다. 이미 없는 것을 지우다 실패해도 나머지가 계속 돌아야 하기 때문이다.
+
+`untrust`에 tap 이름이 아니라 **URL**을 준다. 설치할 때 `brew tap <이름> <URL>` 형식을 쓰기
+때문에 신뢰 목록에도 URL로 기록된다. 이름으로 지우려 하면 `Not trusted tap`이라고만 나오고
+실제로는 남는다.
 
 | 지우는 것 | 왜 |
 | --- | --- |
