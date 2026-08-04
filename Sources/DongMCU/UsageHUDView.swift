@@ -43,26 +43,35 @@ struct UsageHUDView: View {
     static let refreshHitSize: CGFloat = 20
 
     /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역.
-    /// 펼친 상태는 오른쪽 위 가로 세 칸, 접은 상태는 오른쪽 세로 세 칸이다.
-    static func controlsHitRectInPanel(collapsed: Bool, side: HUDExpandSide) -> CGRect {
+    /// 펼친 상태는 위쪽 가로 세 칸, 접은 상태는 옆쪽 세로 세 칸이다.
+    ///
+    /// 높이는 반드시 "실제 창 크기"에서 가져와야 한다. 자원 사용량 줄이 붙으면 창이
+    /// 17pt 커지는데, 그때 펼친 기본 높이(88)로 계산하면 영역이 그만큼 아래로 밀려서
+    /// 버튼을 눌러도 클릭이 통과되지 않는다.
+    static func controlsHitRectInPanel(
+        collapsed: Bool,
+        side: HUDExpandSide,
+        showsStats: Bool
+    ) -> CGRect {
         let button = refreshHitSize
+        let panel = size(collapsed: collapsed, showsStats: showsStats)
+
         if collapsed {
             let height = button * 3
-            let x = side == .right
-                ? collapsedSize.width - collapsedTrailing - button
-                : collapsedTrailing
+            let x = side == .right ? panel.width - collapsedTrailing - button : collapsedTrailing
             return CGRect(
                 x: x,
-                y: (collapsedSize.height - height) / 2,
+                y: (panel.height - height) / 2,
                 width: button,
                 height: height
             )
         }
+
         let width = button * 3
-        let x = side == .right ? expandedSize.width - refreshInset - width : refreshInset
+        let x = side == .right ? panel.width - refreshInset - width : refreshInset
         return CGRect(
             x: x,
-            y: expandedSize.height - refreshInset - button,
+            y: panel.height - refreshInset - button,
             width: width,
             height: button
         )

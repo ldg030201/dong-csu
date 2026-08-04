@@ -161,7 +161,8 @@ final class HUDController {
         interactionView.autoresizingMask = [.width, .height]
         interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
             collapsed: settings.isCollapsed,
-            side: settings.expandSide
+            side: settings.expandSide,
+            showsStats: settings.showsProcessStats
         )
         container.addSubview(interactionView)
 
@@ -264,7 +265,8 @@ final class HUDController {
     private func applyExpandSide() {
         interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
             collapsed: settings.isCollapsed,
-            side: settings.expandSide
+            side: settings.expandSide,
+            showsStats: settings.showsProcessStats
         )
         rebuildRootView()
         layoutHosting(for: UsageHUDView.size(collapsed: settings.isCollapsed, showsStats: settings.showsProcessStats))
@@ -556,7 +558,8 @@ final class HUDController {
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed)
         interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
             collapsed: collapsed,
-            side: settings.expandSide
+            side: settings.expandSide,
+            showsStats: settings.showsProcessStats
         )
 
         if collapsed {
