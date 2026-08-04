@@ -233,6 +233,57 @@ enum OwlMark {
     }
 }
 
+extension OwlMark {
+    /// 메뉴바용 그리드. 높이가 16px뿐이라 13행짜리 본체를 그대로 줄이면 한 칸이 1.2px가 되어
+    /// 눈도 부리도 뭉갠다. 그래서 8행 × 9열로 다시 그린 별도 그리드를 쓴다.
+    ///
+    /// 눈과 부리는 칠하지 않고 구멍으로 남긴다. 밝은 메뉴바에서도 어두운 메뉴바에서도
+    /// 배경이 그대로 비쳐서 이목구비로 읽힌다.
+    static let statusRows = [
+        "##.....##",
+        "#########",
+        "#..###..#",
+        "#..###..#",
+        "####.####",
+        "#########",
+        "#########",
+        "##.###.##",
+    ]
+
+    /// 메뉴바용 비트맵. 높이는 8의 배수로 주는 게 좋다(한 칸이 정수 픽셀이 되어 선명하다).
+    ///
+    /// `fill`이 nil이면 템플릿 이미지로 둔다. 그러면 시스템이 메뉴바 밝기에 맞춰
+    /// 알아서 칠해 준다. 부엉이 몸색(진청)은 어두운 메뉴바에서 묻혀서 그대로 못 쓴다.
+    static func statusItemImage(height: CGFloat, fill: NSColor? = nil) -> NSImage {
+        let columns = statusRows[0].count
+        let lines = statusRows.count
+        let width = (height * CGFloat(columns) / CGFloat(lines)).rounded()
+        let color = fill ?? .black
+
+        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+            guard let context = NSGraphicsContext.current?.cgContext else { return true }
+            let cellWidth = width / CGFloat(columns)
+            let cellHeight = height / CGFloat(lines)
+            context.setFillColor(color.cgColor)
+
+            for (y, row) in statusRows.enumerated() {
+                // NSImage 좌표계는 아래가 0이므로 행 순서를 뒤집는다.
+                let flipped = lines - 1 - y
+                for (x, character) in row.enumerated() where character == "#" {
+                    let left = (CGFloat(x) * cellWidth).rounded()
+                    let right = (CGFloat(x + 1) * cellWidth).rounded()
+                    let bottom = (CGFloat(flipped) * cellHeight).rounded()
+                    let top = (CGFloat(flipped + 1) * cellHeight).rounded()
+                    context.fill(CGRect(x: left, y: bottom, width: right - left, height: top - bottom))
+                }
+            }
+            return true
+        }
+        image.isTemplate = fill == nil
+        return image
+    }
+}
+
 /// 부엉이의 한 자세. 레이어 조합만 바꿔 애니메이션 프레임을 만든다.
 struct OwlPose: Equatable {
     enum Eyes { case open, half, closed }

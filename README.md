@@ -164,6 +164,10 @@ dong-mcu --render out.png 100 71 owl reauth   # 실패 상태까지 재현
 그리드로 나뉘어 있고, `OwlPose`로 조합해서 그린다. 눈만 갈아끼우면 깜빡이고 날개
 레이어만 바꾸면 펴진다.
 
+메뉴바는 높이가 16px뿐이라 13행짜리 본체를 줄이면 눈이 뭉갠다. 그래서 8행짜리 별도
+그리드(`OwlMark.statusRows`)를 쓰고, 정식판은 템플릿으로 둬서 시스템이 메뉴바 밝기에
+맞춰 칠하게 한다.
+
 앱 아이콘 그림은 [`AppIconArt.swift`](Sources/DongMCU/AppIconArt.swift)에 있다. 고쳤으면
 아래로 `.icns`를 다시 만든다. 결과물은 커밋해 두고 `build.sh`는 복사만 한다.
 
