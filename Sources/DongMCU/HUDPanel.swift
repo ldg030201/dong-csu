@@ -34,11 +34,12 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 /// 링 자체는 조작할 게 없으므로 마우스 이벤트를 전부 여기서 받는다.
 final class HUDInteractionView: NSView {
     var onDragTo: (@MainActor (NSPoint) -> Void)?
-    /// 드래그하는 동안 마우스의 가로 속도(pt/s). 부엉이가 처지는 방향과 세기를 정한다.
-    var onDragVelocity: (@MainActor (CGFloat) -> Void)?
+    /// 드래그하는 동안 마우스의 속도(pt/s). 부엉이가 처지는 방향과 날개 높이를 정한다.
+    var onDragVelocity: (@MainActor (CGVector) -> Void)?
     var onDragEnded: (@MainActor () -> Void)?
     var menuBuilder: (@MainActor () -> NSMenu)?
-    var onDoubleClick: (@MainActor () -> Void)?
+    /// 더블클릭한 자리(뷰 좌표). 마스코트를 눌렀는지에 따라 하는 일이 달라진다.
+    var onDoubleClick: (@MainActor (NSPoint) -> Void)?
 
     /// 이 영역들의 마우스 이벤트는 아래(SwiftUI)로 흘려보낸다.
     /// 버튼 묶음과 업데이트 배지처럼 눌려야 하는 자리들이 들어온다.
@@ -54,8 +55,8 @@ final class HUDInteractionView: NSView {
     /// 마우스와 창 원점 사이의 간격. 드래그 내내 이 값을 유지한다.
     private var dragOffset: CGSize?
 
-    /// 직전 드래그 이벤트의 가로 위치와 시각. 속도를 내는 데 쓴다.
-    private var lastDragX: CGFloat?
+    /// 직전 드래그 이벤트의 위치와 시각. 속도를 내는 데 쓴다.
+    private var lastDragPoint: NSPoint?
     private var lastDragAt: TimeInterval?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
@@ -75,13 +76,13 @@ final class HUDInteractionView: NSView {
         // 더블클릭으로 접었다 폈다 한다. 이때는 드래그를 시작하지 않는다.
         if event.clickCount == 2 {
             dragOffset = nil
-            onDoubleClick?()
+            onDoubleClick?(convert(event.locationInWindow, from: nil))
             return
         }
         guard let origin = window?.frame.origin else { return }
         let mouse = NSEvent.mouseLocation
         dragOffset = CGSize(width: mouse.x - origin.x, height: mouse.y - origin.y)
-        lastDragX = nil
+        lastDragPoint = nil
         lastDragAt = nil
     }
 
@@ -95,16 +96,20 @@ final class HUDInteractionView: NSView {
 
         // 이벤트가 실린 시각을 쓴다. 지금 시각으로 재면 이벤트가 밀려 들어올 때
         // 간격이 0에 가까워져서 속도가 터무니없이 커진다.
-        if let lastDragX, let lastDragAt, event.timestamp > lastDragAt {
-            onDragVelocity?((mouse.x - lastDragX) / CGFloat(event.timestamp - lastDragAt))
+        if let lastDragPoint, let lastDragAt, event.timestamp > lastDragAt {
+            let elapsed = CGFloat(event.timestamp - lastDragAt)
+            onDragVelocity?(CGVector(
+                dx: (mouse.x - lastDragPoint.x) / elapsed,
+                dy: (mouse.y - lastDragPoint.y) / elapsed
+            ))
         }
-        lastDragX = mouse.x
+        lastDragPoint = mouse
         lastDragAt = event.timestamp
     }
 
     override func mouseUp(with event: NSEvent) {
         dragOffset = nil
-        lastDragX = nil
+        lastDragPoint = nil
         lastDragAt = nil
         onDragEnded?()
     }
@@ -258,7 +263,7 @@ final class HUDController {
             self.refreshMood()
         }
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
-        interactionView.onDoubleClick = { [weak self] in self?.handleToggleCollapse() }
+        interactionView.onDoubleClick = { [weak self] point in self?.handleDoubleClick(at: point) }
 
         applyAppearance()
         layoutHosting(for: size)
@@ -313,6 +318,10 @@ final class HUDController {
             $0.rebuildRootView()
         }
         observe(settings.$mode) { $0.applyMode() }
+        observe(settings.$petRingDisplay) {
+            $0.refreshTrackingArea()
+            $0.rebuildRootView()
+        }
         observe(settings.$isHUDVisible) { $0.applyHUDVisible() }
         observe(settings.$expandSide) { $0.applyExpandSide() }
         observe(settings.$showsProcessStats) { $0.applyProcessStats() }
@@ -600,11 +609,20 @@ final class HUDController {
         }
         menu.addItem(login)
 
-        let modeItem = choiceMenu("보기", values: HUDMode.allCases, current: mode) { [weak self] in
-            self?.settings.mode = $0
-        }
-        modeItem.isEnabled = panel.isVisible
-        menu.addItem(modeItem)
+        let collapse = NSMenuItem(
+            title: mode == .collapsed ? "펼치기" : "접기",
+            action: #selector(handleToggleCollapse),
+            keyEquivalent: ""
+        )
+        collapse.target = self
+        collapse.isEnabled = panel.isVisible
+        menu.addItem(collapse)
+
+        let pet = NSMenuItem(title: "펫 모드", action: #selector(handleTogglePet), keyEquivalent: "")
+        pet.target = self
+        pet.state = mode == .pet ? .on : .off
+        pet.isEnabled = panel.isVisible
+        menu.addItem(pet)
 
         let toggle = NSMenuItem(
             title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
@@ -708,9 +726,44 @@ final class HUDController {
         DispatchQueue.main.async { [weak self] in self?.applyAppearance() }
     }
 
+    /// 더블클릭한 자리에 따라 갈린다.
+    ///
+    /// - 마스코트 위 → 펫 모드로 들어가고, 펫에서 다시 누르면 원래 보기로 돌아간다
+    /// - 그 밖 → 예전처럼 접었다 폈다 한다
+    ///
+    /// 셋을 한 줄로 돌리면 접으려다 펫으로 넘어가서, 원래 있던 접기 동작이 무엇을
+    /// 할지 예측할 수 없어진다.
+    private func handleDoubleClick(at point: NSPoint) {
+        let character = UsageHUDView.characterRectInPanel(
+            mode: mode,
+            side: settings.expandSide,
+            showsStats: settings.showsProcessStats,
+            scale: scale
+        )
+        guard character.contains(point) else {
+            handleToggleCollapse()
+            return
+        }
+        if mode == .pet {
+            settings.mode = settings.modeBeforePet
+        } else {
+            settings.modeBeforePet = mode
+            settings.mode = .pet
+        }
+    }
+
+    @objc private func handleTogglePet() {
+        if mode == .pet {
+            settings.mode = settings.modeBeforePet
+        } else {
+            settings.modeBeforePet = mode
+            settings.mode = .pet
+        }
+    }
+
     @objc private func handleToggleCollapse() {
-        // 더블클릭은 펼침 → 링만 → 펫 → 펼침 으로 돈다.
-        settings.mode = settings.mode.next
+        // 펫에서 마스코트 밖을 눌렀다면 일단 펫에서 나온다.
+        settings.mode = mode == .pet ? settings.modeBeforePet : mode.toggled
     }
 
     @objc private func handleOpenSettings() {
@@ -769,7 +822,8 @@ final class HUDController {
             interactionView.removeTrackingArea(trackingArea)
             self.trackingArea = nil
         }
-        guard settings.mode == .pet else { return }
+        // 링을 항상 보이거나 아예 안 보이게 해 뒀으면 마우스를 좇을 이유가 없다.
+        guard settings.mode == .pet, settings.petRingDisplay == .hover else { return }
 
         let area = NSTrackingArea(
             rect: UsageHUDView.petHitRect(scale: scale),
@@ -838,6 +892,7 @@ final class HUDController {
             showsCountdown: panel.isVisible && mode == .expanded,
             mode: mode,
             isHovered: isHoveringPet,
+            petRingDisplay: settings.petRingDisplay,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
             onToggleCollapse: { [weak self] in self?.handleToggleCollapse() },

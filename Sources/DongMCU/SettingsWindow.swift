@@ -10,6 +10,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case status
     case display
     case icon
+    case pet
     case account
     case version
 
@@ -20,6 +21,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .status: return "상태"
         case .display: return "표시"
         case .icon: return "아이콘"
+        case .pet: return "펫"
         case .account: return "계정"
         case .version: return "버전"
         }
@@ -30,6 +32,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .status: return "gauge"
         case .display: return "slider.horizontal.3"
         case .icon: return "face.smiling"
+        case .pet: return "pawprint"
         case .account: return "person.crop.circle"
         case .version: return "arrow.down.circle"
         }
@@ -144,6 +147,7 @@ struct SettingsView: View {
         case .status: statusSection
         case .display: displaySection
         case .icon: iconSection
+        case .pet: petSection
         case .account: accountSection
         case .version: versionSection
         }
@@ -279,10 +283,12 @@ struct SettingsView: View {
                 .disabled(!settings.isHUDVisible || settings.mode != .expanded)
 
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
-            Picker("보기", selection: $settings.mode) {
-                ForEach(HUDMode.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            .pickerStyle(.segmented)
+            // 펫은 여기 넣지 않는다. 펫 탭이 따로 있고, 접기와 한 줄에 묶어 두면
+            // 접으려다 펫으로 넘어가는 것과 같은 혼란이 설정 창에도 생긴다.
+            Toggle("접어서 링만 보기", isOn: Binding(
+                get: { settings.mode == .collapsed },
+                set: { settings.mode = $0 ? .collapsed : .expanded }
+            ))
             .disabled(!settings.isHUDVisible)
 
             HStack {
@@ -299,6 +305,43 @@ struct SettingsView: View {
 
     /// 아이콘을 실제로 그려서 보여주고 고르게 한다.
     /// 출처가 다른 그림이 섞이지 않도록 묶음별로 나눠 놓는다.
+    // MARK: - 펫
+
+    private var petSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Toggle("펫 모드", isOn: Binding(
+                get: { settings.mode == .pet },
+                set: { on in
+                    // 펫에서 나올 때는 들어가기 직전의 보기로 돌아간다.
+                    if on {
+                        settings.modeBeforePet = settings.mode
+                        settings.mode = .pet
+                    } else if settings.mode == .pet {
+                        settings.mode = settings.modeBeforePet
+                    }
+                }
+            ))
+            .disabled(!settings.isHUDVisible)
+
+            Text("배경과 숫자를 걷어내고 마스코트만 띄운다. HUD의 마스코트를 더블클릭해도 들어간다.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+
+            Picker("사용량 링", selection: $settings.petRingDisplay) {
+                ForEach(PetRingDisplay.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .disabled(!settings.isHUDVisible)
+
+            Text("펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     private var iconSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text("HUD 링 가운데에 그릴 그림이다.")

@@ -37,17 +37,37 @@ enum HUDMode: String, CaseIterable, TitledOption {
         }
     }
 
-    /// 더블클릭했을 때 넘어갈 다음 모드.
-    var next: HUDMode {
-        switch self {
-        case .expanded: return .collapsed
-        case .collapsed: return .pet
-        case .pet: return .expanded
-        }
+    /// 더블클릭으로 접었다 폈다 할 때의 반대쪽.
+    ///
+    /// **펫은 여기 끼우지 않는다.** 셋을 한 줄로 돌리면 접으려다 펫으로 넘어가서,
+    /// 원래 있던 접기 동작이 무엇을 할지 예측할 수 없어진다.
+    /// 펫으로는 마스코트를 직접 더블클릭해서 들어간다.
+    var toggled: HUDMode {
+        self == .expanded ? .collapsed : .expanded
     }
 
     /// 카드 배경·테두리를 그리는지. 펫은 캐릭터만 떠 있어야 한다.
     var showsBackdrop: Bool { self != .pet }
+}
+
+/// 펫 모드에서 뒤에 두르는 사용량 링을 언제 보여줄지.
+enum PetRingDisplay: String, CaseIterable, TitledOption {
+    /// 마우스를 올렸을 때만. 평소에는 마스코트만 남는다.
+    case hover
+    /// 늘 보인다.
+    case always
+    /// 보이지 않는다. 사용량은 메뉴바나 설정 창에서 본다.
+    case never
+
+    static let `default` = PetRingDisplay.hover
+
+    var title: String {
+        switch self {
+        case .hover: return "마우스를 올리면"
+        case .always: return "항상 표시"
+        case .never: return "표시 안 함"
+        }
+    }
 }
 
 /// HUD 전체 크기.
@@ -120,6 +140,14 @@ final class HUDSettings: ObservableObject {
 
     var isCollapsed: Bool { mode == .collapsed }
 
+    @Published var petRingDisplay: PetRingDisplay {
+        didSet { defaults.set(petRingDisplay.rawValue, forKey: Keys.petRingDisplay) }
+    }
+
+    /// 펫 모드로 들어가기 직전의 보기. 나올 때 여기로 돌아간다.
+    /// 접어 두고 쓰다 펫에 들렀는데 나올 때 펼쳐져 있으면 놀란다.
+    @Published var modeBeforePet: HUDMode = .expanded
+
     @Published var isHUDVisible: Bool {
         didSet { defaults.set(!isHUDVisible, forKey: Keys.hidden) }
     }
@@ -178,6 +206,7 @@ final class HUDSettings: ObservableObject {
         static let hidden = "hud.hidden"
         static let expandSide = "hud.expandSide"
         static let scale = "hud.scale"
+        static let petRingDisplay = "hud.petRingDisplay"
         // 기본값을 켜짐으로 두려고 반대 의미로 저장한다.
         static let updateCheckOff = "hud.updateCheckOff"
         static let backdropOpacity = "hud.backdropOpacity"
@@ -199,6 +228,8 @@ final class HUDSettings: ObservableObject {
         isHUDVisible = !defaults.bool(forKey: Keys.hidden)
         expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
         scale = HUDScale(rawValue: defaults.string(forKey: Keys.scale) ?? "") ?? .default
+        petRingDisplay = PetRingDisplay(rawValue: defaults.string(forKey: Keys.petRingDisplay) ?? "")
+            ?? .default
         checksForUpdates = !defaults.bool(forKey: Keys.updateCheckOff)
         let stored = defaults.object(forKey: Keys.backdropOpacity) as? Double
         backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
