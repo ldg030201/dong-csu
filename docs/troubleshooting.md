@@ -1,0 +1,84 @@
+# 문제 해결
+
+[← README](../README.md)
+
+## 완전히 지우고 다시 설치
+
+옛 버전에서 올라오다 꼬였을 때 쓴다. **이 한 줄로 지우는 것부터 다시 설치까지 끝난다.**
+
+```bash
+pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap https://github.com/ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*; brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+```
+
+지우기만 하려면 `rm -f ~/Library/Caches/Homebrew/dong-mcu*` 까지만 실행한다.
+
+| 지우는 것 | 왜 |
+| --- | --- |
+| 실행 중인 앱 | 파일을 지우는 동안 떠 있으면 안 된다 |
+| `/Applications/DongMCU.app` | 복사본 |
+| `/Applications/dong-mcu.app` | 1.0.0 이전의 옛 이름. 심볼릭 링크였다면 깨진 채 남아 있다 |
+| brew 패키지 · tap · trust | tap이 남아 있으면 옛 formula를 계속 쓴다 |
+| Homebrew 캐시 | 받아둔 tarball. `sha256 mismatch`의 원인 대부분이 이것이다 |
+
+지우는 부분은 `;`로, 설치하는 부분은 `&&`로 이었다. 이미 없는 것을 지우다 실패해도 나머지
+정리는 계속돼야 하지만, 설치는 앞 단계가 성공해야 다음으로 넘어가야 하기 때문이다.
+
+설정(창 위치·아이콘·크기)은 지워지지 않고 재설치하면 복원된다.
+그것까지 밀려면 `defaults delete com.ldg.dong-mcu`.
+
+---
+
+## 증상별
+
+### `already installed and up-to-date`
+
+`brew update`가 빠졌다. tap 저장소가 갱신되지 않아 옛 formula를 보고 있는 것이다.
+설치 명령을 다시 실행하는 게 아니라 **업데이트 명령**을 써야 한다.
+
+```bash
+brew update && brew upgrade dong-mcu
+```
+
+### `sha256 mismatch`
+
+받아둔 tarball이 캐시에 남아 있는 경우가 대부분이다.
+
+```bash
+rm -f ~/Library/Caches/Homebrew/dong-mcu* && brew update && brew install dong-mcu
+```
+
+### Launchpad·Spotlight에 안 보인다
+
+`ln -s`로 심볼릭 링크를 걸었을 때 그렇다. macOS는 `/Applications` 안의 심볼릭 링크를 앱으로
+등록하지 않는다. 링크를 지우고 복사한다.
+
+```bash
+rm -rf /Applications/DongMCU.app && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/
+```
+
+### 업그레이드했는데 옛 버전이 뜬다
+
+`/Applications`에 있는 건 복사본이라 `brew upgrade`로 갱신되지 않는다. 다시 복사한다.
+
+```bash
+rm -rf /Applications/DongMCU.app && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+```
+
+### 앱이 뜨지 않는다 / 아무 데도 안 보인다
+
+Dock 아이콘이 없는 앱이라 **메뉴바에만** 뜬다. 부엉이 아이콘을 찾는다.
+그래도 없으면 실행 여부부터 확인한다.
+
+```bash
+pgrep -fl DongMCU
+```
+
+### 숫자가 흐려지고 `재로그인 필요`가 뜬다
+
+Claude Code의 토큰이 만료됐다. 메뉴의 `Claude Code 재로그인…`을 누르면 터미널에서
+로그인 플로우가 열린다. 자세한 내용은 [사용량과 토큰](privacy.md).
+
+### keychain 접근을 계속 묻는다
+
+첫 실행 때 **"항상 허용"** 을 눌러야 다시 묻지 않는다. `/usr/bin/security`로 읽기 때문에
+한 번 허용해 두면 앱을 다시 빌드해도 권한이 유지된다.
