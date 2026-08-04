@@ -44,6 +44,13 @@ final class HUDInteractionView: NSView {
     /// 버튼 묶음과 업데이트 배지처럼 눌려야 하는 자리들이 들어온다.
     var passThroughRects: [CGRect] = []
 
+    /// 이 사각형 안에서만 마우스를 받는다. nil이면 뷰 전체가 대상이다.
+    /// 펫 모드는 창 대부분이 투명해서, 전부 받으면 빈 자리를 눌러도 클릭이 먹는다.
+    var liveRect: CGRect?
+
+    /// 마스코트 위에 마우스가 올라오고 나갈 때. 추적 영역을 걸어야 불린다.
+    var onHoverChanged: (@MainActor (Bool) -> Void)?
+
     /// 마우스와 창 원점 사이의 간격. 드래그 내내 이 값을 유지한다.
     private var dragOffset: CGSize?
 
@@ -56,9 +63,13 @@ final class HUDInteractionView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         // point는 superview 좌표계로 들어온다.
         let local = convert(point, from: superview)
+        if let liveRect, !liveRect.contains(local) { return nil }
         if passThroughRects.contains(where: { $0.contains(local) }) { return nil }
         return super.hitTest(point)
     }
+
+    override func mouseEntered(with event: NSEvent) { onHoverChanged?(true) }
+    override func mouseExited(with event: NSEvent) { onHoverChanged?(false) }
 
     override func mouseDown(with event: NSEvent) {
         // 더블클릭으로 접었다 폈다 한다. 이때는 드래그를 시작하지 않는다.
@@ -148,7 +159,7 @@ final class HUDController {
     private static let originYKey = "hud.origin.y"
     private static let margin: CGFloat = 16
 
-    private var isCollapsed: Bool { settings.isCollapsed }
+    private var mode: HUDMode { settings.mode }
     private var iconStyle: ClaudeIconStyle { settings.iconStyle }
     private var appearance: HUDAppearance { settings.appearance }
     private var scale: CGFloat { settings.scale.factor }
@@ -159,7 +170,7 @@ final class HUDController {
         self.updates = updates
 
         let size = UsageHUDView.size(
-            collapsed: settings.isCollapsed,
+            mode: settings.mode,
             showsStats: settings.showsProcessStats,
             scale: settings.scale.factor
         )
@@ -182,7 +193,7 @@ final class HUDController {
         container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(
-            collapsed: settings.isCollapsed,
+            mode: settings.mode,
             scale: settings.scale.factor
         )
         container.layer?.masksToBounds = true
@@ -201,7 +212,7 @@ final class HUDController {
                 store: store,
                 iconStyle: settings.iconStyle,
                 showsCountdown: false,
-                isCollapsed: settings.isCollapsed,
+                mode: settings.mode,
                 palette: HUDPalette(isDark: true),
                 scale: settings.scale.factor,
                 owlAnimator: owlAnimator
@@ -214,7 +225,7 @@ final class HUDController {
         // 시작 시점에는 아직 업데이트를 확인하기 전이라 버튼 영역만 넣는다.
         interactionView.passThroughRects = [
             UsageHUDView.controlsHitRectInPanel(
-                collapsed: settings.isCollapsed,
+                mode: settings.mode,
                 side: settings.expandSide,
                 showsStats: settings.showsProcessStats,
                 scale: settings.scale.factor
@@ -236,6 +247,9 @@ final class HUDController {
         interactionView.onDragVelocity = { [weak self] velocity in
             self?.owlAnimator.setDragVelocity(velocity)
         }
+        interactionView.onHoverChanged = { [weak self] hovering in
+            self?.setPetHover(hovering)
+        }
         interactionView.onDragEnded = { [weak self] in
             guard let self else { return }
             self.saveOrigin()
@@ -248,6 +262,8 @@ final class HUDController {
 
         applyAppearance()
         layoutHosting(for: size)
+        refreshPassThroughRects()
+        refreshTrackingArea()
         syncUsageMonitor(visible: true)
         syncOwlAnimator(visible: true)
         refreshMood()
@@ -296,12 +312,12 @@ final class HUDController {
             $0.syncOwlAnimator()
             $0.rebuildRootView()
         }
-        observe(settings.$isCollapsed) { $0.applyCollapsed() }
+        observe(settings.$mode) { $0.applyMode() }
         observe(settings.$isHUDVisible) { $0.applyHUDVisible() }
         observe(settings.$expandSide) { $0.applyExpandSide() }
         observe(settings.$showsProcessStats) { $0.applyProcessStats() }
         // 배율은 창 크기·모서리·클릭 영역까지 바꾼다. 접기와 같은 경로를 탄다.
-        observe(settings.$scale) { $0.applyCollapsed() }
+        observe(settings.$scale) { $0.applyMode() }
         // 새 버전이 잡히면 표시를 띄우고 그 자리를 클릭 통과 영역에 더한다.
         observe(updates.$remoteEntries) {
             $0.refreshPassThroughRects()
@@ -365,14 +381,14 @@ final class HUDController {
     /// 자원 사용량 표시를 켜고 끈다. 크기까지 바뀌므로 레이아웃도 다시 잡는다.
     private func applyProcessStats() {
         syncUsageMonitor()
-        applyCollapsed()
+        applyMode()
     }
 
     /// 보이지도 않는데 표본을 뜰 이유가 없다. 조건이 바뀌는 자리마다 이걸 부른다.
     private func syncUsageMonitor(visible: Bool? = nil) {
         let isVisible = visible ?? panel.isVisible
 
-        if settings.showsProcessStats, isVisible, !settings.isCollapsed {
+        if settings.showsProcessStats, isVisible, settings.mode == .expanded {
             usageMonitor.start()
         } else {
             usageMonitor.stop()
@@ -411,7 +427,7 @@ final class HUDController {
         refreshPassThroughRects()
         rebuildRootView()
         layoutHosting(for: UsageHUDView.size(
-            collapsed: settings.isCollapsed,
+            mode: settings.mode,
             showsStats: settings.showsProcessStats,
             scale: scale
         ))
@@ -584,14 +600,11 @@ final class HUDController {
         }
         menu.addItem(login)
 
-        let collapse = NSMenuItem(
-            title: isCollapsed ? "펼치기" : "접기",
-            action: #selector(handleToggleCollapse),
-            keyEquivalent: ""
-        )
-        collapse.target = self
-        collapse.isEnabled = panel.isVisible
-        menu.addItem(collapse)
+        let modeItem = choiceMenu("보기", values: HUDMode.allCases, current: mode) { [weak self] in
+            self?.settings.mode = $0
+        }
+        modeItem.isEnabled = panel.isVisible
+        menu.addItem(modeItem)
 
         let toggle = NSMenuItem(
             title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
@@ -675,8 +688,17 @@ final class HUDController {
     private func applyAppearance() {
         panel.appearance = appearance.nsAppearance
         let palette = HUDPalette(isDark: appearance.isDark)
-        backdrop.layer?.backgroundColor = palette.backdrop(opacity: settings.backdropOpacity).cgColor
-        container.layer?.borderColor = palette.border.cgColor
+
+        // 펫은 마스코트만 떠 있어야 해서 카드 배경·테두리·창 그림자를 모두 지운다.
+        // 창 그림자는 내용이 바뀔 때마다 invalidateShadow()를 불러야 맞는데, 프레임마다
+        // 움직이는 그림에 그걸 걸면 비싸다. 마스코트가 자기 그림자를 갖고 있어서 없어도 된다.
+        let showsBackdrop = mode.showsBackdrop
+        backdrop.layer?.backgroundColor = showsBackdrop
+            ? palette.backdrop(opacity: settings.backdropOpacity).cgColor
+            : NSColor.clear.cgColor
+        container.layer?.borderColor = showsBackdrop ? palette.border.cgColor : NSColor.clear.cgColor
+        panel.hasShadow = showsBackdrop
+
         rebuildRootView()
     }
 
@@ -687,18 +709,19 @@ final class HUDController {
     }
 
     @objc private func handleToggleCollapse() {
-        settings.isCollapsed.toggle()
+        // 더블클릭은 펼침 → 링만 → 펫 → 펼침 으로 돈다.
+        settings.mode = settings.mode.next
     }
 
     @objc private func handleOpenSettings() {
         onOpenSettings?()
     }
 
-    /// 접거나 펼친다. 오른쪽 위 모서리를 붙잡아 두어서 크기가 바뀌어도 자리가 튀지 않는다.
-    private func applyCollapsed() {
-        let collapsed = settings.isCollapsed
+    /// 보기를 바꾼다. 오른쪽 위 모서리를 붙잡아 두어서 크기가 바뀌어도 자리가 튀지 않는다.
+    private func applyMode() {
+        let mode = settings.mode
         let newSize = UsageHUDView.size(
-            collapsed: collapsed,
+            mode: mode,
             showsStats: settings.showsProcessStats,
             scale: scale
         )
@@ -707,11 +730,16 @@ final class HUDController {
         // 애니메이션 도중에 표본이 갱신되면 화면이 다시 배치되면서 끊겨 보인다.
         // 잠시 멈추고 끝난 뒤에 다시 맞춘다.
         usageMonitor.stop()
-        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed, scale: scale)
+        container.layer?.cornerRadius = UsageHUDView.cornerRadius(mode: mode, scale: scale)
+        isHoveringPet = false
+        applyAppearance()
         refreshPassThroughRects()
+        refreshTrackingArea()
 
-        if collapsed {
-            // 접을 때는 펼친 내용을 그대로 둔 채 창만 줄여서, 서랍이 밀려 들어가는 것처럼 보이게 한다.
+        // 작아질 때는 옛 내용을 그대로 둔 채 창만 줄여서 서랍이 밀려 들어가는 것처럼 보이게 하고,
+        // 커질 때는 새 내용을 먼저 깔아두고 창을 키워서 드러나게 한다.
+        let shrinking = newSize.width < panel.frame.width
+        if shrinking {
             animate(to: target) { [weak self] in
                 guard let self else { return }
                 self.rebuildRootView()
@@ -720,7 +748,6 @@ final class HUDController {
                 self.syncUsageMonitor()
             }
         } else {
-            // 펼칠 때는 내용을 먼저 깔아두고 창을 키워서 드러나게 한다.
             rebuildRootView()
             layoutHosting(for: newSize)
             animate(to: target) { [weak self] in
@@ -728,6 +755,38 @@ final class HUDController {
                 self?.syncUsageMonitor()
             }
         }
+    }
+
+    // MARK: - 펫 호버
+
+    /// 펫 모드에서 마스코트 위에 마우스가 있는지. 그동안만 뒤에 링이 드러난다.
+    private var isHoveringPet = false
+    private var trackingArea: NSTrackingArea?
+
+    /// 호버를 감시할 영역을 지금 모드에 맞춘다. 펫이 아니면 아예 걸지 않는다.
+    private func refreshTrackingArea() {
+        if let trackingArea {
+            interactionView.removeTrackingArea(trackingArea)
+            self.trackingArea = nil
+        }
+        guard settings.mode == .pet else { return }
+
+        let area = NSTrackingArea(
+            rect: UsageHUDView.petHitRect(scale: scale),
+            // activeAlways가 아니면 이 앱이 앞에 없을 때 호버가 잡히지 않는다.
+            // HUD는 절대 활성화되지 않는 창이라 그 경우가 사실상 전부다.
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: interactionView,
+            userInfo: nil
+        )
+        interactionView.addTrackingArea(area)
+        trackingArea = area
+    }
+
+    private func setPetHover(_ hovering: Bool) {
+        guard isHoveringPet != hovering else { return }
+        isHoveringPet = hovering
+        rebuildRootView()
     }
 
     private func applyHUDVisible() {
@@ -747,10 +806,10 @@ final class HUDController {
     /// 드래그 오버레이가 클릭을 삼키지 않을 자리들을 다시 계산한다.
     /// 버튼 묶음은 항상, 업데이트 표시는 새 버전이 있을 때만 넣는다.
     private func refreshPassThroughRects() {
-        let collapsed = settings.isCollapsed
+        let mode = settings.mode
         var rects = [
             UsageHUDView.controlsHitRectInPanel(
-                collapsed: collapsed,
+                mode: mode,
                 side: settings.expandSide,
                 showsStats: settings.showsProcessStats,
                 scale: scale
@@ -759,7 +818,7 @@ final class HUDController {
         if updates.hasUpdate {
             rects.append(
                 UsageHUDView.updateBadgeRectInPanel(
-                    collapsed: collapsed,
+                    mode: mode,
                     side: settings.expandSide,
                     showsStats: settings.showsProcessStats,
                     scale: scale
@@ -767,6 +826,8 @@ final class HUDController {
             )
         }
         interactionView.passThroughRects = rects
+        // 펫은 창 대부분이 투명하다. 마스코트가 있는 자리만 마우스를 받게 좁힌다.
+        interactionView.liveRect = mode == .pet ? UsageHUDView.petHitRect(scale: scale) : nil
     }
 
     /// 표시 상태가 바뀌면 뷰를 다시 만든다. 숨겨져 있는 동안 카운트다운의 1초 타이머를 끄기 위해서다.
@@ -774,8 +835,9 @@ final class HUDController {
         hosting.rootView = UsageHUDView(
             store: store,
             iconStyle: iconStyle,
-            showsCountdown: panel.isVisible && !isCollapsed,
-            isCollapsed: isCollapsed,
+            showsCountdown: panel.isVisible && mode == .expanded,
+            mode: mode,
+            isHovered: isHoveringPet,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
             onToggleCollapse: { [weak self] in self?.handleToggleCollapse() },
@@ -783,7 +845,7 @@ final class HUDController {
             // 표본 타이머가 도는지가 아니라 "표시 설정"을 봐야 한다.
             // 접기 애니메이션 동안에는 타이머를 잠시 멈추는데, 그때 뷰를 다시 만들면
             // 줄이 통째로 사라져서 펼친 뒤에도 안 보였다.
-            usageMonitor: settings.showsProcessStats && !isCollapsed ? usageMonitor : nil,
+            usageMonitor: settings.showsProcessStats && mode == .expanded ? usageMonitor : nil,
             scale: scale,
             showsUpdateBadge: updates.hasUpdate,
             onOpenUpdates: { [weak self] in self?.openUpdates() },

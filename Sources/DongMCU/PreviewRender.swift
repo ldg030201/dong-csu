@@ -157,7 +157,8 @@ enum HUDPreviewRenderer {
         utilization: (session: Double, weekly: Double),
         iconStyle: ClaudeIconStyle,
         state: State,
-        collapsed: Bool = false,
+        mode: HUDMode = .expanded,
+        isHovered: Bool = false,
         isDark: Bool = true,
         side: HUDExpandSide = .right,
         opacity: Double = 0.92,
@@ -195,7 +196,8 @@ enum HUDPreviewRenderer {
         let content = UsageHUDView(
             store: store,
             iconStyle: iconStyle,
-            isCollapsed: collapsed,
+            mode: mode,
+            isHovered: isHovered,
             palette: palette,
             expandSide: side,
             usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil,
@@ -206,12 +208,15 @@ enum HUDPreviewRenderer {
             .background {
                 ZStack {
                     Color(white: isDark ? 0.42 : 0.55)
-                    Color(nsColor: palette.backdrop(opacity: opacity))
+                    // 펫은 카드 배경이 없다. 바탕만 깔아서 데스크톱 위에 얹힌 모습을 흉내낸다.
+                    if mode.showsBackdrop {
+                        Color(nsColor: palette.backdrop(opacity: opacity))
+                    }
                 }
             }
             .clipShape(
                 RoundedRectangle(
-                    cornerRadius: UsageHUDView.cornerRadius(collapsed: collapsed, scale: scale.factor),
+                    cornerRadius: UsageHUDView.cornerRadius(mode: mode, scale: scale.factor),
                     style: .continuous
                 )
             )

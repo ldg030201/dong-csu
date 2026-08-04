@@ -18,6 +18,38 @@ enum HUDExpandSide: String, CaseIterable {
     }
 }
 
+/// HUD가 얼마나 보일지. 더블클릭하면 이 순서로 돈다.
+enum HUDMode: String, CaseIterable, TitledOption {
+    /// 링 + 사용량 숫자.
+    case expanded
+    /// 링만. 접힌 링을 손잡이 삼아 서랍처럼 열린다.
+    case collapsed
+    /// 마스코트만. 배경도 링도 없이 캐릭터 하나만 떠 있는다.
+    case pet
+
+    static let `default` = HUDMode.expanded
+
+    var title: String {
+        switch self {
+        case .expanded: return "펼침"
+        case .collapsed: return "링만"
+        case .pet: return "펫"
+        }
+    }
+
+    /// 더블클릭했을 때 넘어갈 다음 모드.
+    var next: HUDMode {
+        switch self {
+        case .expanded: return .collapsed
+        case .collapsed: return .pet
+        case .pet: return .expanded
+        }
+    }
+
+    /// 카드 배경·테두리를 그리는지. 펫은 캐릭터만 떠 있어야 한다.
+    var showsBackdrop: Bool { self != .pet }
+}
+
 /// HUD 전체 크기.
 ///
 /// 치수와 글자 크기에 이 배율을 곱한다. `scaleEffect`로 확대하지 않는 이유는
@@ -82,9 +114,11 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(iconStyle.rawValue, forKey: Keys.iconStyle) }
     }
 
-    @Published var isCollapsed: Bool {
-        didSet { defaults.set(isCollapsed, forKey: Keys.collapsed) }
+    @Published var mode: HUDMode {
+        didSet { defaults.set(mode.rawValue, forKey: Keys.mode) }
     }
+
+    var isCollapsed: Bool { mode == .collapsed }
 
     @Published var isHUDVisible: Bool {
         didSet { defaults.set(!isHUDVisible, forKey: Keys.hidden) }
@@ -138,6 +172,8 @@ final class HUDSettings: ObservableObject {
     private enum Keys {
         static let appearance = "hud.appearance"
         static let iconStyle = "hud.iconStyle"
+        static let mode = "hud.mode"
+        /// 모드가 생기기 전에 쓰던 접힘 여부. 새로 저장하지는 않고 읽기만 한다.
         static let collapsed = "hud.collapsed"
         static let hidden = "hud.hidden"
         static let expandSide = "hud.expandSide"
@@ -153,7 +189,13 @@ final class HUDSettings: ObservableObject {
         self.defaults = defaults
         appearance = HUDAppearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .default
         iconStyle = ClaudeIconStyle(rawValue: defaults.string(forKey: Keys.iconStyle) ?? "") ?? .default
-        isCollapsed = defaults.bool(forKey: Keys.collapsed)
+        // 모드가 생기기 전에 접어 두고 쓰던 사람은 그대로 접힌 채로 시작한다.
+        // 이걸 빠뜨리면 업데이트하는 순간 HUD가 제멋대로 펼쳐진다.
+        if let stored = HUDMode(rawValue: defaults.string(forKey: Keys.mode) ?? "") {
+            mode = stored
+        } else {
+            mode = defaults.bool(forKey: Keys.collapsed) ? .collapsed : .default
+        }
         isHUDVisible = !defaults.bool(forKey: Keys.hidden)
         expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
         scale = HUDScale(rawValue: defaults.string(forKey: Keys.scale) ?? "") ?? .default

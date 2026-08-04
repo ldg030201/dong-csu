@@ -9,8 +9,10 @@ struct UsageHUDView: View {
     var iconStyle: ClaudeIconStyle = .default
     /// HUD가 숨겨져 있으면 1초 타이머가 돌 이유가 없다.
     var showsCountdown: Bool = true
-    /// 접힌 상태에서는 링만 남기고 전부 감춘다.
-    var isCollapsed: Bool = false
+    /// 얼마나 보여줄지. 링만 남기거나(collapsed) 마스코트만 남긴다(pet).
+    var mode: HUDMode = .expanded
+    /// 펫 모드에서 마우스가 위에 있는지. 그동안만 뒤에 링이 드러난다.
+    var isHovered: Bool = false
     var palette = HUDPalette(isDark: true)
     /// 설정 창 열기. HUDController가 꽂아준다.
     var onOpenSettings: (() -> Void)?
@@ -47,26 +49,57 @@ struct UsageHUDView: View {
     static let baseStatsRowHeight: CGFloat = 17
     /// 접은 모습: 링 + 오른쪽에 버튼 세 개가 세로로 붙는다.
     static let baseCollapsedSize = CGSize(width: 108, height: 88)
+    /// 펫 모습: 마스코트 하나. 마우스를 올리면 뒤에 링이 드러나므로,
+    /// 창은 링이 들어갈 만큼 잡아 두고 평소에는 그 안이 비어 있다.
+    /// 창을 늘였다 줄이면 마우스가 창 밖으로 밀려나 호버가 끊긴다.
+    static let basePetSize = CGSize(width: 84, height: 84)
+    /// 호버할 때 뒤에 드러나는 링의 바깥 지름.
+    static let basePetRingDiameter: CGFloat = 78
 
-    static func size(collapsed: Bool, showsStats: Bool = false, scale: CGFloat = 1) -> CGSize {
+    static func size(mode: HUDMode, showsStats: Bool = false, scale: CGFloat = 1) -> CGSize {
+        func scaled(_ size: CGSize) -> CGSize {
+            CGSize(width: size.width * scale, height: size.height * scale)
+        }
+        switch mode {
+        case .pet: return scaled(basePetSize)
         // 접은 상태에는 자리가 없어서 자원 사용량을 붙이지 않는다.
-        guard !collapsed else {
+        case .collapsed: return scaled(baseCollapsedSize)
+        case .expanded:
+            let expanded = scaled(baseExpandedSize)
+            guard showsStats else { return expanded }
             return CGSize(
-                width: baseCollapsedSize.width * scale,
-                height: baseCollapsedSize.height * scale
+                width: expanded.width,
+                height: expanded.height + baseStatsRowHeight * scale
             )
         }
-        let expanded = CGSize(
-            width: baseExpandedSize.width * scale,
-            height: baseExpandedSize.height * scale
-        )
-        guard showsStats else { return expanded }
-        return CGSize(width: expanded.width, height: expanded.height + baseStatsRowHeight * scale)
     }
 
-    static func cornerRadius(collapsed: Bool, scale: CGFloat = 1) -> CGFloat {
-        (collapsed ? 26 : 20) * scale
+    static func cornerRadius(mode: HUDMode, scale: CGFloat = 1) -> CGFloat {
+        switch mode {
+        // 배경이 없으니 깎을 모서리도 없다. 남겨 두면 링 가장자리가 잘린다.
+        case .pet: return 0
+        case .collapsed: return 26 * scale
+        case .expanded: return 20 * scale
+        }
     }
+
+    /// 펫 모드에서 클릭·호버를 받는 자리. 창 가운데의 링만큼이다.
+    ///
+    /// 창 전체를 받으면 투명한 네 귀퉁이에서도 클릭이 먹혀서 뒤에 있는 창을 누를 수 없다.
+    /// 반대로 마스코트 크기로만 잡으면, 호버해서 링이 뜬 순간 커서를 링 쪽으로 조금만
+    /// 옮겨도 영역을 벗어나 링이 사라진다.
+    static func petHitRect(scale: CGFloat) -> CGRect {
+        let panel = size(mode: .pet, scale: scale)
+        let side = basePetRingDiameter * scale
+        return CGRect(
+            x: (panel.width - side) / 2,
+            y: (panel.height - side) / 2,
+            width: side,
+            height: side
+        )
+    }
+
+    static func petOwlHeight(scale: CGFloat) -> CGFloat { 46 * scale }
 
     /// 새로고침 버튼 자리. 이 영역만 드래그 오버레이가 클릭을 통과시킨다.
     static func refreshInset(scale: CGFloat) -> CGFloat { 4 * scale }
@@ -79,17 +112,20 @@ struct UsageHUDView: View {
     /// 17pt 커지는데, 그때 펼친 기본 높이(88)로 계산하면 영역이 그만큼 아래로 밀려서
     /// 버튼을 눌러도 클릭이 통과되지 않는다.
     static func controlsHitRectInPanel(
-        collapsed: Bool,
+        mode: HUDMode,
         side: HUDExpandSide,
         showsStats: Bool,
         scale: CGFloat = 1
     ) -> CGRect {
+        // 펫에는 버튼이 없다. 빈 사각형을 주면 어떤 클릭도 여기 걸리지 않는다.
+        guard mode != .pet else { return .zero }
+
         let button = refreshHitSize(scale: scale)
-        let panel = size(collapsed: collapsed, showsStats: showsStats, scale: scale)
+        let panel = size(mode: mode, showsStats: showsStats, scale: scale)
         let trailing = collapsedTrailing(scale: scale)
         let inset = refreshInset(scale: scale)
 
-        if collapsed {
+        if mode == .collapsed {
             let height = button * 3
             let x = side == .right ? panel.width - trailing - button : trailing
             return CGRect(
@@ -118,14 +154,14 @@ struct UsageHUDView: View {
     /// 업데이트 표시 자리. 버튼 묶음 반대편 위 모서리에 둔다.
     /// 기본 설정(오른쪽으로 펼치기)에서는 왼쪽 위가 된다.
     static func updateBadgeRectInPanel(
-        collapsed: Bool,
+        mode: HUDMode,
         side: HUDExpandSide,
         showsStats: Bool,
         scale: CGFloat = 1
     ) -> CGRect {
         let badge = updateBadgeSize(scale: scale)
         let inset = refreshInset(scale: scale)
-        let panel = size(collapsed: collapsed, showsStats: showsStats, scale: scale)
+        let panel = size(mode: mode, showsStats: showsStats, scale: scale)
         let x = side == .right ? inset : panel.width - inset - badge
         return CGRect(x: x, y: panel.height - inset - badge, width: badge, height: badge)
     }
@@ -139,11 +175,39 @@ struct UsageHUDView: View {
     private var innerLineWidth: CGFloat { s(5) }
 
     var body: some View {
-        if isCollapsed {
-            collapsedBody
-        } else {
-            expandedBody
+        switch mode {
+        case .pet: petBody
+        case .collapsed: collapsedBody
+        case .expanded: expandedBody
         }
+    }
+
+    /// 펫 모습: 마스코트만. 마우스를 올리면 뒤에서 링이 떠오른다.
+    ///
+    /// 창 크기는 링에 맞춰 두고 마스코트를 가운데 놓는다. 호버할 때 창을 늘리면
+    /// 커서가 창 밖으로 밀려나 호버가 끊기고, 그 자리에서 켜졌다 꺼졌다 한다.
+    private var petBody: some View {
+        ZStack {
+            ringPair(
+                diameter: s(Self.basePetRingDiameter),
+                outerWidth: s(5),
+                innerWidth: s(4)
+            )
+            .opacity(isHovered ? (store.isStale ? 0.4 : 0.95) : 0)
+            .animation(.easeOut(duration: 0.18), value: isHovered)
+
+            ClaudeIconView(
+                style: iconStyle,
+                size: Self.petOwlHeight(scale: scale),
+                eyeColor: palette.markEye,
+                owlAnimator: owlAnimator
+            )
+        }
+        .frame(
+            width: Self.size(mode: .pet, scale: scale).width,
+            height: Self.size(mode: .pet, scale: scale).height
+        )
+        .help(store.summaryText)
     }
 
     /// 접힌 모습: 링 + 세로 버튼 열. 버튼은 펼쳐질 방향 쪽에 붙는다.
@@ -160,8 +224,8 @@ struct UsageHUDView: View {
         .padding(.leading, expandSide == .right ? s(12) : Self.collapsedTrailing(scale: scale))
         .padding(.trailing, expandSide == .right ? Self.collapsedTrailing(scale: scale) : s(12))
         .frame(
-            width: Self.size(collapsed: true, scale: scale).width,
-            height: Self.size(collapsed: true, scale: scale).height
+            width: Self.size(mode: .collapsed, scale: scale).width,
+            height: Self.size(mode: .collapsed, scale: scale).height
         )
         .overlay(alignment: badgeAlignment) { updateBadge }
     }
@@ -189,7 +253,7 @@ struct UsageHUDView: View {
         }
         .frame(
             width: s(Self.baseExpandedSize.width),
-            height: Self.size(collapsed: false, showsStats: usageMonitor != nil, scale: scale).height
+            height: Self.size(mode: .expanded, showsStats: usageMonitor != nil, scale: scale).height
         )
     }
 
@@ -364,7 +428,7 @@ struct UsageHUDView: View {
         }
         .buttonStyle(.plain)
         .onHover { isHoveringCollapse = $0 }
-        .help(isCollapsed ? "펼치기" : "접기")
+        .help(mode.next.title + "(으)로")
     }
 
     private var settingsButton: some View {
@@ -384,7 +448,7 @@ struct UsageHUDView: View {
 
     /// 눌렀을 때 패널이 움직일 방향을 가리킨다.
     private var chevronName: String {
-        (isCollapsed == (expandSide == .right)) ? "chevron.right" : "chevron.left"
+        ((mode == .collapsed) == (expandSide == .right)) ? "chevron.right" : "chevron.left"
     }
 
     private func controlLabel(systemName: String, tint: Color, hovering: Bool) -> some View {
@@ -434,20 +498,43 @@ struct UsageHUDView: View {
     // MARK: - 링
 
     private var rings: some View {
-        // 안쪽 링은 바깥 링 두께(양쪽) + 간격만큼 줄인다.
-        let innerDiameter = ringDiameter - outerLineWidth * 2 - s(7)
-
-        return ZStack {
-            ring(window: store.snapshot?.fiveHour, diameter: ringDiameter, lineWidth: outerLineWidth)
-            ring(window: store.snapshot?.sevenDay, diameter: innerDiameter, lineWidth: innerLineWidth)
+        ZStack {
+            ringPair(diameter: ringDiameter, outerWidth: outerLineWidth, innerWidth: innerLineWidth)
             ClaudeIconView(
                 style: iconStyle,
-                size: innerDiameter - innerLineWidth * 2 - s(4),
+                size: Self.innerDiameter(
+                    outer: ringDiameter,
+                    outerWidth: outerLineWidth,
+                    gap: s(7)
+                ) - innerLineWidth * 2 - s(4),
                 eyeColor: palette.markEye,
                 owlAnimator: owlAnimator
             )
         }
         .frame(width: ringDiameter, height: ringDiameter)
+    }
+
+    /// 안쪽 링은 바깥 링 두께(양쪽) + 간격만큼 줄인다.
+    private static func innerDiameter(
+        outer: CGFloat,
+        outerWidth: CGFloat,
+        gap: CGFloat
+    ) -> CGFloat {
+        outer - outerWidth * 2 - gap
+    }
+
+    /// 링 두 개만. 펫 모드는 가운데 아이콘을 따로 크게 그리므로 여기 붙이지 않는다.
+    private func ringPair(
+        diameter: CGFloat,
+        outerWidth: CGFloat,
+        innerWidth: CGFloat
+    ) -> some View {
+        let inner = Self.innerDiameter(outer: diameter, outerWidth: outerWidth, gap: s(7))
+        return ZStack {
+            ring(window: store.snapshot?.fiveHour, diameter: diameter, lineWidth: outerWidth)
+            ring(window: store.snapshot?.sevenDay, diameter: inner, lineWidth: innerWidth)
+        }
+        .frame(width: diameter, height: diameter)
     }
 
     private func ring(window: UsageWindow?, diameter: CGFloat, lineWidth: CGFloat) -> some View {

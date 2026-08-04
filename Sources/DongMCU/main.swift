@@ -147,7 +147,9 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
         : .ok
 
     let extras = arguments.dropFirst(flagIndex + 5)
-    let collapsed = extras.contains("collapsed")
+    let mode: HUDMode = extras.compactMap(HUDMode.init(rawValue:)).first ?? .expanded
+    // 펫에 마우스를 올린 모습(뒤에 링이 뜬 상태)을 그린다.
+    let isHovered = extras.contains("hover")
     let isDark = !extras.contains("light")
     let side: HUDExpandSide = extras.contains("expandLeft") ? .left : .right
     // 0~1 사이 숫자를 하나 끼워 넣으면 배경 불투명도로 쓴다.
@@ -164,7 +166,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
             utilization: (session, weekly),
             iconStyle: iconStyle,
             state: state,
-            collapsed: collapsed,
+            mode: mode,
+            isHovered: isHovered,
             isDark: isDark,
             side: side,
             opacity: opacity,

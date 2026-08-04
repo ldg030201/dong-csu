@@ -276,16 +276,19 @@ struct SettingsView: View {
             }
 
             Toggle("아래 줄에 CPU·메모리 표시", isOn: $settings.showsProcessStats)
-                .disabled(!settings.isHUDVisible || settings.isCollapsed)
+                .disabled(!settings.isHUDVisible || settings.mode != .expanded)
 
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
-            Toggle("접어서 링만 보기", isOn: $settings.isCollapsed)
-                .disabled(!settings.isHUDVisible)
+            Picker("보기", selection: $settings.mode) {
+                ForEach(HUDMode.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .disabled(!settings.isHUDVisible)
 
             HStack {
                 Button("위치 초기화", action: actions.resetPosition)
                     .disabled(!settings.isHUDVisible)
-                Text("HUD는 드래그로 옮길 수 있고, 더블클릭하면 접힌다.")
+                Text("HUD는 드래그로 옮길 수 있고, 더블클릭하면 보기가 넘어간다.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
