@@ -82,11 +82,27 @@ dong-mcu --render-settings out.png changelog   # 설정 창의 특정 탭
 dong-mcu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-mcu --render-icon out.png 1024            # 앱 아이콘
 dong-mcu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임
+dong-mcu --render-owl-gif docs/characters/owl  # 기분마다 움직이는 GIF (문서용)
 ```
 
 `--render-owl`은 기분별 프레임을 한 장에 늘어놓는다. 자세를 고칠 때 앱을 띄우고
 몇 초씩 기다리지 말고 이걸로 본다. 다만 **크기가 달라 보인다는 인상은 재지 말고
 픽셀로 확인한다** — 주저앉은 자세는 다리가 몸에 가려져 실제로 한 칸 짧다.
+
+**자세나 프레임 시간을 고쳤으면 `--render-owl-gif`를 다시 돌린다.** 캐릭터 문서의
+GIF가 실제 애니메이션과 어긋나면 안 된다. GIF는 손으로 만들지 않는다.
+
+## 캐릭터
+
+캐릭터마다 [`docs/characters/`](docs/characters/) 아래에 문서가 하나씩 있다.
+**새 캐릭터를 만들면 문서도 만들고 목록에 한 줄 더한다.** 그리드·팔레트·기분 설명은
+`Sources/`가 아니라 거기에 쓴다.
+
+## 성능을 숫자로 말할 때
+
+**폴링이 도는 동안 잰 CPU는 못 믿는다.** 사용량 조회 한 번이 애니메이션 몇 분 치보다
+비싸서, 창 안에 조회가 들어갔는지에 따라 부호까지 뒤집힌다. 비교할 때는 조회 주기를
+길게 막고, **같은 앱에서 조건만 바꿔** 여러 창을 번갈아 잰다.
 
 `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은
 `isPreviewRender`로 스크롤을 벗긴 형태를 따로 그린다.

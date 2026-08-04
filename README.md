@@ -27,7 +27,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 - 🎨 사용률이 오를수록 **초록 → 노랑 → 빨강**으로 연속해서 변한다
 - ⏱️ 초기화까지 남은 시간, 다음 조회까지 남은 시간
 - 🔔 새 버전이 나오면 알려준다
-- 🦉 픽셀 마스코트 부엉이
+- 🦉 **[픽셀 마스코트](docs/characters/README.md)** — 한도가 차면 지치고, 조회가 끊기면 색이 빠진다
 - 🖥️ 모든 Space와 전체화면 위에. Dock 아이콘 없이 메뉴바에만
 
 <table>
@@ -40,6 +40,18 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 <img src="docs/sizes.png" width="430" alt="크기 4단계"><br>
 <sub><b>크기 4단계</b></sub>
 </td>
+</tr>
+</table>
+
+가운데 마스코트는 상태에 따라 움직인다. 자세한 건 **[캐릭터](docs/characters/README.md)**.
+
+<table>
+<tr>
+<td align="center" width="20%"><img src="docs/characters/owl/idle.gif" width="96" alt="평소"><br><sub><b>평소</b></sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 80%↑</sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 95%↑</sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/offline.gif" width="96" alt="끊김"><br><sub><b>끊김</b><br>조회 실패</sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/dragged.gif" width="96" alt="끌림"><br><sub><b>끌림</b><br>드래그 중</sub></td>
 </tr>
 </table>
 
@@ -123,7 +135,8 @@ brew update && brew upgrade dong-mcu && rm -rf /Applications/DongMCU.app && cp -
 | [설치 안내](docs/install.md) | 각 단계 설명, 소스 빌드, 업데이트, 제거 |
 | [문제 해결](docs/troubleshooting.md) | 설치가 꼬였을 때, 앱이 안 뜰 때 |
 | [사용량과 토큰](docs/privacy.md) | 어디서 무엇을 읽는지, 토큰 만료 |
-| [개발](docs/development.md) | 빌드, 렌더 통로, 마스코트 구조 |
+| [캐릭터](docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](docs/characters/owl.md) |
+| [개발](docs/development.md) | 빌드, 렌더 통로 |
 | [작업 규칙](CLAUDE.md) | 버전·변경 내역·커밋 규칙 |
 
 ## 📄 라이선스
