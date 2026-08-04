@@ -23,7 +23,8 @@ enum HUDPreviewRenderer {
         isDark: Bool = true,
         side: HUDExpandSide = .right,
         opacity: Double = 0.92,
-        showsStats: Bool = false
+        showsStats: Bool = false,
+        scale: HUDScale = .normal
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -53,7 +54,8 @@ enum HUDPreviewRenderer {
             isCollapsed: collapsed,
             palette: palette,
             expandSide: side,
-            usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil
+            usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil,
+            scale: scale.factor
         )
             .background {
                 ZStack {
@@ -63,7 +65,7 @@ enum HUDPreviewRenderer {
             }
             .clipShape(
                 RoundedRectangle(
-                    cornerRadius: UsageHUDView.cornerRadius(collapsed: collapsed),
+                    cornerRadius: UsageHUDView.cornerRadius(collapsed: collapsed, scale: scale.factor),
                     style: .continuous
                 )
             )

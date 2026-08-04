@@ -18,6 +18,38 @@ enum HUDExpandSide: String, CaseIterable {
     }
 }
 
+/// HUD 전체 크기.
+///
+/// 치수와 글자 크기에 이 배율을 곱한다. `scaleEffect`로 확대하지 않는 이유는
+/// 마스코트가 픽셀 그림이라 확대하면 흐려지기 때문이다. 배율을 곱해서 다시 그리면
+/// 한 칸도 그만큼 커져서 큰 크기에서 오히려 더 선명해진다.
+enum HUDScale: String, CaseIterable {
+    case small
+    case normal
+    case large
+    case extraLarge
+
+    static let `default` = HUDScale.normal
+
+    var factor: CGFloat {
+        switch self {
+        case .small: return 0.85
+        case .normal: return 1
+        case .large: return 1.25
+        case .extraLarge: return 1.5
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .small: return "작게"
+        case .normal: return "보통"
+        case .large: return "크게"
+        case .extraLarge: return "매우 크게"
+        }
+    }
+}
+
 /// 사용량을 얼마나 자주 조회할지.
 /// 너무 조이면 429가 나므로 임의의 초가 아니라 정해진 값 중에서 고르게 한다.
 enum PollInterval: Int, CaseIterable {
@@ -62,6 +94,10 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(expandSide.rawValue, forKey: Keys.expandSide) }
     }
 
+    @Published var scale: HUDScale {
+        didSet { defaults.set(scale.rawValue, forKey: Keys.scale) }
+    }
+
     /// HUD 배경 불투명도. 너무 투명하면 글자가 안 읽혀서 아래를 막아둔다.
     @Published var backdropOpacity: Double {
         didSet {
@@ -95,6 +131,7 @@ final class HUDSettings: ObservableObject {
         static let collapsed = "hud.collapsed"
         static let hidden = "hud.hidden"
         static let expandSide = "hud.expandSide"
+        static let scale = "hud.scale"
         static let backdropOpacity = "hud.backdropOpacity"
         static let showsProcessStats = "hud.showsProcessStats"
         static let pollInterval = "hud.pollInterval"
@@ -107,6 +144,7 @@ final class HUDSettings: ObservableObject {
         isCollapsed = defaults.bool(forKey: Keys.collapsed)
         isHUDVisible = !defaults.bool(forKey: Keys.hidden)
         expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
+        scale = HUDScale(rawValue: defaults.string(forKey: Keys.scale) ?? "") ?? .default
         let stored = defaults.object(forKey: Keys.backdropOpacity) as? Double
         backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
         showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)

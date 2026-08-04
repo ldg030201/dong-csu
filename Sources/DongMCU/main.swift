@@ -107,6 +107,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     // 0~1 사이 숫자를 하나 끼워 넣으면 배경 불투명도로 쓴다.
     let opacity = extras.compactMap(Double.init).first { $0 > 0 && $0 <= 1 } ?? 0.92
     let showsStats = extras.contains("stats")
+    // small|normal|large|extraLarge 중 하나를 끼워 넣으면 그 배율로 그린다.
+    let scale = extras.compactMap(HUDScale.init(rawValue:)).first ?? .normal
 
     let succeeded = HUDPreviewRenderer.write(
         to: path,
@@ -117,7 +119,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
         isDark: isDark,
         side: side,
         opacity: opacity,
-        showsStats: showsStats
+        showsStats: showsStats,
+        scale: scale
     )
     print(succeeded ? "rendered: \(path)" : "render failed")
     exit(succeeded ? 0 : 1)

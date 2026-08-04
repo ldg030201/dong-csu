@@ -107,6 +107,7 @@ final class HUDController {
     private var isCollapsed: Bool { settings.isCollapsed }
     private var iconStyle: ClaudeIconStyle { settings.iconStyle }
     private var appearance: HUDAppearance { settings.appearance }
+    private var scale: CGFloat { settings.scale.factor }
 
     init(store: UsageStore, settings: HUDSettings) {
         self.store = store
@@ -114,7 +115,8 @@ final class HUDController {
 
         let size = UsageHUDView.size(
             collapsed: settings.isCollapsed,
-            showsStats: settings.showsProcessStats
+            showsStats: settings.showsProcessStats,
+            scale: settings.scale.factor
         )
         panel = HUDPanel(
             contentRect: NSRect(origin: .zero, size: size),
@@ -134,7 +136,10 @@ final class HUDController {
 
         container = NSView(frame: NSRect(origin: .zero, size: size))
         container.wantsLayer = true
-        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: settings.isCollapsed)
+        container.layer?.cornerRadius = UsageHUDView.cornerRadius(
+            collapsed: settings.isCollapsed,
+            scale: settings.scale.factor
+        )
         container.layer?.masksToBounds = true
         container.layer?.borderWidth = 1
 
@@ -152,7 +157,8 @@ final class HUDController {
                 iconStyle: settings.iconStyle,
                 showsCountdown: false,
                 isCollapsed: settings.isCollapsed,
-                palette: HUDPalette(isDark: true)
+                palette: HUDPalette(isDark: true),
+                scale: settings.scale.factor
             )
         )
         container.addSubview(hosting)
@@ -162,7 +168,8 @@ final class HUDController {
         interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
             collapsed: settings.isCollapsed,
             side: settings.expandSide,
-            showsStats: settings.showsProcessStats
+            showsStats: settings.showsProcessStats,
+            scale: settings.scale.factor
         )
         container.addSubview(interactionView)
 
@@ -241,6 +248,13 @@ final class HUDController {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in self?.applyProcessStats() }
             .store(in: &cancellables)
+
+        // 배율은 창 크기·모서리·클릭 영역까지 바꾼다. 접기와 같은 경로를 탄다.
+        settings.$scale
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.applyCollapsed() }
+            .store(in: &cancellables)
     }
 
     /// 자원 사용량 표시를 켜고 끈다. 크기까지 바뀌므로 레이아웃도 다시 잡는다.
@@ -266,10 +280,15 @@ final class HUDController {
         interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
             collapsed: settings.isCollapsed,
             side: settings.expandSide,
-            showsStats: settings.showsProcessStats
+            showsStats: settings.showsProcessStats,
+            scale: scale
         )
         rebuildRootView()
-        layoutHosting(for: UsageHUDView.size(collapsed: settings.isCollapsed, showsStats: settings.showsProcessStats))
+        layoutHosting(for: UsageHUDView.size(
+            collapsed: settings.isCollapsed,
+            showsStats: settings.showsProcessStats,
+            scale: scale
+        ))
     }
 
     /// 크기가 바뀔 때 고정할 모서리를 정한다.
@@ -475,6 +494,18 @@ final class HUDController {
         iconItem.submenu = iconMenu
         menu.addItem(iconItem)
 
+        let scaleMenu = NSMenu()
+        for value in HUDScale.allCases {
+            let item = NSMenuItem(title: value.title, action: #selector(handleScale(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = value.rawValue
+            item.state = settings.scale == value ? .on : .off
+            scaleMenu.addItem(item)
+        }
+        let scaleItem = NSMenuItem(title: "크기", action: nil, keyEquivalent: "")
+        scaleItem.submenu = scaleMenu
+        menu.addItem(scaleItem)
+
         let themeMenu = NSMenu()
         for value in HUDAppearance.allCases {
             let item = NSMenuItem(title: value.title, action: #selector(handleAppearance(_:)), keyEquivalent: "")
@@ -551,17 +582,22 @@ final class HUDController {
     /// 접거나 펼친다. 오른쪽 위 모서리를 붙잡아 두어서 크기가 바뀌어도 자리가 튀지 않는다.
     private func applyCollapsed() {
         let collapsed = settings.isCollapsed
-        let newSize = UsageHUDView.size(collapsed: collapsed, showsStats: settings.showsProcessStats)
+        let newSize = UsageHUDView.size(
+            collapsed: collapsed,
+            showsStats: settings.showsProcessStats,
+            scale: scale
+        )
         let target = targetFrame(for: newSize)
 
         // 애니메이션 도중에 표본이 갱신되면 화면이 다시 배치되면서 끊겨 보인다.
         // 잠시 멈추고 끝난 뒤에 다시 맞춘다.
         usageMonitor.stop()
-        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed)
+        container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed, scale: scale)
         interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
             collapsed: collapsed,
             side: settings.expandSide,
-            showsStats: settings.showsProcessStats
+            showsStats: settings.showsProcessStats,
+            scale: scale
         )
 
         if collapsed {
@@ -611,7 +647,8 @@ final class HUDController {
             // 표본 타이머가 도는지가 아니라 "표시 설정"을 봐야 한다.
             // 접기 애니메이션 동안에는 타이머를 잠시 멈추는데, 그때 뷰를 다시 만들면
             // 줄이 통째로 사라져서 펼친 뒤에도 안 보였다.
-            usageMonitor: settings.showsProcessStats && !isCollapsed ? usageMonitor : nil
+            usageMonitor: settings.showsProcessStats && !isCollapsed ? usageMonitor : nil,
+            scale: scale
         )
     }
 
@@ -619,6 +656,12 @@ final class HUDController {
         guard let raw = sender.representedObject as? String,
               let style = ClaudeIconStyle(rawValue: raw) else { return }
         settings.iconStyle = style
+    }
+
+    @objc private func handleScale(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let value = HUDScale(rawValue: raw) else { return }
+        settings.scale = value
     }
     @objc private func handleQuit() { NSApp.terminate(nil) }
 

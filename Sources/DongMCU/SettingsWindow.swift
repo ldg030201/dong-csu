@@ -228,6 +228,12 @@ struct SettingsView: View {
                 }
             }
 
+            Picker("크기", selection: $settings.scale) {
+                ForEach(HUDScale.allCases, id: \.self) { value in
+                    Text(value.title).tag(value)
+                }
+            }
+
             Picker("조회 주기", selection: $settings.pollInterval) {
                 ForEach(PollInterval.allCases, id: \.self) { value in
                     Text(value.title).tag(value)
