@@ -120,6 +120,11 @@ final class HUDController {
     var onOpenSettings: (@MainActor () -> Void)?
     private let backdrop = NSView()
     private let usageMonitor = ProcessUsageMonitor()
+    private let owlAnimator = OwlAnimator()
+    /// 지금 창을 끌고 있는지. 부엉이가 버둥거릴지를 정한다.
+    private var isDraggingPanel = false
+    /// 화면이 꺼져 있는지. 꺼진 동안에는 부엉이를 움직일 이유가 없다.
+    private var areScreensAsleep = false
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
@@ -180,7 +185,8 @@ final class HUDController {
                 showsCountdown: false,
                 isCollapsed: settings.isCollapsed,
                 palette: HUDPalette(isDark: true),
-                scale: settings.scale.factor
+                scale: settings.scale.factor,
+                owlAnimator: owlAnimator
             )
         )
         container.addSubview(hosting)
@@ -200,14 +206,30 @@ final class HUDController {
 
         panel.contentView = container
 
-        interactionView.onDragTo = { [weak self] origin in self?.panel.setFrameOrigin(origin) }
-        interactionView.onDragEnded = { [weak self] in self?.saveOrigin() }
+        // 창이 실제로 움직이기 시작한 뒤에야 끌린 것으로 본다. 누르기만 하고
+        // 만 클릭까지 버둥거리면 새로고침 한 번에 부엉이가 요동친다.
+        interactionView.onDragTo = { [weak self] origin in
+            guard let self else { return }
+            self.panel.setFrameOrigin(origin)
+            guard !self.isDraggingPanel else { return }
+            self.isDraggingPanel = true
+            self.refreshMood()
+        }
+        interactionView.onDragEnded = { [weak self] in
+            guard let self else { return }
+            self.saveOrigin()
+            guard self.isDraggingPanel else { return }
+            self.isDraggingPanel = false
+            self.refreshMood()
+        }
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
         interactionView.onDoubleClick = { [weak self] in self?.handleToggleCollapse() }
 
         applyAppearance()
         layoutHosting(for: size)
         syncUsageMonitor(visible: true)
+        syncOwlAnimator(visible: true)
+        refreshMood()
 
         panel.setFrameOrigin(restoredOrigin())
         // 시스템 테마가 바뀌면 .system 설정일 때만 따라간다.
@@ -223,6 +245,21 @@ final class HUDController {
             name: NSApplication.didChangeScreenParametersNotification,
             object: nil
         )
+        // 화면이 꺼져 있으면 아무도 부엉이를 보지 않는다. UsageStore가 같은 이유로
+        // 폴링을 멈추는데, 애니메이션은 그보다 훨씬 자주 깨어나서 더 아깝다.
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceCenter.addObserver(
+            self,
+            selector: #selector(handleScreensSleep),
+            name: NSWorkspace.screensDidSleepNotification,
+            object: nil
+        )
+        workspaceCenter.addObserver(
+            self,
+            selector: #selector(handleScreensWake),
+            name: NSWorkspace.screensDidWakeNotification,
+            object: nil
+        )
         observeStore()
         observeSettings()
     }
@@ -234,7 +271,10 @@ final class HUDController {
     private func observeSettings() {
         observe(settings.$appearance) { $0.applyAppearance() }
         observe(settings.$backdropOpacity) { $0.applyAppearance() }
-        observe(settings.$iconStyle) { $0.rebuildRootView() }
+        observe(settings.$iconStyle) {
+            $0.syncOwlAnimator()
+            $0.rebuildRootView()
+        }
         observe(settings.$isCollapsed) { $0.applyCollapsed() }
         observe(settings.$isHUDVisible) { $0.applyHUDVisible() }
         observe(settings.$expandSide) { $0.applyExpandSide() }
@@ -316,6 +356,33 @@ final class HUDController {
         } else {
             usageMonitor.stop()
         }
+    }
+
+    /// 부엉이가 눈에 보일 때만 자세를 넘긴다.
+    /// 접혀 있어도 링은 남아 있어서 부엉이는 계속 보인다 — 접힘은 조건이 아니다.
+    private func syncOwlAnimator(visible: Bool? = nil) {
+        let isVisible = visible ?? panel.isVisible
+
+        if isVisible, !areScreensAsleep, settings.iconStyle == .owl {
+            owlAnimator.start()
+        } else {
+            owlAnimator.stop()
+        }
+    }
+
+    @objc private func handleScreensSleep() {
+        areScreensAsleep = true
+        syncOwlAnimator()
+    }
+
+    @objc private func handleScreensWake() {
+        areScreensAsleep = false
+        syncOwlAnimator()
+    }
+
+    /// 사용량·연결 상태·드래그 여부에서 지금 기분을 다시 정한다.
+    private func refreshMood() {
+        owlAnimator.setMood(OwlMood.resolve(store: store, isDragging: isDraggingPanel))
     }
 
     /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
@@ -652,6 +719,7 @@ final class HUDController {
             panel.orderOut(nil)
         }
         syncUsageMonitor(visible: visible)
+        syncOwlAnimator(visible: visible)
         rebuildRootView()
     }
 
@@ -697,7 +765,8 @@ final class HUDController {
             usageMonitor: settings.showsProcessStats && !isCollapsed ? usageMonitor : nil,
             scale: scale,
             showsUpdateBadge: updates.hasUpdate,
-            onOpenUpdates: { [weak self] in self?.openUpdates() }
+            onOpenUpdates: { [weak self] in self?.openUpdates() },
+            owlAnimator: owlAnimator
         )
     }
 
@@ -712,7 +781,10 @@ final class HUDController {
     private func observeStore() {
         store.objectWillChange
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.updateTooltip() }
+            .sink { [weak self] _ in
+                self?.updateTooltip()
+                self?.refreshMood()
+            }
             .store(in: &cancellables)
         updateTooltip()
     }
