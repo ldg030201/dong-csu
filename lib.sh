@@ -41,3 +41,10 @@ swift_build() {
 swift_bin_dir() {
   swift_build --show-bin-path
 }
+
+# 앱이 원격에서 받아보는 변경 내역을 Changelog.swift 에서 다시 뽑는다.
+# 반드시 먼저 빌드한다 — 옛 바이너리로 뽑으면 방금 추가한 항목이 빠진다.
+dump_changelog() {
+  swift_build
+  "$(swift_bin_dir)/dong-mcu" --dump-changelog "$ROOT/docs/changelog.json"
+}

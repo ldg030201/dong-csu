@@ -51,4 +51,4 @@ jobs:
         run: |
           ./build/DongMCU.app/Contents/MacOS/DongMCU --dump-changelog /tmp/fresh.json
           diff -q /tmp/fresh.json docs/changelog.json \
-            || { echo "docs/changelog.json 이 Changelog.swift 와 다르다 — --dump-changelog 로 다시 뽑아라"; exit 1; }
+            || { echo "docs/changelog.json 이 Changelog.swift 와 다르다 — source ./lib.sh && dump_changelog 로 다시 뽑아라"; exit 1; }

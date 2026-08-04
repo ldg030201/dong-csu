@@ -66,7 +66,7 @@ BUILT="$("$BIN" --version | awk '{print $2}')"
 
 # 앱이 원격에서 받아보는 변경 내역. 태그를 올리기 전에 갱신해야
 # 새 버전이 나온 걸 옛 버전 앱에서도 볼 수 있다.
-"$BIN" --dump-changelog docs/changelog.json >/dev/null
+dump_changelog >/dev/null
 if [[ "$BUILT" != "$VERSION" ]]; then
   echo "빌드 결과 버전이 다르다: $BUILT (기대: $VERSION)" >&2
   exit 1
