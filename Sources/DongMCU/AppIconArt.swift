@@ -29,9 +29,7 @@ struct AppIconArt: View {
                 )
                 .frame(width: plateSide, height: plateSide)
 
-            // 판을 꽉 채우면 큰 눈이 확대되어 인상이 사나워진다.
-            // HUD 링 안에 앉았을 때와 비슷한 비율로 두는 게 마스코트답다.
-            OwlMarkView().frame(height: plateSide * 0.44)
+            OwlMarkView().frame(height: plateSide * 0.72)
         }
         .frame(width: side, height: side)
     }

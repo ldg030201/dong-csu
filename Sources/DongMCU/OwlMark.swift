@@ -328,16 +328,26 @@ struct OwlMarkView: View {
 
     var body: some View {
         Canvas { context, size in
-            let cellWidth = size.width / CGFloat(OwlMark.columns)
-            let cellHeight = size.height / CGFloat(OwlMark.lines)
+            // 한 칸이 정수 크기가 아니면 어떤 행은 2px, 어떤 행은 3px로 그려져
+            // 크기마다 형태가 달라진다. 칸 크기를 내림해서 어디서나 같은 그림이 되게 한다.
+            // 남는 여백은 가운데로 몬다.
+            let cell = max(
+                1,
+                floor(min(
+                    size.width / CGFloat(OwlMark.columns),
+                    size.height / CGFloat(OwlMark.lines)
+                ))
+            )
+            let originX = ((size.width - cell * CGFloat(OwlMark.columns)) / 2).rounded()
+            let originY = ((size.height - cell * CGFloat(OwlMark.lines)) / 2).rounded()
 
-            // 경계를 정수로 반올림해서 픽셀 사이에 실틈이 생기지 않게 한다.
             func rect(x: Int, y: Int) -> CGRect {
-                let left = (CGFloat(x) * cellWidth).rounded()
-                let right = (CGFloat(x + 1) * cellWidth).rounded()
-                let top = (CGFloat(y) * cellHeight).rounded()
-                let bottom = (CGFloat(y + 1) * cellHeight).rounded()
-                return CGRect(x: left, y: top, width: right - left, height: bottom - top)
+                CGRect(
+                    x: originX + CGFloat(x) * cell,
+                    y: originY + CGFloat(y) * cell,
+                    width: cell,
+                    height: cell
+                )
             }
 
             for layer in pose.layers {
