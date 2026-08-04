@@ -36,12 +36,19 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 <img src="docs/collapsed.png" width="150" alt="접은 모습"><br>
 <sub><b>접으면 링만 남는다</b></sub>
 </td>
-<td align="center" width="68%">
-<img src="docs/sizes.png" width="430" alt="크기 4단계"><br>
+<td align="center" width="34%">
+<img src="docs/sizes.png" width="230" alt="크기 4단계"><br>
 <sub><b>크기 4단계</b></sub>
+</td>
+<td align="center" width="34%">
+<img src="docs/pet.png" width="72" alt="펫 모드">
+<img src="docs/pet-hover.png" width="72" alt="펫 모드 호버"><br>
+<sub><b>펫 모드 — 올리면 링이 뜬다</b></sub>
 </td>
 </tr>
 </table>
+
+더블클릭하면 **펼침 → 링만 → 펫** 으로 넘어간다.
 
 가운데 마스코트는 상태에 따라 움직인다. 자세한 건 **[캐릭터](docs/characters/README.md)**.
 
