@@ -54,6 +54,7 @@ enum OwlMark {
     /// 리터럴로 한 벌 더 적어 두면 접은 날개를 손볼 때 이쪽만 옛 모양으로 남는다.
     static let wingsDroop = shifted(wingsFolded, dy: 1)
 
+
     /// 펼친 날개는 좌우 여백까지 써서 어깨 위로 뻗는다.
     static let wingsSpread = [
         "dd...........dd",
@@ -182,6 +183,24 @@ enum OwlMark {
         "...............",
         "...............",
         "...###..###....",
+    ]
+
+    /// 매달렸을 때 모아 늘어뜨린 다리.
+    /// 서 있을 때처럼 벌리고 있으면 들려 있어도 딛고 선 것처럼 보인다.
+    static let feetDangle = [
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        "...............",
+        ".....##.##.....",
     ]
 
     static let feetStepB = [
@@ -329,16 +348,26 @@ extension OwlMark {
 struct OwlPose: Equatable {
     enum Eyes { case open, half, closed }
     enum Wings { case folded, spread, droop }
-    enum Feet { case stand, stepA, stepB }
+    enum Feet { case stand, stepA, stepB, dangle }
 
     var eyes: Eyes = .open
     var wings: Wings = .folded
     var feet: Feet = .stand
-    /// 몸통만 좌우로 기울인다(발은 제자리). 걸을 때 뒤뚱거리게 하는 값.
+    /// 몸을 통째로 좌우로 기울인다(발은 제자리). 걸을 때 뒤뚱거리게 하는 값.
     var lean: Int = 0
-    /// 몸통만 위아래로 움직인다(발은 제자리). 양수면 발 위로 주저앉는다.
+    /// 몸을 통째로 위아래로 움직인다(발은 제자리). 양수면 발 위로 주저앉는다.
     /// 숨을 쉬는 것처럼 보이게 하거나 지쳐서 내려앉을 때 쓴다.
     var bob: Int = 0
+    /// 눈과 부리만 좌우로 **더** 민다. `lean`에 더해진다.
+    ///
+    /// 몸이 기운 만큼 반대로 주면 얼굴이 공간에 붙박인 채 머리 윤곽만 흔들린다.
+    /// **부엉이는 몸이 어떻게 흔들리든 시선을 한 곳에 붙잡아 둔다.** 머리 윤곽까지
+    /// 따로 떼어 봤지만, 폭이 같은 덩어리가 한 칸 어긋나면 고개를 든 게 아니라
+    /// 그림이 깨진 것처럼 보였다. 얼굴만 움직이는 쪽이 고개를 돌린 것으로 읽힌다.
+    var faceLean: Int = 0
+    /// 다리의 좌우 자리. 발은 `lean`을 받지 않으므로 이 값이 그대로 위치다.
+    /// 몸보다 한 박자 늦게 따라가게 두면 매달려 흔들리는 것처럼 보인다.
+    var feetLean: Int = 0
 
     static let idle = OwlPose()
 
@@ -363,13 +392,32 @@ struct OwlPose: Equatable {
             case .stand: return OwlMark.feetStand
             case .stepA: return OwlMark.feetStepA
             case .stepB: return OwlMark.feetStepB
+            case .dangle: return OwlMark.feetDangle
             }
         }()
 
-        // 발은 땅에 붙어 있어야 해서 기울임·오르내림에서 뺀다.
-        let moving = [OwlMark.body, wingLayer, OwlMark.belly, eyeLayer, OwlMark.beak]
-            .map { OwlMark.shifted($0, dx: lean, dy: bob) }
-        return moving + [feetLayer]
+        // 발은 땅(또는 허공)에 매달린 채라 기울임·오르내림에서 빼고 제 값만 쓴다.
+        let faceShift = lean + faceLean
+        return [
+            OwlMark.shifted(OwlMark.body, dx: lean, dy: bob),
+            OwlMark.shifted(wingLayer, dx: lean, dy: bob),
+            OwlMark.shifted(OwlMark.belly, dx: lean, dy: bob),
+            OwlMark.shifted(eyeLayer, dx: faceShift, dy: bob),
+            OwlMark.shifted(OwlMark.beak, dx: faceShift, dy: bob),
+            OwlMark.shifted(feetLayer, dx: feetLean),
+        ]
+    }
+
+    /// 몸이 기울어도 시선은 한 곳에 남기고, 다리는 따로 흔든다.
+    ///
+    /// `faceLean`에 매번 손으로 반대 부호를 적으면, 한 프레임만 놓쳐도 거기서만
+    /// 얼굴이 같이 흔들려서 부엉이가 아니라 인형처럼 보인다.
+    func swaying(lean: Int = 0, feetLean: Int = 0) -> OwlPose {
+        var pose = self
+        pose.lean = lean
+        pose.faceLean = -lean
+        pose.feetLean = feetLean
+        return pose
     }
 }
 

@@ -69,12 +69,23 @@ enum OwlMood: String, CaseIterable {
             return [OwlFrame(OwlPose(eyes: .half), duration: 0)]
 
         case .dragged:
-            // 들려 올라간 것처럼 날개를 퍼덕이고 다리를 번갈아 찬다.
+            // 목을 잡혀 매달린 채 몸이 좌우로 흔들린다.
+            //
+            // **시선은 그 자리에 남는다** — 몸이 기운 만큼 얼굴을 되돌려서, 머리가
+            // 흔들려도 눈은 한 곳을 본다. 부엉이가 몸을 어떻게 흔들든 시선을 붙잡아
+            // 두는 그 특징이고, 들려 있을 때 가장 부엉이답게 읽히는 자리다.
+            //
+            // 다리는 몸보다 한 박자 늦게 따라간다. 같이 움직이면 통나무처럼 뻣뻣하고,
+            // 번갈아 차면 발버둥으로 보인다. 늦게 따라와야 매달려 흔들리는 게 된다.
+            //
+            // 날개는 늘어뜨리고 다리는 모은다. 퍼덕이며 다리를 벌리면 도망치려는
+            // 몸부림이 되는데, 힘을 뺀 채 들려 있는 쪽이 부엉이답고 덜 사납다.
+            let hanging = OwlPose(wings: .droop, feet: .dangle)
             return [
-                OwlFrame(OwlPose(wings: .spread, feet: .stepA, lean: -1), duration: 0.10),
-                OwlFrame(OwlPose(), duration: 0.08),
-                OwlFrame(OwlPose(wings: .spread, feet: .stepB, lean: 1), duration: 0.10),
-                OwlFrame(OwlPose(), duration: 0.08),
+                OwlFrame(hanging.swaying(lean: -1), duration: 0.22),
+                OwlFrame(hanging.swaying(feetLean: -1), duration: 0.20),
+                OwlFrame(hanging.swaying(lean: 1), duration: 0.22),
+                OwlFrame(hanging.swaying(feetLean: 1), duration: 0.20),
             ]
         }
     }
