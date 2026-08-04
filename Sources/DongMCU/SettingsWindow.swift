@@ -4,7 +4,7 @@ import SwiftUI
 /// 설정 창의 내용.
 struct SettingsView: View {
     /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
-    static let size = CGSize(width: 380, height: 660)
+    static let size = CGSize(width: 380, height: 682)
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
@@ -12,6 +12,14 @@ struct SettingsView: View {
     let version: String
 
     var body: some View {
+        // 창을 줄이면 가로·세로 스크롤이 생긴다. 내용 폭은 고정해서 레이아웃이 흔들리지 않게 한다.
+        ScrollView([.horizontal, .vertical]) {
+            content.frame(width: Self.size.width, alignment: .leading)
+        }
+    }
+
+    /// 스크롤 밖의 알맹이. 미리보기 렌더는 ScrollView를 그리지 못해서 이걸 직접 그린다.
+    var content: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text("설정")
                 .font(.system(size: 13, weight: .semibold))
@@ -25,14 +33,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 displaySection
                 accountSection
-                Spacer(minLength: 0)
             }
             .padding(18)
 
             Divider()
             footer
         }
-        .frame(width: Self.size.width, height: Self.size.height)
     }
 
     // MARK: - 현재 상태
@@ -114,7 +120,7 @@ struct SettingsView: View {
                 )
             }
 
-            Toggle("왼쪽 아래에 CPU·메모리 표시", isOn: $settings.showsProcessStats)
+            Toggle("아래 줄에 CPU·메모리 표시", isOn: $settings.showsProcessStats)
                 .disabled(!settings.isHUDVisible || settings.isCollapsed)
 
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
@@ -189,11 +195,10 @@ struct SettingsView: View {
             Text("dong-mcu \(version)")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-            Spacer()
+            Spacer(minLength: 12)
             Button("종료", action: actions.quit)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
+        .padding(18)
     }
 
     private func sectionTitle(_ text: String) -> some View {
@@ -240,7 +245,7 @@ final class SettingsWindowController {
 
             let window = NSWindow(
                 contentRect: NSRect(origin: .zero, size: SettingsView.size),
-                styleMask: [.titled, .closable],
+                styleMask: [.titled, .closable, .resizable],
                 backing: .buffered,
                 defer: false
             )
@@ -251,6 +256,8 @@ final class SettingsWindowController {
             window.contentViewController = NSHostingController(rootView: view)
             // NSHostingController는 레이아웃 전에 크기를 모른다. 명시하지 않으면 창이 0으로 찌그러진다.
             window.setContentSize(SettingsView.size)
+            // 이보다 줄이면 스크롤로 볼 수 있다.
+            window.contentMinSize = NSSize(width: 260, height: 200)
             window.isReleasedWhenClosed = false
             self.window = window
         }

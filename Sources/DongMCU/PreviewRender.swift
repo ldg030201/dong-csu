@@ -99,6 +99,8 @@ enum HUDPreviewRenderer {
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
             version: dongMCUVersion
         )
+        .content
+        .frame(width: SettingsView.size.width)
         .preferredColorScheme(isDark ? .dark : .light)
         .background(Color(nsColor: .windowBackgroundColor))
 
