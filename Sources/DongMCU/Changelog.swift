@@ -26,9 +26,12 @@ enum Changelog {
     )!
 
     /// 이 목록을 JSON으로 뽑는다. `dong-mcu --dump-changelog`가 쓴다.
+    ///
+    /// `.sortedKeys`가 없으면 키 순서가 실행마다 달라져서, 같은 소스로 뽑아도
+    /// 파일이 매번 바뀐 것처럼 보인다(CI의 일치 검사가 계속 실패한다).
     static func jsonData() throws -> Data {
         let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes]
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(ChangelogFeed(entries: entries))
     }
 
@@ -37,7 +40,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "1.4.0", date: nil, notes: [
+        ChangelogEntry(version: "1.3.1.1", date: "2026-08-04", notes: [
             "지원 범위를 macOS 14(Sonoma) 이상으로 조정",
         ]),
         ChangelogEntry(version: "1.3.1", date: "2026-08-04", notes: [
