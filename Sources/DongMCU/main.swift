@@ -1,6 +1,6 @@
 import AppKit
 
-let dongMCUVersion = "1.2.0.1"
+let dongMCUVersion = "1.3.0"
 
 if CommandLine.arguments.contains("--version") {
     let bundled = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
