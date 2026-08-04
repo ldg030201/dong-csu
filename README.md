@@ -82,13 +82,18 @@ defaults delete com.ldg.dong-mcu
 Launchpad에 보이지 않거나, `brew install`이 자꾸 옛 버전을 잡는 경우다.
 설치 흔적을 남김없이 지운다.
 
+이 한 줄로 **지우는 것부터 다시 설치까지** 끝난다.
+
 ```bash
-pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap https://github.com/ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*
+pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap https://github.com/ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*; brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
 ```
 
-명령을 `;`로 이었다. 이미 없는 것을 지우다 실패해도 나머지가 계속 돌아야 하기 때문이다.
+지우기만 하고 싶으면 `rm -f ~/Library/Caches/Homebrew/dong-mcu*` 까지만 실행한다.
 
-`untrust`에 tap 이름이 아니라 **URL**을 준다. 설치할 때 `brew tap <이름> <URL>` 형식을 쓰기
+지우는 부분은 `;`로, 설치하는 부분은 `&&`로 이었다. 이미 없는 것을 지우다 실패해도 나머지
+정리는 계속돼야 하지만, 설치는 앞 단계가 성공해야 다음으로 넘어가야 하기 때문이다.
+
+`untrust`에는 tap 이름이 아니라 **URL**을 준다. 설치할 때 `brew tap <이름> <URL>` 형식을 쓰기
 때문에 신뢰 목록에도 URL로 기록된다. 이름으로 지우려 하면 `Not trusted tap`이라고만 나오고
 실제로는 남는다.
 
@@ -100,8 +105,8 @@ pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; b
 | brew 패키지 · tap · trust | 설치 기록. tap이 남아 있으면 옛 formula를 계속 쓴다 |
 | Homebrew 캐시 | 받아둔 tarball. `sha256 mismatch`의 원인이 대부분 이것이다 |
 
-설정까지 지우려면 위의 `defaults delete`도 함께 실행한다.
-그 다음 맨 위의 설치 명령을 그대로 다시 실행하면 된다.
+설정(창 위치·아이콘·크기)은 이 명령으로 지워지지 않는다. 재설치하면 그대로 복원된다.
+그것까지 밀고 싶으면 위의 `defaults delete com.ldg.dong-mcu`를 함께 실행한다.
 
 > 이미 설치돼 있으면 `already installed and up-to-date`가 뜨고 설치 명령이 멈춘다.
 > 새 버전으로 올리려는 것이라면 설치가 아니라 **업데이트** 명령을 써야 한다.
