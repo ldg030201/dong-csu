@@ -6,8 +6,8 @@
 
 **Claude 사용량을 화면 위에 항상 띄워두는 macOS 앱**
 
-![macOS](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)
-![Swift](https://img.shields.io/badge/Swift-6.0-F05138?logo=swift&logoColor=white)
+![macOS](https://img.shields.io/badge/macOS-13+-000000?logo=apple&logoColor=white)
+![Swift](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white)
 [![Release](https://img.shields.io/github/v/release/ldg030201/dong-mcu?color=3A72C4&label=release)](https://github.com/ldg030201/dong-mcu/releases/latest)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-3A72C4)
 ![License](https://img.shields.io/badge/license-MIT-3A72C4)
@@ -50,7 +50,7 @@ brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust 
 ```
 
 > [!NOTE]
-> **macOS 14 이상**과 **Claude Code 로그인**이 필요하다. Claude Code가 keychain에 저장해 둔
+> **macOS 13(Ventura) 이상**과 **Claude Code 로그인**이 필요하다. Claude Code가 keychain에 저장해 둔
 > 토큰으로 사용량을 읽기 때문에, Claude Code 없이는 동작하지 않는다.
 > 첫 실행 때 keychain 접근을 허용할지 한 번 묻는다.
 

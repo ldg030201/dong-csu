@@ -490,7 +490,14 @@ final class HUDController {
 
         let iconMenu = NSMenu()
         for group in IconStyleGroup.allCases {
-            iconMenu.addItem(NSMenuItem.sectionHeader(title: group.title))
+            // sectionHeader는 macOS 14부터다. 그 아래에서는 누를 수 없는 항목으로 대신한다.
+            if #available(macOS 14, *) {
+                iconMenu.addItem(NSMenuItem.sectionHeader(title: group.title))
+            } else {
+                let header = NSMenuItem(title: group.title, action: nil, keyEquivalent: "")
+                header.isEnabled = false
+                iconMenu.addItem(header)
+            }
             for style in group.styles {
                 let item = NSMenuItem(
                     title: style.title,
