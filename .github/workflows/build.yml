@@ -21,7 +21,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-13   # x86_64 Ventura — 지원 하한
           - os: macos-14   # arm64 Sonoma
           - os: macos-15   # arm64 Sequoia
     runs-on: ${{ matrix.os }}

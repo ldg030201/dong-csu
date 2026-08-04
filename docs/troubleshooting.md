@@ -41,7 +41,7 @@ brew update && brew upgrade dong-mcu
 
 ### `is using Swift tools version 6.0.0 but the installed version is ...`
 
-Command Line Tools가 오래됐다. **1.2.0부터는 Swift 5.9 이상이면 빌드된다.**
+Command Line Tools가 오래됐다. **Swift 5.9 이상이면 빌드된다.**
 그 아래 버전이거나 그래도 실패하면 Command Line Tools를 새로 받는다.
 
 ```bash

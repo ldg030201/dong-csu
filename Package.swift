@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "dong-mcu",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v14)],
     products: [
         .executable(name: "dong-mcu", targets: ["DongMCU"])
     ],

@@ -286,14 +286,6 @@ final class HUDController {
         return item
     }
 
-    /// sectionHeader는 macOS 14부터다. 그 아래에서는 누를 수 없는 항목으로 대신한다.
-    private static func sectionHeader(_ title: String) -> NSMenuItem {
-        if #available(macOS 14, *) { return NSMenuItem.sectionHeader(title: title) }
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.isEnabled = false
-        return item
-    }
-
     /// 설정 하나가 바뀌면 무엇을 다시 맞출지 잇는다.
     ///
     /// `dropFirst`(초기값 무시)와 `DispatchQueue.main`(위 주석의 이벤트 추적 모드 문제)은
@@ -361,12 +353,17 @@ final class HUDController {
         )
     }
 
-    private func animate(to frame: NSRect, completion: (() -> Void)?) {
+    /// 완료 콜백은 메인 액터에서 도는데 `completionHandler`는 그걸 모른다.
+    /// 그대로 넘기면 non-Sendable 경고가 난다. 애니메이션 완료는 항상 메인
+    /// 스레드에서 오므로 그 자리에서 격리를 되찾아 부른다.
+    private func animate(to frame: NSRect, completion: (@MainActor () -> Void)?) {
         NSAnimationContext.runAnimationGroup({ context in
             context.duration = 0.22
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             panel.animator().setFrame(frame, display: true)
-        }, completionHandler: completion)
+        }, completionHandler: completion.map { body in
+            { @Sendable in MainActor.assumeIsolated(body) }
+        })
     }
 
     /// HUD가 실제로 놓여 있는 화면.
@@ -523,7 +520,7 @@ final class HUDController {
 
         let iconMenu = NSMenu()
         for group in IconStyleGroup.allCases {
-            iconMenu.addItem(Self.sectionHeader(group.title))
+            iconMenu.addItem(NSMenuItem.sectionHeader(title: group.title))
             for style in group.styles {
                 iconMenu.addItem(
                     choiceItem(style.title, value: style, current: iconStyle) { [weak self] in
