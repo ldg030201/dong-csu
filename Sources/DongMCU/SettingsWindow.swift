@@ -373,7 +373,11 @@ struct SettingsView: View {
             }
 
             HStack(spacing: 8) {
-                if updates.hasUpdate, let latest = updates.latest {
+                if AppInfo.isTestBuild {
+                    Text("테스트판은 새 버전을 확인하지 않습니다")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                } else if updates.hasUpdate, let latest = updates.latest {
                     Image(systemName: "arrow.down.circle.fill")
                         .foregroundStyle(.white, Color.accentColor)
                         .symbolRenderingMode(.palette)
@@ -402,7 +406,7 @@ struct SettingsView: View {
                         .buttonStyle(.borderedProminent)
                 }
                 Button(updates.isChecking ? "확인 중…" : "업데이트 확인") { updates.check() }
-                    .disabled(updates.isChecking)
+                    .disabled(updates.isChecking || AppInfo.isTestBuild)
                 Spacer(minLength: 0)
                 if let checked = updates.lastCheckedAt {
                     Text(RemainingTime.ageText(since: checked, now: Date()))
@@ -413,6 +417,7 @@ struct SettingsView: View {
 
             Toggle("하루에 한 번 새 버전 확인", isOn: $settings.checksForUpdates)
                 .font(.system(size: 11))
+                .disabled(AppInfo.isTestBuild)
 
             if updates.hasUpdate {
                 Text("업데이트는 터미널에서 brew로 진행된다. 끝나면 앱이 다시 뜬다.")

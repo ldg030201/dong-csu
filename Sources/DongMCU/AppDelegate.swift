@@ -25,7 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 refresh: { [weak store] in store?.refresh(force: true) },
                 resetPosition: { [weak hud] in hud?.resetPosition() },
                 login: { [weak hud] in hud?.startLogin() },
-                quit: { NSApp.terminate(nil) }
+                quit: { Self.confirmQuit() }
             ),
             preferredScreen: { [weak hud] in hud?.currentScreen }
         )
@@ -50,13 +50,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         store.start()
 
         // 업데이트 확인은 설정을 따른다. 꺼두면 아무 데도 접속하지 않는다.
-        if settings.checksForUpdates { updates.start() }
+        //
+        // 테스트판은 확인하지 않는다. 개발 중인 빌드라 릴리스 태그와 비교하는 게 무의미하고,
+        // 아직 안 나간 변경을 들고 있으면서 "업데이트 있음"이라고 뜬다.
+        if settings.checksForUpdates, !AppInfo.isTestBuild { updates.start() }
         settings.$checksForUpdates
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak updates] enabled in
+                guard !AppInfo.isTestBuild else { return }
                 if enabled { updates?.start() } else { updates?.stop() }
             }
             .store(in: &cancellables)
+    }
+
+    /// 설정 창의 종료 버튼은 실수로 누르기 쉬운 자리라 한 번 확인한다.
+    /// 종료하면 메뉴바 아이콘까지 사라져서 다시 켤 방법을 찾아야 한다.
+    private static func confirmQuit() {
+        let alert = NSAlert()
+        alert.messageText = "\(AppInfo.name)를 종료할까요?"
+        alert.informativeText = "종료하면 사용량 표시와 메뉴바 아이콘이 모두 사라집니다."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "종료")
+        alert.addButton(withTitle: "취소")
+        // 실수로 Enter를 눌러도 종료되지 않게 취소를 기본 버튼으로 둔다.
+        alert.buttons.first?.keyEquivalent = ""
+        alert.buttons.last?.keyEquivalent = "\r"
+
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSApp.terminate(nil)
+        }
     }
 }
