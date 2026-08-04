@@ -7,6 +7,8 @@ class DongMcu < Formula
   head "https://github.com/ldg030201/dong-mcu.git", branch: "main"
 
   bottle do
+    # 공식 저장소(ghcr.io)가 아니라 이 저장소 릴리스에서 받아야 한다.
+    root_url "https://github.com/ldg030201/dong-mcu/releases/download/v1.3.1.1"
     sha256 cellar: :any_skip_relocation, arm64_sequoia: "04f97c7dd7e7df3b3ae21311b49370451a427360abed987ad42442a2a2eb5af6"
     sha256 cellar: :any_skip_relocation, arm64_sonoma:  "97eb0191e87e692d7ae8a5815813fe17f77f15e68ab1a7bc4123d48e545864b4"
   end

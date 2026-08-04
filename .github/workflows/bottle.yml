@@ -88,7 +88,14 @@ jobs:
           cd ..
           # --write 는 tap 클론 쪽 formula를 고친다. 저장소로 되가져온다.
           cp "$(brew --repository ldg030201/dong-mcu)/Formula/dong-mcu.rb" Formula/dong-mcu.rb
-          git diff --stat
+
+          # --root-url 이 formula 에 기록되지 않는 경우가 있다. 없으면 직접 넣는다.
+          # 이게 빠지면 Homebrew 가 공식 저장소(ghcr.io)에서 찾다가 404 로 실패한다.
+          if ! grep -q 'root_url' Formula/dong-mcu.rb; then
+            ROOT_URL="https://github.com/ldg030201/dong-mcu/releases/download/$TAG"
+            sed -i '' "s|^  bottle do$|  bottle do\\\n    root_url \"$ROOT_URL\"|" Formula/dong-mcu.rb
+          fi
+          grep -A4 'bottle do' Formula/dong-mcu.rb
 
       - name: 릴리스에 올리기
         env:
