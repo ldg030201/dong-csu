@@ -7,14 +7,18 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-APP="$ROOT/build/dong-mcu.app"
+# 개발 중에는 테스트판(dong-mcu-test)을 띄운다. brew로 설치한 정식판과 섞이지 않는다.
+export VARIANT="${VARIANT:-test}"
+APP_NAME="dong-mcu"
+[[ "$VARIANT" == "test" ]] && APP_NAME="dong-mcu-test"
+APP="$ROOT/build/$APP_NAME.app"
 LOG="$ROOT/build/dev-build.log"
 MODE="${1:-watch}"
 
 mkdir -p "$ROOT/build"
 
 stop_app() {
-  pkill -f "dong-mcu.app/Contents/MacOS/dong-mcu" 2>/dev/null || true
+  pkill -f "$APP_NAME.app/Contents/MacOS/$APP_NAME" 2>/dev/null || true
 }
 
 build() {

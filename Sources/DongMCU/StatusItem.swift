@@ -16,9 +16,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
-        item.button?.image = ClawdMark.statusItemImage(height: 16)
+        // 정식판과 테스트판이 메뉴바에 나란히 뜰 수 있어서 색으로 구분한다.
+        let tint: NSColor? = AppInfo.isTestBuild
+            ? NSColor(srgbRed: 0.36, green: 0.62, blue: 0.86, alpha: 1)
+            : nil
+        item.button?.image = ClawdMark.statusItemImage(height: 16, fill: tint)
         item.button?.imageScaling = .scaleNone
-        item.button?.toolTip = "dong-mcu"
+        item.button?.toolTip = AppInfo.name
 
         let menu = NSMenu()
         menu.delegate = self

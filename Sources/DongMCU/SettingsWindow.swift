@@ -192,7 +192,7 @@ struct SettingsView: View {
 
     private var footer: some View {
         HStack {
-            Text("dong-mcu \(version)")
+            Text(version)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
             Spacer(minLength: 12)
@@ -234,8 +234,7 @@ final class SettingsWindowController {
 
     func show() {
         if window == nil {
-            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-                ?? dongMCUVersion
+            let version = AppInfo.displayVersion
             let view = SettingsView(
                 settings: settings,
                 store: store,
@@ -249,7 +248,7 @@ final class SettingsWindowController {
                 backing: .buffered,
                 defer: false
             )
-            window.title = "dong-mcu 설정"
+            window.title = "\(AppInfo.name) 설정"
             // 제목은 본문 안에 그린다. 타이틀바에 짧게 잘려 보이는 걸 없애기 위해서다.
             window.titlebarAppearsTransparent = true
             window.titleVisibility = .hidden

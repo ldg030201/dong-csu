@@ -486,7 +486,7 @@ final class HUDController {
         menu.addItem(themeItem)
 
         menu.addItem(.separator())
-        let quit = NSMenuItem(title: "dong-mcu 종료", action: #selector(handleQuit), keyEquivalent: "q")
+        let quit = NSMenuItem(title: "\(AppInfo.name) 종료", action: #selector(handleQuit), keyEquivalent: "q")
         quit.target = self
         menu.addItem(quit)
     }

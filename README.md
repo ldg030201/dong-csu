@@ -135,6 +135,18 @@ Claude Code의 액세스 토큰은 수명이 8시간이라 종종 만료된다. 
 `Sources/`를 감시해서 저장할 때마다 재빌드하고 앱을 다시 띄운다(`brew install fswatch` 필요).
 빌드가 깨지면 컴파일 에러만 추려서 보여주고 앱은 그대로 둔다.
 
+개발 중에 띄우는 건 **`dong-mcu-test`** 라는 별개의 앱이다. 번들 ID가 `com.ldg.dong-mcu-test`로
+달라서 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않고, 둘을 동시에 띄워 비교할 수 있다.
+메뉴바 아이콘은 테스트판만 파란색으로 나온다.
+
+```bash
+VARIANT=test ./build.sh    # dong-mcu-test.app  (dev.sh의 기본값)
+./build.sh                 # dong-mcu.app       (release.sh가 쓰는 정식 번들)
+```
+
+둘을 같이 띄우면 사용량 API도 각자 조회하니 요청이 두 배가 된다. 토큰은 쓰지 않지만
+필요 없을 때는 한쪽을 종료해 두는 게 좋다.
+
 앱을 띄우지 않고 HUD 모양만 PNG로 확인할 수도 있다.
 
 ```bash

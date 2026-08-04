@@ -4,7 +4,18 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 CONFIG="${CONFIG:-release}"
-APP="$ROOT/build/dong-mcu.app"
+
+# VARIANT=test 로 부르면 번들 ID가 다른 별개의 앱(dong-mcu-test)이 나온다.
+# 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않아서 둘을 동시에 띄울 수 있다.
+VARIANT="${VARIANT:-release}"
+if [[ "$VARIANT" == "test" ]]; then
+  APP_NAME="dong-mcu-test"
+  BUNDLE_ID="com.ldg.dong-mcu-test"
+else
+  APP_NAME="dong-mcu"
+  BUNDLE_ID="com.ldg.dong-mcu"
+fi
+APP="$ROOT/build/$APP_NAME.app"
 
 # 버전은 Info.plist와 main.swift 두 곳에 있다. 어긋난 채로 배포되면
 # `dong-mcu --version`이 태그와 다른 값을 뱉으므로 여기서 막는다.
@@ -25,8 +36,17 @@ BIN_DIR="$(swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/dong-mcu" "$APP/Contents/MacOS/dong-mcu"
+cp "$BIN_DIR/dong-mcu" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
+
+for KEY_VALUE in \
+  "CFBundleName:$APP_NAME" \
+  "CFBundleDisplayName:$APP_NAME" \
+  "CFBundleExecutable:$APP_NAME" \
+  "CFBundleIdentifier:$BUNDLE_ID"
+do
+  /usr/libexec/PlistBuddy -c "Set :${KEY_VALUE%%:*} ${KEY_VALUE#*:}" "$APP/Contents/Info.plist"
+done
 
 # 가운데 아이콘을 직접 교체하고 싶으면 Resources/claude-icon.png 를 두면 된다.
 if [[ -f "$ROOT/Resources/claude-icon.png" ]]; then
