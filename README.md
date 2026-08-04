@@ -49,9 +49,21 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
 ```
 
+### 필요한 것
+
+| | 최소 | 비고 |
+| --- | --- | --- |
+| **macOS** | 14 (Sonoma) | |
+| **Claude Code** | 로그인된 상태 | keychain에 저장된 토큰을 읽는다 |
+| **Homebrew** | — | 설치에만 쓴다 |
+| **Swift 툴체인** | 5.9 | 소스에서 빌드할 때만. `xcode-select --install` |
+| **Xcode** | 불필요 | Command Line Tools만 있으면 된다 |
+| **아키텍처** | Apple Silicon | Intel도 되지만 미리 빌드된 결과물이 없어 설치가 오래 걸린다 |
+| **외부 의존성** | 없음 | Swift 패키지 0개 |
+
 > [!NOTE]
-> **macOS 14(Sonoma) 이상**과 **Claude Code 로그인**이 필요하다. Claude Code가 keychain에 저장해 둔
-> 토큰으로 사용량을 읽기 때문에, Claude Code 없이는 동작하지 않는다.
+> **Claude Code 없이는 동작하지 않는다.** 이 앱은 Claude Code가 keychain에 저장해 둔 OAuth
+> 토큰으로 사용량을 읽는다. 토큰을 만드는 주체가 Claude Code이기 때문이다.
 > 첫 실행 때 keychain 접근을 허용할지 한 번 묻는다.
 
 업데이트는 앱 안의 **업데이트** 버튼으로 하거나:

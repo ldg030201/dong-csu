@@ -46,7 +46,10 @@ cd dong-mcu && ./build.sh && open build/DongMCU.app
 ```
 
 Xcode는 필요 없다. Command Line Tools(`xcode-select --install`)만 있으면 된다.
-**Swift 5.9 이상**이 필요하고, `swift --version`으로 확인할 수 있다.
+**Swift 5.9 이상**이 필요하고 `swift --version`으로 확인할 수 있다.
+
+미리 빌드된 결과물(bottle)은 **Apple Silicon**용만 올라간다. Intel 맥에서는 Homebrew가
+자동으로 소스 빌드로 넘어가므로 설치가 30초쯤 걸린다.
 
 ## 업데이트
 
