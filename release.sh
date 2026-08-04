@@ -62,7 +62,7 @@ sed -i '' "s/^let dongMCUVersion = \".*\"$/let dongMCUVersion = \"$VERSION\"/" \
   Sources/DongMCU/main.swift
 
 ./build.sh >/dev/null
-BUILT="$(./build/dong-mcu.app/Contents/MacOS/dong-mcu --version | awk '{print $2}')"
+BUILT="$(./build/DongMCU.app/Contents/MacOS/DongMCU --version | awk '{print $2}')"
 if [[ "$BUILT" != "$VERSION" ]]; then
   echo "빌드 결과 버전이 다르다: $BUILT (기대: $VERSION)" >&2
   exit 1

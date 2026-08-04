@@ -32,10 +32,10 @@ brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu &&
 설치는 소스에서 빌드하므로 코드 서명·공증 문제가 없다.
 
 ```bash
-open "$(brew --prefix)/opt/dong-mcu/dong-mcu.app"
+open "$(brew --prefix)/opt/dong-mcu/DongMCU.app"
 
 # Launchpad와 /Applications 에서 보이게 하려면
-ln -sfn "$(brew --prefix)/opt/dong-mcu/dong-mcu.app" /Applications/dong-mcu.app
+ln -sfn "$(brew --prefix)/opt/dong-mcu/DongMCU.app" /Applications/DongMCU.app
 ```
 
 ### 소스에서 빌드
@@ -44,7 +44,7 @@ ln -sfn "$(brew --prefix)/opt/dong-mcu/dong-mcu.app" /Applications/dong-mcu.app
 git clone https://github.com/ldg030201/dong-mcu.git
 cd dong-mcu
 ./build.sh
-open build/dong-mcu.app
+open build/DongMCU.app
 ```
 
 Xcode는 필요 없다. Command Line Tools(`xcode-select --install`)만 있으면 된다.
@@ -82,7 +82,7 @@ HUD 숨기기
 크기          ▸  작게 / 보통 / 크게 / 매우 크게
 테마          ▸  시스템 설정 따름 / 라이트 / 다크
 ──────────
-dong-mcu 종료               ⌘Q
+DongMCU 종료                ⌘Q
 ```
 
 설정 창(톱니 버튼 또는 `⌘,`)은 왼쪽 탭으로 나뉜다.
@@ -146,13 +146,13 @@ Claude Code의 액세스 토큰은 수명이 8시간이라 종종 만료된다. 
 `Sources/`를 감시해서 저장할 때마다 재빌드하고 앱을 다시 띄운다(`brew install fswatch` 필요).
 빌드가 깨지면 컴파일 에러만 추려서 보여주고 앱은 그대로 둔다.
 
-개발 중에 띄우는 건 **`dong-mcu-test`** 라는 별개의 앱이다. 번들 ID가 `com.ldg.dong-mcu-test`로
+개발 중에 띄우는 건 **`DongMCU-Test`** 라는 별개의 앱이다. 번들 ID가 `com.ldg.dong-mcu-test`로
 달라서 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않고, 둘을 동시에 띄워 비교할 수 있다.
 메뉴바 아이콘은 테스트판만 몸 색이 보라색으로 나온다.
 
 ```bash
-VARIANT=test ./build.sh    # dong-mcu-test.app  (dev.sh의 기본값)
-./build.sh                 # dong-mcu.app       (release.sh가 쓰는 정식 번들)
+VARIANT=test ./build.sh    # DongMCU-Test.app  (dev.sh의 기본값)
+./build.sh                 # DongMCU.app       (release.sh가 쓰는 정식 번들)
 ```
 
 둘을 같이 띄우면 사용량 API도 각자 조회하니 요청이 두 배가 된다. 토큰은 쓰지 않지만
@@ -193,6 +193,12 @@ HUD 크기 설정도 같은 이유로 `scaleEffect`가 아니라 치수와 글�
 
 에디터는 VS Code + [Swift 확장](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode)
 기준으로 `.vscode/`에 태스크를 넣어뒀다.
+
+### 이름
+
+화면에 보이는 앱 이름은 **DongMCU**이고, 번들 ID(`com.ldg.dong-mcu`)와 명령 이름
+(`dong-mcu`), Homebrew tap은 예전 그대로다. 번들 ID를 바꾸면 UserDefaults 키가
+달라져서 창 위치·아이콘·크기 설정이 전부 초기화되기 때문이다.
 
 ### 릴리스
 

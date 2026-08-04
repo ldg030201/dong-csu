@@ -7,12 +7,14 @@ CONFIG="${CONFIG:-release}"
 
 # VARIANT=test 로 부르면 번들 ID가 다른 별개의 앱(dong-mcu-test)이 나온다.
 # 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않아서 둘을 동시에 띄울 수 있다.
+# 번들 이름은 화면에 보이는 이름(DongMCU)이고, 번들 ID는 예전 그대로다.
+# ID를 바꾸면 UserDefaults 키가 달라져서 창 위치·아이콘·크기 설정이 초기화된다.
 VARIANT="${VARIANT:-release}"
 if [[ "$VARIANT" == "test" ]]; then
-  APP_NAME="dong-mcu-test"
+  APP_NAME="DongMCU-Test"
   BUNDLE_ID="com.ldg.dong-mcu-test"
 else
-  APP_NAME="dong-mcu"
+  APP_NAME="DongMCU"
   BUNDLE_ID="com.ldg.dong-mcu"
 fi
 APP="$ROOT/build/$APP_NAME.app"

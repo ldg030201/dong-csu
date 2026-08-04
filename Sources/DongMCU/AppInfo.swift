@@ -6,7 +6,7 @@ import AppKit
 /// 화면에 이름을 쓸 때는 하드코딩하지 말고 여기서 가져온다.
 enum AppInfo {
     static var name: String {
-        Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "dong-mcu"
+        Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "DongMCU"
     }
 
     static var version: String {
@@ -14,11 +14,14 @@ enum AppInfo {
     }
 
     /// 테스트판은 메뉴바 아이콘 색을 달리해서 정식판과 구분한다.
+    ///
+    /// 표시 이름이 아니라 번들 ID로 판별한다. 이름은 바뀔 수 있지만
+    /// 번들 ID는 설정을 붙잡고 있어서 함부로 못 바꾼다.
     static var isTestBuild: Bool {
-        name.hasSuffix("-test")
+        Bundle.main.bundleIdentifier?.hasSuffix("-test") ?? false
     }
 
-    /// "dong-mcu 0.2.0" 처럼 이름과 버전을 붙인 표기.
+    /// "DongMCU 0.2.0" 처럼 이름과 버전을 붙인 표기.
     static var displayVersion: String {
         "\(name) \(version)"
     }

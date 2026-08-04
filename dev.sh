@@ -7,10 +7,10 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-# 개발 중에는 테스트판(dong-mcu-test)을 띄운다. brew로 설치한 정식판과 섞이지 않는다.
+# 개발 중에는 테스트판(DongMCU-Test)을 띄운다. brew로 설치한 정식판과 섞이지 않는다.
 export VARIANT="${VARIANT:-test}"
-APP_NAME="dong-mcu"
-[[ "$VARIANT" == "test" ]] && APP_NAME="dong-mcu-test"
+APP_NAME="DongMCU"
+[[ "$VARIANT" == "test" ]] && APP_NAME="DongMCU-Test"
 APP="$ROOT/build/$APP_NAME.app"
 LOG="$ROOT/build/dev-build.log"
 MODE="${1:-watch}"
