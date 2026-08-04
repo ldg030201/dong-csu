@@ -2,6 +2,8 @@ import AppKit
 import SwiftUI
 
 enum ClaudeIconStyle: String, CaseIterable {
+    /// dong-mcu 마스코트 부엉이.
+    case owl
     /// Claude Code 마스코트 Clawd.
     case clawd
     /// Claude 앱 아이콘. 번들에 넣어둔 이미지를 쓴다.
@@ -9,10 +11,11 @@ enum ClaudeIconStyle: String, CaseIterable {
     /// 직접 그린 벡터 버스트 마크.
     case mark
 
-    static let `default` = ClaudeIconStyle.clawd
+    static let `default` = ClaudeIconStyle.owl
 
     var title: String {
         switch self {
+        case .owl: return "부엉이 (dong-mcu 마스코트)"
         case .clawd: return "Clawd (Claude Code 마스코트)"
         case .appIcon: return "Claude 앱 아이콘"
         case .mark: return "버스트 마크"
@@ -22,6 +25,7 @@ enum ClaudeIconStyle: String, CaseIterable {
     /// 미리보기 타일 밑에 붙일 짧은 이름.
     var shortTitle: String {
         switch self {
+        case .owl: return "부엉이"
         case .clawd: return "Clawd"
         case .appIcon: return "앱 아이콘"
         case .mark: return "버스트"
@@ -65,6 +69,12 @@ struct ClaudeIconView: View {
 
     var body: some View {
         switch style {
+        case .owl:
+            // 부엉이는 날개를 펼 좌우 여백까지 그리므로 가로가 더 길다.
+            // 링 안에 들어가야 하니 높이를 기준으로 맞춘다.
+            OwlMarkView()
+                .frame(height: size)
+                .shadow(color: .black.opacity(0.45), radius: 2, y: 1)
         case .clawd:
             ClawdMark(eyeColor: eyeColor)
                 .frame(width: size)

@@ -457,13 +457,12 @@ final class HUDController {
         menu.addItem(reset)
 
         let iconMenu = NSMenu()
-        let styles: [(ClaudeIconStyle, String)] = [
-            (.clawd, "Clawd (Claude Code 마스코트)"),
-            (.appIcon, "Claude 앱 아이콘"),
-            (.mark, "버스트 마크"),
-        ]
-        for (style, title) in styles {
-            let item = NSMenuItem(title: title, action: #selector(handleIconStyle(_:)), keyEquivalent: "")
+        for style in ClaudeIconStyle.allCases {
+            let item = NSMenuItem(
+                title: style.title,
+                action: #selector(handleIconStyle(_:)),
+                keyEquivalent: ""
+            )
             item.target = self
             item.representedObject = style.rawValue
             item.state = iconStyle == style ? .on : .off

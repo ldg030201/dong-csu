@@ -77,13 +77,13 @@ Claude Code 재로그인…
 접기 / 펼치기
 HUD 숨기기
 위치 초기화
-가운데 아이콘  ▸  Clawd / Claude 앱 아이콘 / 버스트 마크
+가운데 아이콘  ▸  부엉이 / Clawd / Claude 앱 아이콘 / 버스트 마크
 테마          ▸  시스템 설정 따름 / 라이트 / 다크
 ──────────
 dong-mcu 종료               ⌘Q
 ```
 
-설정 창(톱니 버튼 또는 `⌘,`)에서 현재 사용량, 테마, 가운데 아이콘(세 가지를 실제로
+설정 창(톱니 버튼 또는 `⌘,`)에서 현재 사용량, 테마, 가운데 아이콘(네 가지를 실제로
 그려서 보여주고 고른다), 조회 주기, 펼침 방향, 배경 불투명도, 접기, HUD 표시,
 위치 초기화, 재로그인을 한 화면에서 볼 수 있다.
 
@@ -153,8 +153,8 @@ VARIANT=test ./build.sh    # dong-mcu-test.app  (dev.sh의 기본값)
 앱을 띄우지 않고 HUD 모양만 PNG로 확인할 수도 있다.
 
 ```bash
-./dev.sh render 94 71 clawd          # 사용률 94% / 71%
-dong-mcu --render out.png 100 71 clawd reauth   # 실패 상태까지 재현
+./dev.sh render 94 71 owl            # 사용률 94% / 71%
+dong-mcu --render out.png 100 71 owl reauth   # 실패 상태까지 재현
 ```
 
 에디터는 VS Code + [Swift 확장](https://marketplace.visualstudio.com/items?itemName=swiftlang.swift-vscode)

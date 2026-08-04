@@ -47,7 +47,7 @@ case "$MODE" in
   render)
     build || exit 1
     OUT="$ROOT/build/hud.png"
-    "$ROOT/.build/release/dong-mcu" --render "$OUT" "${2:-8}" "${3:-60}" "${4:-clawd}"
+    "$ROOT/.build/release/dong-mcu" --render "$OUT" "${2:-8}" "${3:-60}" "${4:-owl}"
     open "$OUT"
     exit 0
     ;;
