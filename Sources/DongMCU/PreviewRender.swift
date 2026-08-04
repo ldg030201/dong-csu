@@ -1,5 +1,7 @@
 import AppKit
+import ImageIO
 import SwiftUI
+import UniformTypeIdentifiers
 
 extension NSImage {
     /// PNG로 저장한다. 렌더 통로 네 곳이 같은 사슬을 각자 쓰고 있었다.
@@ -63,6 +65,77 @@ enum OwlSheetRenderer {
         let start = String(format: "%.2f", frame.duration)
         guard frame.jitter > 0 else { return "\(start)s" }
         return "\(start)~\(String(format: "%.2f", frame.duration + frame.jitter))s"
+    }
+}
+
+/// `dong-mcu --render-owl-gif <디렉터리>` — 기분마다 움직이는 GIF를 한 장씩 만든다.
+///
+/// 문서에 넣을 그림이라 프레임 시간이 실제와 어긋나면 안 된다. 손으로 만들지 않고
+/// `OwlMood.frames`를 그대로 읽어서, 자세를 고치면 GIF도 같이 바뀌게 한다.
+@MainActor
+enum OwlGIFRenderer {
+    /// 만들어진 파일 경로들. 하나라도 실패하면 nil.
+    static func writeAll(to directory: String, cell: CGFloat) -> [String]? {
+        let base = URL(fileURLWithPath: directory, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        } catch {
+            return nil
+        }
+
+        var written: [String] = []
+        for mood in OwlMood.allCases {
+            let url = base.appendingPathComponent("\(mood.rawValue).gif")
+            guard write(mood: mood, to: url, cell: cell) else { return nil }
+            written.append(url.path)
+        }
+        return written
+    }
+
+    private static func write(mood: OwlMood, to url: URL, cell: CGFloat) -> Bool {
+        let frames = mood.frames
+        guard let destination = CGImageDestinationCreateWithURL(
+            url as CFURL,
+            UTType.gif.identifier as CFString,
+            frames.count,
+            nil
+        ) else { return false }
+
+        // 0 = 무한 반복.
+        CGImageDestinationSetProperties(destination, [
+            kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0],
+        ] as CFDictionary)
+
+        for frame in frames {
+            // 투명 배경으로 두면 프레임이 지워지는 방식에 따라 잔상이 남는다.
+            // 배경을 칠해서 프레임마다 화면을 통째로 덮게 한다.
+            let content = OwlMarkView(pose: frame.pose, palette: mood.palette)
+                .frame(height: cell)
+                .padding(cell * 0.22)
+                .background(Color(white: 0.13))
+            let renderer = ImageRenderer(content: content)
+            renderer.scale = 2
+            guard let image = renderer.cgImage else { return false }
+
+            let delay = delaySeconds(for: frame)
+            CGImageDestinationAddImage(destination, image, [
+                kCGImagePropertyGIFDictionary: [
+                    kCGImagePropertyGIFDelayTime: delay,
+                    kCGImagePropertyGIFUnclampedDelayTime: delay,
+                ],
+            ] as CFDictionary)
+        }
+
+        return CGImageDestinationFinalize(destination)
+    }
+
+    /// 지터가 있는 프레임은 한가운데 값으로 잡는다. GIF는 매번 다르게 기다릴 수 없어서
+    /// 실제 앱이 평균적으로 머무는 만큼을 보여주는 게 가장 덜 어긋난다.
+    private static func delaySeconds(for frame: OwlFrame) -> Double {
+        // 프레임이 하나뿐인 정지 기분은 시간이 0이다. GIF에 0을 넣으면
+        // 뷰어가 제멋대로 100ms로 바꿔 잡으므로 눈에 띄는 값을 준다.
+        guard frame.duration > 0 else { return 1 }
+        return frame.duration + frame.jitter / 2
     }
 }
 

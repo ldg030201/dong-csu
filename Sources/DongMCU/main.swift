@@ -101,6 +101,24 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl"),
     exit(ok ? 0 : 1)
 }
 
+// 기분마다 움직이는 GIF를 만든다: dong-mcu --render-owl-gif <디렉터리> [칸높이]
+// 문서에 넣을 그림이다. 자세를 고치면 다시 돌려서 갱신한다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let arguments = CommandLine.arguments
+    let directory = arguments[flagIndex + 1]
+    let cell = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 120 : 120
+    let written = MainActor.assumeIsolated {
+        OwlGIFRenderer.writeAll(to: directory, cell: cell)
+    }
+    guard let written else {
+        print("render failed")
+        exit(1)
+    }
+    written.forEach { print("rendered: \($0)") }
+    exit(0)
+}
+
 // 앱 아이콘을 PNG로 뽑는다: dong-mcu --render-icon out.png [한변]
 // .icns는 이 PNG들을 iconutil로 묶어 만든다. make-icon.sh 참고.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-icon"),
