@@ -33,7 +33,7 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 /// 링을 감싸고 드래그 이동 / 우클릭 메뉴를 처리하는 투명 오버레이.
 /// 링 자체는 조작할 게 없으므로 마우스 이벤트를 전부 여기서 받는다.
 final class HUDInteractionView: NSView {
-    var onDrag: (@MainActor (CGSize) -> Void)?
+    var onDragTo: (@MainActor (NSPoint) -> Void)?
     var onDragEnded: (@MainActor () -> Void)?
     var menuBuilder: (@MainActor () -> NSMenu)?
     var onDoubleClick: (@MainActor () -> Void)?
@@ -41,7 +41,8 @@ final class HUDInteractionView: NSView {
     /// 이 영역의 마우스 이벤트는 아래(SwiftUI)로 흘려보낸다. 새로고침 버튼용.
     var passThroughRect: CGRect = .zero
 
-    private var dragOrigin: NSPoint?
+    /// 마우스와 창 원점 사이의 간격. 드래그 내내 이 값을 유지한다.
+    private var dragOffset: CGSize?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -54,22 +55,26 @@ final class HUDInteractionView: NSView {
     override func mouseDown(with event: NSEvent) {
         // 더블클릭으로 접었다 폈다 한다. 이때는 드래그를 시작하지 않는다.
         if event.clickCount == 2 {
-            dragOrigin = nil
+            dragOffset = nil
             onDoubleClick?()
             return
         }
-        dragOrigin = NSEvent.mouseLocation
+        guard let origin = window?.frame.origin else { return }
+        let mouse = NSEvent.mouseLocation
+        dragOffset = CGSize(width: mouse.x - origin.x, height: mouse.y - origin.y)
     }
 
+    /// 창을 절대 좌표로 옮긴다.
+    /// 이동량(델타)을 더해 나가면 이벤트가 하나만 누락돼도 그만큼 어긋난 채로 남고,
+    /// 그 오차가 계속 쌓여서 창이 커서에서 점점 멀어진다.
     override func mouseDragged(with event: NSEvent) {
-        guard let start = dragOrigin else { return }
-        let current = NSEvent.mouseLocation
-        onDrag?(CGSize(width: current.x - start.x, height: current.y - start.y))
-        dragOrigin = current
+        guard let offset = dragOffset else { return }
+        let mouse = NSEvent.mouseLocation
+        onDragTo?(NSPoint(x: mouse.x - offset.width, y: mouse.y - offset.height))
     }
 
     override func mouseUp(with event: NSEvent) {
-        dragOrigin = nil
+        dragOffset = nil
         onDragEnded?()
     }
 
@@ -158,7 +163,7 @@ final class HUDController {
 
         panel.contentView = container
 
-        interactionView.onDrag = { [weak self] delta in self?.move(by: delta) }
+        interactionView.onDragTo = { [weak self] origin in self?.panel.setFrameOrigin(origin) }
         interactionView.onDragEnded = { [weak self] in self?.saveOrigin() }
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
         interactionView.onDoubleClick = { [weak self] in self?.handleToggleCollapse() }
@@ -277,13 +282,6 @@ final class HUDController {
     }
 
     // MARK: - 위치
-
-    private func move(by delta: CGSize) {
-        var origin = panel.frame.origin
-        origin.x += delta.width
-        origin.y += delta.height
-        panel.setFrameOrigin(origin)
-    }
 
     private func saveOrigin() {
         let origin = panel.frame.origin
