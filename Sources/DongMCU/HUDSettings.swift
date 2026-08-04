@@ -98,6 +98,12 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(scale.rawValue, forKey: Keys.scale) }
     }
 
+    /// 새 버전이 나왔는지 하루 한 번 GitHub에 물어볼지.
+    /// 끄면 이 앱은 Anthropic API 외에 아무 데도 접속하지 않는다.
+    @Published var checksForUpdates: Bool {
+        didSet { defaults.set(!checksForUpdates, forKey: Keys.updateCheckOff) }
+    }
+
     /// HUD 배경 불투명도. 너무 투명하면 글자가 안 읽혀서 아래를 막아둔다.
     @Published var backdropOpacity: Double {
         didSet {
@@ -136,6 +142,8 @@ final class HUDSettings: ObservableObject {
         static let hidden = "hud.hidden"
         static let expandSide = "hud.expandSide"
         static let scale = "hud.scale"
+        // 기본값을 켜짐으로 두려고 반대 의미로 저장한다.
+        static let updateCheckOff = "hud.updateCheckOff"
         static let backdropOpacity = "hud.backdropOpacity"
         static let showsProcessStats = "hud.showsProcessStats"
         static let pollInterval = "hud.pollInterval"
@@ -149,6 +157,7 @@ final class HUDSettings: ObservableObject {
         isHUDVisible = !defaults.bool(forKey: Keys.hidden)
         expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
         scale = HUDScale(rawValue: defaults.string(forKey: Keys.scale) ?? "") ?? .default
+        checksForUpdates = !defaults.bool(forKey: Keys.updateCheckOff)
         let stored = defaults.object(forKey: Keys.backdropOpacity) as? Double
         backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
         showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)

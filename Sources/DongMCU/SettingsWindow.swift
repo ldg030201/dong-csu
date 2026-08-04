@@ -11,7 +11,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case display
     case icon
     case account
-    case changelog
+    case version
 
     var id: String { rawValue }
 
@@ -21,7 +21,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .display: return "표시"
         case .icon: return "아이콘"
         case .account: return "계정"
-        case .changelog: return "변경 내역"
+        case .version: return "버전"
         }
     }
 
@@ -31,7 +31,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .display: return "slider.horizontal.3"
         case .icon: return "face.smiling"
         case .account: return "person.crop.circle"
-        case .changelog: return "clock.arrow.circlepath"
+        case .version: return "arrow.down.circle"
         }
     }
 }
@@ -46,6 +46,7 @@ struct SettingsView: View {
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
+    @ObservedObject var updates: UpdateChecker
     let actions: SettingsActions
     let version: String
     /// 미리보기 렌더는 ScrollView 안을 그리지 못한다. 그럴 때는 스크롤을 벗겨서
@@ -59,6 +60,7 @@ struct SettingsView: View {
     init(
         settings: HUDSettings,
         store: UsageStore,
+        updates: UpdateChecker,
         actions: SettingsActions,
         version: String,
         initialTab: SettingsTab? = nil,
@@ -66,6 +68,7 @@ struct SettingsView: View {
     ) {
         self.settings = settings
         self.store = store
+        self.updates = updates
         self.actions = actions
         self.version = version
         self.isPreviewRender = isPreviewRender
@@ -142,7 +145,7 @@ struct SettingsView: View {
         case .display: displaySection
         case .icon: iconSection
         case .account: accountSection
-        case .changelog: changelogSection
+        case .version: versionSection
         }
     }
 
@@ -341,15 +344,82 @@ struct SettingsView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - 변경 내역
+    // MARK: - 버전
 
-    @ViewBuilder
-    private var changelogSection: some View {
-        if isPreviewRender {
-            changelogList
-        } else {
-            ScrollView { changelogList }
-                .frame(maxHeight: .infinity)
+    private var versionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            updateBox
+            Divider()
+            if isPreviewRender {
+                changelogList
+            } else {
+                ScrollView { changelogList }
+                    .frame(maxHeight: .infinity)
+            }
+        }
+    }
+
+    /// 지금 버전과 업데이트 상태.
+    private var updateBox: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(AppInfo.version)
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                Text("지금 버전")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer()
+            }
+
+            HStack(spacing: 8) {
+                if updates.hasUpdate, let latest = updates.latest {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .foregroundStyle(.white, Color.accentColor)
+                        .symbolRenderingMode(.palette)
+                    Text("새 버전 \(latest.description)")
+                        .font(.system(size: 12, weight: .medium))
+                } else if let error = updates.errorText {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else if updates.latest != nil {
+                    Text("최신 버전입니다")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Text("아직 확인하지 않았습니다")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+            }
+
+            HStack(spacing: 8) {
+                if updates.hasUpdate {
+                    Button("업데이트") { _ = UpdateChecker.openUpgrade() }
+                        .buttonStyle(.borderedProminent)
+                }
+                Button(updates.isChecking ? "확인 중…" : "업데이트 확인") { updates.check() }
+                    .disabled(updates.isChecking)
+                Spacer(minLength: 0)
+                if let checked = updates.lastCheckedAt {
+                    Text(RemainingTime.ageText(since: checked, now: Date()))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Toggle("하루에 한 번 새 버전 확인", isOn: $settings.checksForUpdates)
+                .font(.system(size: 11))
+
+            if updates.hasUpdate {
+                Text("업데이트는 터미널에서 brew로 진행된다. 끝나면 앱이 다시 뜬다.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -442,6 +512,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var didCenter = false
     private let settings: HUDSettings
     private let store: UsageStore
+    private let updates: UpdateChecker
     private let actions: SettingsActions
     /// 설정 창을 띄울 화면. HUD가 놓인 화면을 따라간다.
     private let preferredScreen: () -> NSScreen?
@@ -449,11 +520,13 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     init(
         settings: HUDSettings,
         store: UsageStore,
+        updates: UpdateChecker,
         actions: SettingsActions,
         preferredScreen: @escaping () -> NSScreen?
     ) {
         self.settings = settings
         self.store = store
+        self.updates = updates
         self.actions = actions
         self.preferredScreen = preferredScreen
         super.init()
@@ -476,6 +549,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             let view = SettingsView(
                 settings: settings,
                 store: store,
+                updates: updates,
                 actions: actions,
                 version: version
             )

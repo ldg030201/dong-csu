@@ -22,6 +22,10 @@ struct UsageHUDView: View {
     var usageMonitor: ProcessUsageMonitor?
     /// HUD 전체 배율. 치수와 글자 크기에 곱한다.
     var scale: CGFloat = 1
+    /// 새 버전이 나와 있으면 버튼 반대편 위 모서리에 표시를 띄운다.
+    var showsUpdateBadge: Bool = false
+    /// 그 표시를 눌렀을 때. 버전 화면을 연다.
+    var onOpenUpdates: (() -> Void)?
 
     /// 배율 1 기준 길이를 실제 길이로.
     private func s(_ value: CGFloat) -> CGFloat { value * scale }
@@ -106,6 +110,24 @@ struct UsageHUDView: View {
 
     static func collapsedTrailing(scale: CGFloat) -> CGFloat { 6 * scale }
 
+    /// 업데이트 표시 한 변.
+    static func updateBadgeSize(scale: CGFloat) -> CGFloat { 18 * scale }
+
+    /// 업데이트 표시 자리. 버튼 묶음 반대편 위 모서리에 둔다.
+    /// 기본 설정(오른쪽으로 펼치기)에서는 왼쪽 위가 된다.
+    static func updateBadgeRectInPanel(
+        collapsed: Bool,
+        side: HUDExpandSide,
+        showsStats: Bool,
+        scale: CGFloat = 1
+    ) -> CGRect {
+        let badge = updateBadgeSize(scale: scale)
+        let inset = refreshInset(scale: scale)
+        let panel = size(collapsed: collapsed, showsStats: showsStats, scale: scale)
+        let x = side == .right ? inset : panel.width - inset - badge
+        return CGRect(x: x, y: panel.height - inset - badge, width: badge, height: badge)
+    }
+
     @State private var isHoveringRefresh = false
     @State private var isHoveringSettings = false
     @State private var isHoveringCollapse = false
@@ -139,6 +161,7 @@ struct UsageHUDView: View {
             width: Self.size(collapsed: true, scale: scale).width,
             height: Self.size(collapsed: true, scale: scale).height
         )
+        .overlay(alignment: badgeAlignment) { updateBadge }
     }
 
     private var buttonColumn: some View {
@@ -184,6 +207,7 @@ struct UsageHUDView: View {
         .padding(.trailing, expandSide == .right ? s(10) : s(13))
         .frame(width: s(Self.baseExpandedSize.width), height: s(Self.baseExpandedSize.height))
         .overlay(alignment: expandSide == .right ? .topTrailing : .topLeading) { controlButtons }
+        .overlay(alignment: badgeAlignment) { updateBadge }
         // 아래 줄이 생기면 카운트다운도 거기로 내려가 자원 사용량과 같은 높이에 놓인다.
         .overlay(alignment: expandSide == .right ? .bottomTrailing : .bottomLeading) {
             if usageMonitor == nil { resetCountdown }
@@ -286,6 +310,33 @@ struct UsageHUDView: View {
         }
         guard store.nextPollDate != nil else { return "화면이 꺼져 있어 조회를 멈춘 상태" }
         return "다음 사용량 조회까지 남은 시간"
+    }
+
+    // MARK: - 업데이트 표시
+
+    private var badgeAlignment: Alignment {
+        expandSide == .right ? .topLeading : .topTrailing
+    }
+
+    @ViewBuilder private var updateBadge: some View {
+        if showsUpdateBadge {
+            Button {
+                onOpenUpdates?()
+            } label: {
+                Image(systemName: "arrow.down.circle.fill")
+                    .font(font(13, weight: .semibold))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, palette.updateBadge)
+                    .frame(
+                        width: Self.updateBadgeSize(scale: scale),
+                        height: Self.updateBadgeSize(scale: scale)
+                    )
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .help("새 버전이 나왔다 — 눌러서 확인")
+            .padding(Self.refreshInset(scale: scale))
+        }
     }
 
     // MARK: - 우측 상단 버튼

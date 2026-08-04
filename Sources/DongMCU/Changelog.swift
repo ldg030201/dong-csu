@@ -19,7 +19,9 @@ enum Changelog {
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(version: "1.1.0", date: nil, notes: [
-            "설정 창에 변경 내역 탭 추가 — 버전마다 무엇이 달라졌는지 볼 수 있다",
+            "새 버전이 나오면 HUD 왼쪽 위에 파란 표시가 뜬다. 눌러서 바로 업데이트",
+            "설정 창에 버전 탭 추가 — 지금 버전, 업데이트, 버전별 변경 내역",
+            "하루에 한 번 새 버전을 확인한다. 버전 탭에서 끌 수 있다",
         ]),
         ChangelogEntry(version: "1.0.0", date: "2026-08-04", notes: [
             "마스코트 부엉이를 만들어 링 가운데 기본 아이콘으로",

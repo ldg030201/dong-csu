@@ -68,6 +68,13 @@ struct HUDPalette {
             : Color(red: 0.72, green: 0.47, blue: 0.05)
     }
 
+    /// 새 버전 알림. 링 색(초록·노랑·빨강)과 겹치지 않는 파랑을 쓴다.
+    var updateBadge: Color {
+        isDark
+            ? Color(red: 0.29, green: 0.60, blue: 0.99)
+            : Color(red: 0.11, green: 0.44, blue: 0.90)
+    }
+
     /// Clawd의 눈. 배경이 밝아도 어둡게 유지한다.
     var markEye: Color { Color.black.opacity(isDark ? 0.88 : 0.75) }
 

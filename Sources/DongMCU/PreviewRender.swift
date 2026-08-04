@@ -24,7 +24,8 @@ enum HUDPreviewRenderer {
         side: HUDExpandSide = .right,
         opacity: Double = 0.92,
         showsStats: Bool = false,
-        scale: HUDScale = .normal
+        scale: HUDScale = .normal,
+        showsUpdateBadge: Bool = false
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -55,7 +56,8 @@ enum HUDPreviewRenderer {
             palette: palette,
             expandSide: side,
             usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil,
-            scale: scale.factor
+            scale: scale.factor,
+            showsUpdateBadge: showsUpdateBadge
         )
             .background {
                 ZStack {
@@ -88,7 +90,13 @@ enum HUDPreviewRenderer {
     }
 
     /// 설정 창을 PNG로 렌더한다. 탭마다 화면이 달라서 어느 탭을 그릴지 받는다.
-    static func writeSettings(to path: String, isDark: Bool, tab: SettingsTab = .status) -> Bool {
+    /// `update`를 주면 그 버전이 나와 있는 것처럼 그린다(버전 탭 확인용).
+    static func writeSettings(
+        to path: String,
+        isDark: Bool,
+        tab: SettingsTab = .status,
+        update: String? = nil
+    ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
             fiveHour: UsageWindow(utilization: 34, resetsAt: Date().addingTimeInterval(3 * 3600)),
@@ -99,6 +107,10 @@ enum HUDPreviewRenderer {
             settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-mcu.preview") ?? .standard),
             // 상태 탭이 조회 카운트다운을 그리므로 예정 시각까지 넣어야 실제와 같아진다.
             store: UsageStore(preview: snapshot, nextPoll: Date().addingTimeInterval(7 * 60 + 12)),
+            updates: UpdateChecker(
+                preview: update,
+                lastCheckedAt: Date().addingTimeInterval(-40 * 60)
+            ),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
             version: "\(AppInfo.name) \(dongMCUVersion)",
             initialTab: tab,

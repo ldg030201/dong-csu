@@ -5,6 +5,7 @@ import Combine
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = UsageStore()
     private let settings = HUDSettings()
+    private let updates = UpdateChecker()
     private var hud: HUDController?
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindowController?
@@ -13,12 +14,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)  // Dock 아이콘 없음
 
-        let hud = HUDController(store: store, settings: settings)
+        let hud = HUDController(store: store, settings: settings, updates: updates)
         self.hud = hud
 
         let settingsWindow = SettingsWindowController(
             settings: settings,
             store: store,
+            updates: updates,
             actions: SettingsActions(
                 refresh: { [weak store] in store?.refresh(force: true) },
                 resetPosition: { [weak hud] in hud?.resetPosition() },
@@ -46,5 +48,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
 
         store.start()
+
+        // 업데이트 확인은 설정을 따른다. 꺼두면 아무 데도 접속하지 않는다.
+        if settings.checksForUpdates { updates.start() }
+        settings.$checksForUpdates
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak updates] enabled in
+                if enabled { updates?.start() } else { updates?.stop() }
+            }
+            .store(in: &cancellables)
     }
 }

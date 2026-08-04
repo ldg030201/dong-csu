@@ -38,8 +38,9 @@ final class HUDInteractionView: NSView {
     var menuBuilder: (@MainActor () -> NSMenu)?
     var onDoubleClick: (@MainActor () -> Void)?
 
-    /// 이 영역의 마우스 이벤트는 아래(SwiftUI)로 흘려보낸다. 새로고침 버튼용.
-    var passThroughRect: CGRect = .zero
+    /// 이 영역들의 마우스 이벤트는 아래(SwiftUI)로 흘려보낸다.
+    /// 버튼 묶음과 업데이트 배지처럼 눌려야 하는 자리들이 들어온다.
+    var passThroughRects: [CGRect] = []
 
     /// 마우스와 창 원점 사이의 간격. 드래그 내내 이 값을 유지한다.
     private var dragOffset: CGSize?
@@ -48,7 +49,8 @@ final class HUDInteractionView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         // point는 superview 좌표계로 들어온다.
-        if passThroughRect.contains(convert(point, from: superview)) { return nil }
+        let local = convert(point, from: superview)
+        if passThroughRects.contains(where: { $0.contains(local) }) { return nil }
         return super.hitTest(point)
     }
 
@@ -95,6 +97,7 @@ final class HUDController {
     private let hosting: FirstMouseHostingView<UsageHUDView>
     private let container: NSView
     let settings: HUDSettings
+    private let updates: UpdateChecker
     /// 설정 창을 여는 동작. AppDelegate가 꽂아준다.
     var onOpenSettings: (@MainActor () -> Void)?
     private let backdrop = NSView()
@@ -109,9 +112,10 @@ final class HUDController {
     private var appearance: HUDAppearance { settings.appearance }
     private var scale: CGFloat { settings.scale.factor }
 
-    init(store: UsageStore, settings: HUDSettings) {
+    init(store: UsageStore, settings: HUDSettings, updates: UpdateChecker) {
         self.store = store
         self.settings = settings
+        self.updates = updates
 
         let size = UsageHUDView.size(
             collapsed: settings.isCollapsed,
@@ -165,12 +169,15 @@ final class HUDController {
 
         interactionView.frame = container.bounds
         interactionView.autoresizingMask = [.width, .height]
-        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
-            collapsed: settings.isCollapsed,
-            side: settings.expandSide,
-            showsStats: settings.showsProcessStats,
-            scale: settings.scale.factor
-        )
+        // 시작 시점에는 아직 업데이트를 확인하기 전이라 버튼 영역만 넣는다.
+        interactionView.passThroughRects = [
+            UsageHUDView.controlsHitRectInPanel(
+                collapsed: settings.isCollapsed,
+                side: settings.expandSide,
+                showsStats: settings.showsProcessStats,
+                scale: settings.scale.factor
+            )
+        ]
         container.addSubview(interactionView)
 
         panel.contentView = container
@@ -249,6 +256,17 @@ final class HUDController {
             .sink { [weak self] _ in self?.applyProcessStats() }
             .store(in: &cancellables)
 
+        // 새 버전이 잡히면 표시를 띄우고 그 자리를 클릭 통과 영역에 더한다.
+        updates.$latest
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.refreshPassThroughRects(collapsed: self.settings.isCollapsed)
+                self.rebuildRootView()
+            }
+            .store(in: &cancellables)
+
         // 배율은 창 크기·모서리·클릭 영역까지 바꾼다. 접기와 같은 경로를 탄다.
         settings.$scale
             .dropFirst()
@@ -277,12 +295,7 @@ final class HUDController {
 
     /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
     private func applyExpandSide() {
-        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
-            collapsed: settings.isCollapsed,
-            side: settings.expandSide,
-            showsStats: settings.showsProcessStats,
-            scale: scale
-        )
+        refreshPassThroughRects(collapsed: settings.isCollapsed)
         rebuildRootView()
         layoutHosting(for: UsageHUDView.size(
             collapsed: settings.isCollapsed,
@@ -506,13 +519,13 @@ final class HUDController {
         scaleItem.submenu = scaleMenu
         menu.addItem(scaleItem)
 
-        let changelog = NSMenuItem(
-            title: "변경 내역…",
+        let versionItem = NSMenuItem(
+            title: "버전과 업데이트…",
             action: #selector(handleChangelog),
             keyEquivalent: ""
         )
-        changelog.target = self
-        menu.addItem(changelog)
+        versionItem.target = self
+        menu.addItem(versionItem)
 
         let themeMenu = NSMenu()
         for value in HUDAppearance.allCases {
@@ -601,12 +614,7 @@ final class HUDController {
         // 잠시 멈추고 끝난 뒤에 다시 맞춘다.
         usageMonitor.stop()
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed, scale: scale)
-        interactionView.passThroughRect = UsageHUDView.controlsHitRectInPanel(
-            collapsed: collapsed,
-            side: settings.expandSide,
-            showsStats: settings.showsProcessStats,
-            scale: scale
-        )
+        refreshPassThroughRects(collapsed: collapsed)
 
         if collapsed {
             // 접을 때는 펼친 내용을 그대로 둔 채 창만 줄여서, 서랍이 밀려 들어가는 것처럼 보이게 한다.
@@ -641,6 +649,30 @@ final class HUDController {
         rebuildRootView()
     }
 
+    /// 드래그 오버레이가 클릭을 삼키지 않을 자리들을 다시 계산한다.
+    /// 버튼 묶음은 항상, 업데이트 표시는 새 버전이 있을 때만 넣는다.
+    private func refreshPassThroughRects(collapsed: Bool) {
+        var rects = [
+            UsageHUDView.controlsHitRectInPanel(
+                collapsed: collapsed,
+                side: settings.expandSide,
+                showsStats: settings.showsProcessStats,
+                scale: scale
+            )
+        ]
+        if updates.hasUpdate {
+            rects.append(
+                UsageHUDView.updateBadgeRectInPanel(
+                    collapsed: collapsed,
+                    side: settings.expandSide,
+                    showsStats: settings.showsProcessStats,
+                    scale: scale
+                )
+            )
+        }
+        interactionView.passThroughRects = rects
+    }
+
     /// 표시 상태가 바뀌면 뷰를 다시 만든다. 숨겨져 있는 동안 카운트다운의 1초 타이머를 끄기 위해서다.
     private func rebuildRootView() {
         hosting.rootView = UsageHUDView(
@@ -656,8 +688,16 @@ final class HUDController {
             // 접기 애니메이션 동안에는 타이머를 잠시 멈추는데, 그때 뷰를 다시 만들면
             // 줄이 통째로 사라져서 펼친 뒤에도 안 보였다.
             usageMonitor: settings.showsProcessStats && !isCollapsed ? usageMonitor : nil,
-            scale: scale
+            scale: scale,
+            showsUpdateBadge: updates.hasUpdate,
+            onOpenUpdates: { [weak self] in self?.openUpdates() }
         )
+    }
+
+    /// 업데이트 표시를 눌렀을 때. 설정 창의 버전 화면을 연다.
+    private func openUpdates() {
+        settings.settingsTab = .version
+        onOpenSettings?()
     }
 
     @objc private func handleIconStyle(_ sender: NSMenuItem) {
@@ -666,9 +706,9 @@ final class HUDController {
         settings.iconStyle = style
     }
 
-    /// 설정 창을 변경 내역 탭으로 연다.
+    /// 설정 창을 버전 탭으로 연다.
     @objc private func handleChangelog() {
-        settings.settingsTab = .changelog
+        settings.settingsTab = .version
         onOpenSettings?()
     }
 

@@ -25,7 +25,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 설치부터 `/Applications` 등록, 실행까지 한 번에:
 
 ```bash
-brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && ln -sfn "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
 ```
 
 각 단계가 하는 일:
@@ -35,26 +35,30 @@ brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust 
 | `brew tap` | 이 저장소를 Homebrew가 아는 저장소 목록에 넣는다 |
 | `brew trust` | 서드파티 tap의 formula 실행을 허용한다. Homebrew가 기본적으로 거부해서 필요하다 |
 | `brew install` | 소스를 내려받아 빌드하고 `$(brew --prefix)/opt/dong-mcu/` 안에 넣는다 |
-| `ln -sfn` | `/Applications`에 링크를 건다 |
+| `cp -R` | `/Applications`에 복사한다 |
 | `open` | 실행한다 |
 
-**`ln` 줄이 왜 필요한가** — Homebrew에는 두 종류가 있다. GUI 앱용 **cask**(`brew install --cask`)는
+**`cp` 줄이 왜 필요한가** — Homebrew에는 두 종류가 있다. GUI 앱용 **cask**(`brew install --cask`)는
 `/Applications`에 자동으로 설치하지만, 이건 소스를 빌드하는 **formula**다. formula는 Homebrew
 디렉터리 밖에 파일을 쓰지 않는 게 규칙이라 `/Applications`를 건드리지 않는다. 대신 코드 서명·공증
 없이도 설치되는 게 이 방식의 장점이다.
+
+**심볼릭 링크(`ln -s`)로는 안 된다.** macOS는 `/Applications` 안의 심볼릭 링크를 앱으로 등록하지
+않아서 Launchpad와 Spotlight에 나타나지 않는다. Finder에서 직접 열 수만 있다. 그래서 복사한다.
 
 첫 실행 때 keychain 접근을 허용할지 한 번 묻는다.
 
 #### 업데이트
 
 ```bash
-brew update && brew upgrade dong-mcu
+brew update && brew upgrade dong-mcu && rm -rf /Applications/DongMCU.app && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
 ```
 
-`/Applications` 링크는 `opt` 경로를 가리키므로 버전이 올라가도 그대로 유지된다.
-앱 이름 자체가 바뀐 버전으로 올릴 때만 위의 `ln -sfn` 줄을 다시 실행하면 된다.
+`brew upgrade`는 Homebrew 안쪽만 갱신한다. `/Applications`에 있는 건 복사본이라
+**다시 복사해야 새 버전이 된다.** 앱 안의 업데이트 버튼을 쓰면 이 과정을 알아서 해준다.
 
-`brew --prefix dong-mcu`는 `$(brew --prefix)/opt/dong-mcu`와 같은 경로를 돌려준다.
+`brew update`가 빠지면 tap이 갱신되지 않아 "already up-to-date"라고 나온다.
+`brew --prefix dong-mcu`는 `$(brew --prefix)/opt/dong-mcu`와 같은 경로다.
 
 #### 로그인할 때 자동으로 켜기
 
@@ -63,7 +67,7 @@ brew update && brew upgrade dong-mcu
 #### 제거
 
 ```bash
-rm -f /Applications/DongMCU.app && brew uninstall dong-mcu && brew untap ldg030201/dong-mcu
+rm -rf /Applications/DongMCU.app && brew uninstall dong-mcu && brew untap ldg030201/dong-mcu
 ```
 
 설정(창 위치·아이콘·크기)은 남는다. 그것까지 지우려면:
@@ -114,7 +118,7 @@ HUD 숨기기
 가운데 아이콘  ▸  캐릭터 ─ 부엉이
                   Claude ─ Clawd / Claude 아이콘 / 버스트 마크
 크기          ▸  작게 / 보통 / 크게 / 매우 크게
-변경 내역…
+버전과 업데이트…
 테마          ▸  시스템 설정 따름 / 라이트 / 다크
 ──────────
 DongMCU 종료                ⌘Q
@@ -126,7 +130,7 @@ DongMCU 종료                ⌘Q
 - **표시** — 테마, 크기, 조회 주기, 펼침 방향, 배경 불투명도, CPU·메모리 표시, HUD 표시·접기, 위치 초기화
 - **아이콘** — 가운데 아이콘. 실제로 그려서 보여주고 고른다
 - **계정** — Claude Code 재로그인
-- **변경 내역** — 버전별로 무엇이 달라졌는지
+- **버전** — 지금 버전과 업데이트, 그리고 버전별 변경 내역
 
 아이콘 탭은 **캐릭터**와 **Claude** 두 묶음으로 나뉜다. 앞은 dong-mcu가 직접 만든
 그림이고, 뒤는 Claude 쪽 그림이다.
@@ -140,6 +144,20 @@ DongMCU 종료                ⌘Q
 
 HUD를 숨겨도 메뉴바 아이콘으로 다시 켤 수 있다. 숨긴 상태는 기억된다.
 
+## 업데이트
+
+하루에 한 번 GitHub 릴리스를 보고 새 버전이 나왔는지 확인한다. 나와 있으면 HUD 왼쪽 위에
+파란 표시가 뜨고, 누르면 버전 화면이 열린다. 접은 상태에서도 같은 자리에 뜬다.
+
+**업데이트** 버튼을 누르면 터미널에서 `brew update && brew upgrade dong-mcu`가 돌고,
+`/Applications`에 복사해 둔 앱까지 새 것으로 바꾼 뒤 다시 띄운다.
+
+앱이 스스로 자기를 교체하지는 않는다. Homebrew가 소스를 받아 빌드해 설치한 번들이라 앱이
+그 자리를 덮어쓰면 brew의 설치 기록과 어긋나고, 다운로드한 앱을 실행하려면 코드 서명·공증도
+필요해진다. 그래서 업그레이드는 brew에게 맡긴다.
+
+확인을 끄고 싶으면 버전 탭의 체크를 해제한다. 그러면 GitHub에 접속하지 않는다.
+
 ## 사용량은 어디서 오나
 
 keychain 항목 `Claude Code-credentials`에서 OAuth 토큰을 읽어
@@ -149,7 +167,8 @@ keychain 항목 `Claude Code-credentials`에서 OAuth 토큰을 읽어
 - 토큰은 `/usr/bin/security`로 읽는다. Apple이 서명한 고정 바이너리라 keychain에서
   "항상 허용"을 한 번 눌러두면 앱을 다시 빌드해도 권한이 유지된다
 - 토큰은 Authorization 헤더로만 쓰이고 **디스크에 쓰거나 로그에 남기지 않는다**
-- Anthropic API 외에 아무 데도 접속하지 않는다. 통계·추적 없음
+- Anthropic API 외에는 **업데이트 확인용 GitHub 릴리스 API**에만 접속한다. 통계·추적 없음
+- 업데이트 확인을 끄면(버전 탭) Anthropic API 외에 아무 데도 접속하지 않는다
 - 로컬에 저장하는 건 창 위치, 아이콘 선택, 숨김 여부뿐
 - 외부 Swift 패키지 의존성 0개
 

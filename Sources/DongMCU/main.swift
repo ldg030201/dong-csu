@@ -45,7 +45,11 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
     let tab = CommandLine.arguments
         .compactMap(SettingsTab.init(rawValue:))
         .first ?? .status
-    let ok = HUDPreviewRenderer.writeSettings(to: path, isDark: isDark, tab: tab)
+    // 버전 탭을 확인할 때 새 버전이 있는 상태를 흉내내려면 update=1.2.3 을 붙인다.
+    let update = CommandLine.arguments
+        .first { $0.hasPrefix("update=") }
+        .map { String($0.dropFirst("update=".count)) }
+    let ok = HUDPreviewRenderer.writeSettings(to: path, isDark: isDark, tab: tab, update: update)
     print(ok ? "rendered: \(path)" : "render failed")
     exit(ok ? 0 : 1)
 }
@@ -109,6 +113,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     let showsStats = extras.contains("stats")
     // small|normal|large|extraLarge 중 하나를 끼워 넣으면 그 배율로 그린다.
     let scale = extras.compactMap(HUDScale.init(rawValue:)).first ?? .normal
+    // update 를 끼워 넣으면 새 버전이 나온 상태로 그린다.
+    let showsUpdateBadge = extras.contains("update")
 
     let succeeded = HUDPreviewRenderer.write(
         to: path,
@@ -120,7 +126,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
         side: side,
         opacity: opacity,
         showsStats: showsStats,
-        scale: scale
+        scale: scale,
+        showsUpdateBadge: showsUpdateBadge
     )
     print(succeeded ? "rendered: \(path)" : "render failed")
     exit(succeeded ? 0 : 1)
