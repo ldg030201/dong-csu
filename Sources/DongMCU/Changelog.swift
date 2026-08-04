@@ -4,19 +4,42 @@ import Foundation
 ///
 /// 설정 창의 "버전" 탭이 이걸 그대로 보여준다. 쓰는 방법은 CLAUDE.md 참고 —
 /// 기능 단위로 한 줄씩, "추가 / 수정 / 변경" 처럼 명사형으로 끝맺는다.
-struct ChangelogEntry {
+struct ChangelogEntry: Codable, Equatable {
     let version: String
     /// 아직 내보내지 않은 항목은 nil. 릴리스할 때 날짜를 채운다.
     let date: String?
     let notes: [String]
 }
 
+/// 원격에서 받아오는 변경 내역 파일의 형태.
+///
+/// 앱에 박혀 있는 내역은 그 버전까지밖에 모른다. 새 버전에 무엇이 들어갔는지
+/// 업데이트하기 전에 보려면 밖에서 받아와야 한다.
+struct ChangelogFeed: Codable {
+    let entries: [ChangelogEntry]
+}
+
 enum Changelog {
+    /// 원격 내역 주소. 릴리스 API 대신 이 파일 하나로 최신 버전과 내역을 함께 받는다.
+    static let feedURL = URL(
+        string: "https://raw.githubusercontent.com/ldg030201/dong-mcu/main/docs/changelog.json"
+    )!
+
+    /// 이 목록을 JSON으로 뽑는다. `dong-mcu --dump-changelog`가 쓴다.
+    static func jsonData() throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .withoutEscapingSlashes]
+        return try encoder.encode(ChangelogFeed(entries: entries))
+    }
+
     /// 최신이 위로 온다.
     ///
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "1.3.0", date: nil, notes: [
+            "아직 설치하지 않은 버전의 변경 내역도 볼 수 있게 함",
+        ]),
         ChangelogEntry(version: "1.2.0.1", date: "2026-08-04", notes: [
             "Swift 5.10 환경에서 빌드가 실패하던 문제 수정",
         ]),

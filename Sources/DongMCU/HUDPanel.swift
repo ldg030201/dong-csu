@@ -257,7 +257,7 @@ final class HUDController {
             .store(in: &cancellables)
 
         // 새 버전이 잡히면 표시를 띄우고 그 자리를 클릭 통과 영역에 더한다.
-        updates.$latest
+        updates.$remoteEntries
             .dropFirst()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in

@@ -27,26 +27,36 @@ struct AppVersion: Comparable, CustomStringConvertible {
     }
 }
 
-/// 새 버전이 나왔는지 GitHub 릴리스를 보고 확인한다.
+/// 새 버전이 나왔는지 확인하고, 버전별 변경 내역을 받아온다.
+///
+/// 앱에 박혀 있는 내역은 그 버전까지밖에 모른다. `docs/changelog.json`을 받아오면
+/// 아직 설치하지 않은 버전에 무엇이 들어갔는지 미리 볼 수 있다. 릴리스 API 대신
+/// 이 파일 하나를 쓰므로 요청도 한 번으로 끝난다.
 ///
 /// 앱이 스스로 자기를 교체하지는 않는다. Homebrew가 소스를 받아 빌드해 설치한
 /// 번들이라, 앱이 그 자리를 덮어쓰면 brew의 설치 기록과 어긋난다. 대신 업그레이드
 /// 명령을 터미널에 넘긴다(재로그인과 같은 방식).
 @MainActor
 final class UpdateChecker: ObservableObject {
-    /// GitHub이 알려준 최신 릴리스 태그.
-    @Published private(set) var latest: AppVersion?
+    /// 원격에서 받아온 변경 내역. 비어 있으면 앱에 박혀 있는 것을 쓴다.
+    @Published private(set) var remoteEntries: [ChangelogEntry] = []
     @Published private(set) var isChecking = false
     @Published private(set) var lastCheckedAt: Date?
     @Published private(set) var errorText: String?
 
+    /// 화면에 보여줄 내역. 원격을 받아왔으면 그쪽이 최신이다.
+    var entries: [ChangelogEntry] {
+        remoteEntries.isEmpty ? Changelog.entries : remoteEntries
+    }
+
+    /// 이미 나온 것 중 가장 높은 버전. 날짜가 없는 항목은 아직 안 나간 것이라 뺀다.
+    var latest: AppVersion? {
+        entries.first { $0.date != nil }.flatMap { AppVersion($0.version) }
+    }
+
     /// 자동 확인 주기. 개인 도구라 하루 한 번이면 충분하고,
     /// 인증 없는 GitHub API의 시간당 60회 제한에도 여유가 있다.
     static let interval: TimeInterval = 24 * 3600
-
-    private static let releaseURL = URL(
-        string: "https://api.github.com/repos/ldg030201/dong-mcu/releases/latest"
-    )!
 
     private var timer: Timer?
     private var inFlight = false
@@ -59,9 +69,17 @@ final class UpdateChecker: ObservableObject {
 
     init() {}
 
-    /// 렌더 확인용.
+    /// 렌더 확인용. 주어진 버전이 방금 나온 것처럼 목록 맨 앞에 끼운다.
     init(preview latest: String?, lastCheckedAt: Date? = nil) {
-        self.latest = latest.flatMap(AppVersion.init)
+        if let latest, AppVersion(latest) != nil {
+            remoteEntries = [
+                ChangelogEntry(
+                    version: latest,
+                    date: "2026-08-05",
+                    notes: ["미리보기용 항목"]
+                )
+            ] + Changelog.entries
+        }
         self.lastCheckedAt = lastCheckedAt
     }
 
@@ -90,50 +108,44 @@ final class UpdateChecker: ObservableObject {
         isChecking = true
 
         Task { [weak self] in
-            let result = await Self.fetchLatestTag()
+            let result = await Self.fetchFeed()
             guard let self else { return }
             self.inFlight = false
             self.isChecking = false
             self.lastCheckedAt = Date()
 
             switch result {
-            case .success(let tag):
+            case .success(let entries):
                 self.errorText = nil
-                self.latest = AppVersion(tag)
+                self.remoteEntries = entries
             case .failure(let message):
                 self.errorText = message
             }
         }
     }
 
-    /// 성공하면 태그, 실패하면 사람이 읽을 사유.
+    /// 성공하면 내역 목록, 실패하면 사람이 읽을 사유.
     private enum FetchOutcome {
-        case success(String)
+        case success([ChangelogEntry])
         case failure(String)
     }
 
-    private static func fetchLatestTag() async -> FetchOutcome {
-        var request = URLRequest(url: releaseURL)
+    private static func fetchFeed() async -> FetchOutcome {
+        var request = URLRequest(url: Changelog.feedURL)
         request.timeoutInterval = 15
-        // GitHub API는 이 헤더가 없으면 응답 형식을 보장하지 않는다.
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         request.setValue("dong-mcu/\(dongMCUVersion)", forHTTPHeaderField: "User-Agent")
-        // 방금 올린 릴리스가 캐시에 가려지지 않게 한다.
+        // 방금 올린 내역이 캐시에 가려지지 않게 한다.
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else { return .failure("응답 없음") }
-            guard http.statusCode == 200 else {
-                // 릴리스가 하나도 없으면 404가 온다.
-                if http.statusCode == 404 { return .failure("릴리스가 아직 없다") }
-                return .failure("HTTP \(http.statusCode)")
-            }
-            guard
-                let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                let tag = json["tag_name"] as? String
-            else { return .failure("응답 파싱 실패") }
-            return .success(tag)
+            guard http.statusCode == 200 else { return .failure("HTTP \(http.statusCode)") }
+            let feed = try JSONDecoder().decode(ChangelogFeed.self, from: data)
+            guard !feed.entries.isEmpty else { return .failure("내역이 비어 있다") }
+            return .success(feed.entries)
+        } catch let error as DecodingError {
+            return .failure("내역 파싱 실패: \(error)")
         } catch {
             return .failure("네트워크: \(error.localizedDescription)")
         }

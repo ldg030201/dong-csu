@@ -63,6 +63,16 @@ HUD 크기 설정도 같은 이유로 `scaleEffect`가 아니라 치수와 글�
 ./make-icon.sh
 ```
 
+## 변경 내역 파일
+
+앱이 원격에서 받아보는 [`docs/changelog.json`](changelog.json)은
+[`Changelog.swift`](../Sources/DongMCU/Changelog.swift)에서 뽑아낸 것이다.
+`release.sh`가 릴리스할 때 자동으로 갱신하므로 직접 고치지 않는다. 손으로 뽑으려면:
+
+```bash
+dong-mcu --dump-changelog docs/changelog.json
+```
+
 ## 릴리스
 
 ```bash

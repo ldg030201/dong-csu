@@ -63,6 +63,10 @@ sed -i '' "s/^let dongMCUVersion = \".*\"$/let dongMCUVersion = \"$VERSION\"/" \
 
 ./build.sh >/dev/null
 BUILT="$(./build/DongMCU.app/Contents/MacOS/DongMCU --version | awk '{print $2}')"
+
+# 앱이 원격에서 받아보는 변경 내역. 태그를 올리기 전에 갱신해야
+# 새 버전이 나온 걸 옛 버전 앱에서도 볼 수 있다.
+./build/DongMCU.app/Contents/MacOS/DongMCU --dump-changelog docs/changelog.json >/dev/null
 if [[ "$BUILT" != "$VERSION" ]]; then
   echo "빌드 결과 버전이 다르다: $BUILT (기대: $VERSION)" >&2
   exit 1
@@ -70,7 +74,7 @@ fi
 echo "▸ 빌드 확인 ($BUILT)"
 
 # ── 3. 커밋 · 태그 · 푸시 ───────────────────────────────────────
-git add Resources/Info.plist Sources/DongMCU/main.swift
+git add Resources/Info.plist Sources/DongMCU/main.swift docs/changelog.json
 git commit -q -m "🔖 $TAG"
 COMMITTED=1
 git tag -a "$TAG" -m "$TAG"

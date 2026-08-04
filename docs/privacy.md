@@ -22,7 +22,7 @@ keychain 항목 `Claude Code-credentials`에서 OAuth 토큰을 읽어
 | 대상 | 언제 |
 | --- | --- |
 | `api.anthropic.com` | 사용량 조회 (기본 10분마다) |
-| `api.github.com` | 새 버전 확인 (하루 1회, 끌 수 있음) |
+| `raw.githubusercontent.com` | 새 버전 확인과 변경 내역 (하루 1회, 끌 수 있음) |
 
 그 외에는 접속하지 않는다. 통계·추적 없고 외부 Swift 패키지 의존성도 0개다.
 버전 탭에서 업데이트 확인을 끄면 Anthropic API 외에 아무 데도 접속하지 않는다.

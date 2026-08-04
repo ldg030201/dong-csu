@@ -438,7 +438,7 @@ struct SettingsView: View {
 
     private var changelogList: some View {
         VStack(alignment: .leading, spacing: 14) {
-                ForEach(Changelog.entries, id: \.version) { entry in
+                ForEach(updates.entries, id: \.version) { entry in
                     VStack(alignment: .leading, spacing: 3) {
                         HStack(spacing: 6) {
                             Text(entry.version)

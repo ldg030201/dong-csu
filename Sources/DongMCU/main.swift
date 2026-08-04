@@ -56,6 +56,25 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
     exit(ok ? 0 : 1)
 }
 
+// 변경 내역을 JSON으로 뽑는다: dong-mcu --dump-changelog [out.json]
+// 앱에 박혀 있는 내역을 원격에서도 볼 수 있게 파일로 내보낸다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--dump-changelog") {
+    do {
+        let data = try Changelog.jsonData()
+        if flagIndex + 1 < CommandLine.arguments.count {
+            let path = CommandLine.arguments[flagIndex + 1]
+            try data.write(to: URL(fileURLWithPath: path))
+            print("wrote: \(path)")
+        } else {
+            FileHandle.standardOutput.write(data)
+        }
+        exit(0)
+    } catch {
+        print("dump failed: \(error)")
+        exit(1)
+    }
+}
+
 // 메뉴바 아이콘을 PNG로 뽑는다: dong-mcu --render-menubar out.png [높이] [test]
 // 한 칸이 1pt까지 작아지는 자리라 눈으로 확인할 통로가 필요하다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-menubar"),
