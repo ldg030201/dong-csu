@@ -65,7 +65,7 @@ final class UsageStore: ObservableObject {
     private func startTimer() {
         timer?.invalidate()
         let timer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.refresh() }
+            MainActor.assumeIsolated { self?.refresh() }
         }
         // 타이머를 다른 시스템 깨우기와 묶어서 처리하게 여유를 크게 준다(전력 절약).
         timer.tolerance = pollInterval / 4

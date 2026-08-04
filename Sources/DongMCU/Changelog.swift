@@ -17,6 +17,9 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "1.2.0.1", date: "2026-08-04", notes: [
+            "Swift 5.10 환경에서 빌드가 실패하던 문제 수정",
+        ]),
         ChangelogEntry(version: "1.2.0", date: "2026-08-04", notes: [
             "설정 창 종료 버튼에 확인 창 추가",
             "Command Line Tools가 오래된 환경에서 설치가 실패하던 문제 수정",

@@ -87,7 +87,8 @@ final class ProcessUsageMonitor: ObservableObject {
         usage = sampler.sample()
 
         let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in
+            // 타이머를 메인 런루프에 걸었으므로 콜백도 메인 스레드에서 온다.
+            MainActor.assumeIsolated {
                 guard let self else { return }
                 self.usage = self.sampler.sample()
             }

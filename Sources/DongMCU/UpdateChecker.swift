@@ -71,7 +71,7 @@ final class UpdateChecker: ObservableObject {
         guard timer == nil else { return }
         check()
         let timer = Timer(timeInterval: Self.interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.check() }
+            MainActor.assumeIsolated { self?.check() }
         }
         // 하루짜리 타이머를 정확히 맞출 이유가 없다. 여유를 크게 주면 절전에 유리하다.
         timer.tolerance = 60 * 60
