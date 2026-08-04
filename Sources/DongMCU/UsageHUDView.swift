@@ -170,6 +170,10 @@ struct UsageHUDView: View {
     @State private var isHoveringSettings = false
     @State private var isHoveringCollapse = false
 
+    /// 조회가 안 되는 상태. 마스코트가 회색으로 바뀌는 조건과 같은 것을 쓴다
+    /// (`OwlMood.resolve`). 두 곳이 어긋나면 캐릭터만 회색이고 나머지는 멀쩡해 보인다.
+    private var isDisconnected: Bool { store.needsReauth || store.isStale }
+
     private var ringDiameter: CGFloat { s(62) }
     private var outerLineWidth: CGFloat { s(6) }
     private var innerLineWidth: CGFloat { s(5) }
@@ -202,6 +206,10 @@ struct UsageHUDView: View {
                 eyeColor: palette.markEye,
                 owlAnimator: owlAnimator
             )
+            // 움직이는 캐릭터는 팔레트가 회색으로 바뀌어 스스로 드러낸다. 정지 그림은
+            // 그럴 수 없는데, 펫에는 링도 안 보여서 조회가 끊긴 걸 알 방법이 없어진다.
+            // 링에 이미 쓰는 방식대로 흐리게 해서 지금 값이 아님을 알린다.
+            .opacity(!iconStyle.isAnimated && isDisconnected ? 0.4 : 1)
         }
         .frame(
             width: Self.size(mode: .pet, scale: scale).width,
