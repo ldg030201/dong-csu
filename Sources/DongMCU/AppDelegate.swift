@@ -35,7 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         hud.show()
 
         // 메뉴바 아이콘은 HUD와 같은 메뉴를 쓴다.
-        statusItem = StatusItemController(store: store) { [weak hud] menu in
+        statusItem = StatusItemController { [weak hud] menu in
             hud?.populateMenu(menu)
         }
 

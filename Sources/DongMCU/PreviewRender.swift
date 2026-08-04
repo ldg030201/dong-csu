@@ -1,6 +1,27 @@
 import AppKit
 import SwiftUI
 
+extension NSImage {
+    /// PNG로 저장한다. 렌더 통로 네 곳이 같은 사슬을 각자 쓰고 있었다.
+    func writePNG(to path: String) -> Bool {
+        guard
+            let tiff = tiffRepresentation,
+            let bitmap = NSBitmapImageRep(data: tiff),
+            let png = bitmap.representation(using: .png, properties: [:])
+        else { return false }
+        return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+    }
+}
+
+@MainActor
+extension ImageRenderer {
+    /// 뷰를 그려 PNG로 저장한다.
+    func writePNG(to path: String, scale: CGFloat) -> Bool {
+        self.scale = scale
+        return nsImage?.writePNG(to: path) ?? false
+    }
+}
+
 /// `dong-mcu --render out.png` — HUD를 고정값으로 그려 PNG로 저장한다.
 /// 앱을 띄우지 않고 레이아웃·색·아이콘을 확인하려고 둔 디버그 통로.
 @MainActor
@@ -72,21 +93,7 @@ enum HUDPreviewRenderer {
                 )
             )
 
-        let renderer = ImageRenderer(content: content)
-        renderer.scale = 3
-
-        guard let image = renderer.nsImage,
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:])
-        else { return false }
-
-        do {
-            try png.write(to: URL(fileURLWithPath: path))
-            return true
-        } catch {
-            return false
-        }
+        return ImageRenderer(content: content).writePNG(to: path, scale: 3)
     }
 
     /// 설정 창을 PNG로 렌더한다. 탭마다 화면이 달라서 어느 탭을 그릴지 받는다.
@@ -112,7 +119,7 @@ enum HUDPreviewRenderer {
                 lastCheckedAt: Date().addingTimeInterval(-40 * 60)
             ),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
-            version: "\(AppInfo.name) \(dongMCUVersion)",
+            version: AppInfo.displayVersion,
             initialTab: tab,
             isPreviewRender: true
         )
@@ -120,13 +127,6 @@ enum HUDPreviewRenderer {
         .preferredColorScheme(isDark ? .dark : .light)
         .background(Color(nsColor: .windowBackgroundColor))
 
-        let renderer = ImageRenderer(content: view)
-        renderer.scale = 2
-        guard let image = renderer.nsImage,
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:])
-        else { return false }
-        return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+        return ImageRenderer(content: view).writePNG(to: path, scale: 2)
     }
 }

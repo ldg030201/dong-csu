@@ -80,8 +80,6 @@ final class ProcessUsageMonitor: ObservableObject {
     /// 2초면 눈으로 보기 충분하고, 표본 자체의 비용도 무시할 수준이다.
     private static let interval: TimeInterval = 2
 
-    var isRunning: Bool { timer != nil }
-
     func start() {
         guard timer == nil else { return }
         usage = sampler.sample()

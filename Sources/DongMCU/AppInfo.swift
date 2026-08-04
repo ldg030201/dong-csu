@@ -21,6 +21,10 @@ enum AppInfo {
         Bundle.main.bundleIdentifier?.hasSuffix("-test") ?? false
     }
 
+    /// 테스트판 메뉴바 아이콘의 몸 색. 정식판과 나란히 떠도 구분되게 한다.
+    /// 렌더 통로도 같은 값을 써야 미리보기가 실제와 어긋나지 않는다.
+    static let testBuildTint = NSColor(srgbRed: 0.54, green: 0.34, blue: 0.85, alpha: 1)
+
     /// "DongMCU 0.2.0" 처럼 이름과 버전을 붙인 표기.
     static var displayVersion: String {
         "\(name) \(version)"

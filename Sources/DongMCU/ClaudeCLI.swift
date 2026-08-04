@@ -1,6 +1,27 @@
 import AppKit
 import Foundation
 
+/// 터미널 창에서 셸 스크립트를 실행한다.
+///
+/// 대화형이거나(로그인) 몇십 초 걸리는(brew 업그레이드) 작업은 GUI 앱 안에서
+/// 처리하기 어렵다. `.command` 확장자를 열면 터미널이 실행하므로 별도 자동화
+/// 권한도 필요 없다.
+enum TerminalScript {
+    static func run(_ body: String, fileName: String) -> Bool {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(fileName)
+        do {
+            try body.write(to: url, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes(
+                [.posixPermissions: 0o755],
+                ofItemAtPath: url.path
+            )
+        } catch {
+            return false
+        }
+        return NSWorkspace.shared.open(url)
+    }
+}
+
 /// Claude Code CLI를 찾아 로그인 플로우를 띄운다.
 ///
 /// 이 앱은 OAuth 토큰을 직접 갱신하지 않는다. 키체인에는 리프레시 토큰이 같이 들어있지만,
@@ -36,26 +57,14 @@ enum ClaudeCLI {
     static func openLogin() -> Bool {
         guard let executable = resolveExecutable() else { return false }
 
-        // .command 확장자를 열면 터미널이 실행한다. 별도 자동화 권한이 필요 없다.
-        let script = """
-        #!/bin/sh
-        echo "dong-mcu: Claude Code 로그인을 시작합니다."
-        echo
-        "\(executable)" auth login
-        """
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dong-mcu-login.command")
-
-        do {
-            try script.write(to: url, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o755],
-                ofItemAtPath: url.path
-            )
-        } catch {
-            return false
-        }
-
-        return NSWorkspace.shared.open(url)
+        return TerminalScript.run(
+            """
+            #!/bin/sh
+            echo "\(AppInfo.name): Claude Code 로그인을 시작합니다."
+            echo
+            "\(executable)" auth login
+            """,
+            fileName: "dong-mcu-login.command"
+        )
     }
 }

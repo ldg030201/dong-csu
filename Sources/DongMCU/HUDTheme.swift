@@ -2,7 +2,7 @@ import AppKit
 import SwiftUI
 
 /// HUD 배색 모드.
-enum HUDAppearance: String, CaseIterable {
+enum HUDAppearance: String, CaseIterable, TitledOption {
     case system
     case light
     case dark

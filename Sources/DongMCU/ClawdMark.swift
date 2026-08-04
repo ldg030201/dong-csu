@@ -34,7 +34,6 @@ struct ClawdMark: View {
 
     static let defaultEyeColor = Color.black.opacity(0.88)
 
-    var bodyColor: Color = ClawdMark.bodyColor
     var eyeColor: Color = ClawdMark.defaultEyeColor
 
     var body: some View {
@@ -53,7 +52,7 @@ struct ClawdMark: View {
 
             for (y, row) in Self.rows.enumerated() {
                 for (x, character) in row.enumerated() where character == "#" {
-                    context.fill(Path(rect(x: x, y: y)), with: .color(bodyColor))
+                    context.fill(Path(rect(x: x, y: y)), with: .color(Self.bodyColor))
                 }
             }
             for (x, y) in Self.eyes {

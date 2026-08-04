@@ -39,22 +39,28 @@ struct AppVersion: Comparable, CustomStringConvertible {
 @MainActor
 final class UpdateChecker: ObservableObject {
     /// 원격에서 받아온 변경 내역. 비어 있으면 앱에 박혀 있는 것을 쓴다.
-    @Published private(set) var remoteEntries: [ChangelogEntry] = []
+    @Published private(set) var remoteEntries: [ChangelogEntry] = [] {
+        didSet { entries = Self.merged(remote: remoteEntries) }
+    }
+
+    /// 화면에 보여줄 내역. 원격이 바뀔 때만 다시 합친다.
+    /// 계산 프로퍼티로 두면 버전 탭을 한 번 그릴 때마다 여섯 번 다시 정렬된다.
+    @Published private(set) var entries: [ChangelogEntry] = Changelog.entries
     @Published private(set) var isChecking = false
     @Published private(set) var lastCheckedAt: Date?
     @Published private(set) var errorText: String?
 
-    /// 화면에 보여줄 내역. 앱에 박힌 것과 원격에서 받은 것을 합친다.
+    /// 앱에 박힌 내역과 원격에서 받은 것을 합친다.
     ///
     /// 원격을 그대로 쓰면 안 된다. raw.githubusercontent.com은 몇 분간 캐시되므로
     /// 방금 올린 버전을 쓰는 앱이 자기보다 뒤처진 목록을 받을 수 있고, 그러면 자기
     /// 버전 항목이 화면에서 사라진다. 같은 버전은 원격 쪽을 택하고 버전 내림차순으로 세운다.
-    var entries: [ChangelogEntry] {
-        guard !remoteEntries.isEmpty else { return Changelog.entries }
+    private static func merged(remote: [ChangelogEntry]) -> [ChangelogEntry] {
+        guard !remote.isEmpty else { return Changelog.entries }
 
         var byVersion: [String: ChangelogEntry] = [:]
         for entry in Changelog.entries { byVersion[entry.version] = entry }
-        for entry in remoteEntries { byVersion[entry.version] = entry }
+        for entry in remote { byVersion[entry.version] = entry }
 
         return byVersion.values.sorted { left, right in
             guard
@@ -198,25 +204,7 @@ final class UpdateChecker: ObservableObject {
         echo
         echo "업데이트가 끝났습니다."
         """
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent("dong-mcu-upgrade.command")
-
-        do {
-            try script.write(to: url, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes(
-                [.posixPermissions: 0o755],
-                ofItemAtPath: url.path
-            )
-        } catch {
-            return false
-        }
-        return NSWorkspace.shared.open(url)
+        return TerminalScript.run(script, fileName: "dong-mcu-upgrade.command")
     }
 
-    /// 릴리스 페이지를 브라우저로 연다.
-    static func openReleasePage() {
-        guard let url = URL(string: "https://github.com/ldg030201/dong-mcu/releases/latest")
-        else { return }
-        NSWorkspace.shared.open(url)
-    }
 }

@@ -86,6 +86,24 @@ final class HUDInteractionView: NSView {
     }
 }
 
+/// 이름을 가진 설정 값. 메뉴가 목록을 그릴 때 쓴다.
+protocol TitledOption {
+    var title: String { get }
+}
+
+/// 메뉴 항목이 셀렉터 대신 클로저를 실행하게 해주는 대상.
+/// 이게 없으면 항목마다 `@objc` 핸들러와 rawValue 왕복이 필요하다.
+@MainActor
+private final class MenuAction: NSObject {
+    private let run: () -> Void
+
+    init(_ run: @escaping () -> Void) {
+        self.run = run
+    }
+
+    @objc func fire() { run() }
+}
+
 /// 패널 생성 · 위치 기억 · 컨텍스트 메뉴를 담당한다.
 @MainActor
 final class HUDController {
@@ -214,64 +232,80 @@ final class HUDController {
     /// 마우스를 누르고 있는 동안(이벤트 추적 모드)에는 실행이 미뤄져서, 버튼을 눌러도
     /// 손을 뗄 때까지 반응이 없다. DispatchQueue.main은 모드와 무관하게 처리된다.
     private func observeSettings() {
-        settings.$appearance
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyAppearance() }
-            .store(in: &cancellables)
-
-        settings.$iconStyle
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.rebuildRootView() }
-            .store(in: &cancellables)
-
-        settings.$isCollapsed
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyCollapsed() }
-            .store(in: &cancellables)
-
-        settings.$isHUDVisible
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyHUDVisible() }
-            .store(in: &cancellables)
-
-        settings.$expandSide
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyExpandSide() }
-            .store(in: &cancellables)
-
-        settings.$backdropOpacity
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyAppearance() }
-            .store(in: &cancellables)
-
-        settings.$showsProcessStats
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyProcessStats() }
-            .store(in: &cancellables)
-
-        // 새 버전이 잡히면 표시를 띄우고 그 자리를 클릭 통과 영역에 더한다.
-        updates.$remoteEntries
-            .dropFirst()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in
-                guard let self else { return }
-                self.refreshPassThroughRects(collapsed: self.settings.isCollapsed)
-                self.rebuildRootView()
-            }
-            .store(in: &cancellables)
-
+        observe(settings.$appearance) { $0.applyAppearance() }
+        observe(settings.$backdropOpacity) { $0.applyAppearance() }
+        observe(settings.$iconStyle) { $0.rebuildRootView() }
+        observe(settings.$isCollapsed) { $0.applyCollapsed() }
+        observe(settings.$isHUDVisible) { $0.applyHUDVisible() }
+        observe(settings.$expandSide) { $0.applyExpandSide() }
+        observe(settings.$showsProcessStats) { $0.applyProcessStats() }
         // 배율은 창 크기·모서리·클릭 영역까지 바꾼다. 접기와 같은 경로를 탄다.
-        settings.$scale
+        observe(settings.$scale) { $0.applyCollapsed() }
+        // 새 버전이 잡히면 표시를 띄우고 그 자리를 클릭 통과 영역에 더한다.
+        observe(updates.$remoteEntries) {
+            $0.refreshPassThroughRects()
+            $0.rebuildRootView()
+        }
+    }
+
+    // MARK: - 메뉴 만들기
+
+    /// 여러 값 중 하나를 고르는 서브메뉴.
+    private func choiceMenu<T: Equatable & TitledOption>(
+        _ title: String,
+        values: [T],
+        current: T,
+        apply: @escaping (T) -> Void
+    ) -> NSMenuItem {
+        let submenu = NSMenu()
+        for value in values {
+            submenu.addItem(choiceItem(value.title, value: value, current: current, apply: apply))
+        }
+        return submenuItem(title, submenu)
+    }
+
+    private func submenuItem(_ title: String, _ submenu: NSMenu) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = submenu
+        return item
+    }
+
+    /// 고르면 `apply`가 도는 항목. 지금 값이면 체크가 붙는다.
+    private func choiceItem<T: Equatable>(
+        _ title: String,
+        value: T,
+        current: T,
+        apply: @escaping (T) -> Void
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: #selector(MenuAction.fire), keyEquivalent: "")
+        let action = MenuAction { apply(value) }
+        item.target = action
+        // target은 약한 참조라 여기서 붙잡아 두지 않으면 누르는 순간 사라져 있다.
+        item.representedObject = action
+        item.state = current == value ? .on : .off
+        return item
+    }
+
+    /// sectionHeader는 macOS 14부터다. 그 아래에서는 누를 수 없는 항목으로 대신한다.
+    private static func sectionHeader(_ title: String) -> NSMenuItem {
+        if #available(macOS 14, *) { return NSMenuItem.sectionHeader(title: title) }
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.isEnabled = false
+        return item
+    }
+
+    /// 설정 하나가 바뀌면 무엇을 다시 맞출지 잇는다.
+    ///
+    /// `dropFirst`(초기값 무시)와 `DispatchQueue.main`(위 주석의 이벤트 추적 모드 문제)은
+    /// 빠뜨려도 눈에 띄지 않는 실수라 여기 한 곳에 가둔다.
+    private func observe<T>(
+        _ publisher: Published<T>.Publisher,
+        _ action: @escaping (HUDController) -> Void
+    ) {
+        publisher
             .dropFirst()
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in self?.applyCollapsed() }
+            .sink { [weak self] _ in self.map(action) }
             .store(in: &cancellables)
     }
 
@@ -282,11 +316,10 @@ final class HUDController {
     }
 
     /// 보이지도 않는데 표본을 뜰 이유가 없다. 조건이 바뀌는 자리마다 이걸 부른다.
-    private func syncUsageMonitor(collapsed: Bool? = nil, visible: Bool? = nil) {
-        let isCollapsed = collapsed ?? settings.isCollapsed
+    private func syncUsageMonitor(visible: Bool? = nil) {
         let isVisible = visible ?? panel.isVisible
 
-        if settings.showsProcessStats, isVisible, !isCollapsed {
+        if settings.showsProcessStats, isVisible, !settings.isCollapsed {
             usageMonitor.start()
         } else {
             usageMonitor.stop()
@@ -295,7 +328,7 @@ final class HUDController {
 
     /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
     private func applyExpandSide() {
-        refreshPassThroughRects(collapsed: settings.isCollapsed)
+        refreshPassThroughRects()
         rebuildRootView()
         layoutHosting(for: UsageHUDView.size(
             collapsed: settings.isCollapsed,
@@ -490,61 +523,36 @@ final class HUDController {
 
         let iconMenu = NSMenu()
         for group in IconStyleGroup.allCases {
-            // sectionHeader는 macOS 14부터다. 그 아래에서는 누를 수 없는 항목으로 대신한다.
-            if #available(macOS 14, *) {
-                iconMenu.addItem(NSMenuItem.sectionHeader(title: group.title))
-            } else {
-                let header = NSMenuItem(title: group.title, action: nil, keyEquivalent: "")
-                header.isEnabled = false
-                iconMenu.addItem(header)
-            }
+            iconMenu.addItem(Self.sectionHeader(group.title))
             for style in group.styles {
-                let item = NSMenuItem(
-                    title: style.title,
-                    action: #selector(handleIconStyle(_:)),
-                    keyEquivalent: ""
+                iconMenu.addItem(
+                    choiceItem(style.title, value: style, current: iconStyle) { [weak self] in
+                        self?.settings.iconStyle = $0
+                    }
                 )
-                item.target = self
-                item.representedObject = style.rawValue
-                item.state = iconStyle == style ? .on : .off
-                iconMenu.addItem(item)
             }
         }
-        let iconItem = NSMenuItem(title: "가운데 아이콘", action: nil, keyEquivalent: "")
-        iconItem.submenu = iconMenu
-        menu.addItem(iconItem)
+        menu.addItem(submenuItem("가운데 아이콘", iconMenu))
 
-        let scaleMenu = NSMenu()
-        for value in HUDScale.allCases {
-            let item = NSMenuItem(title: value.title, action: #selector(handleScale(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = value.rawValue
-            item.state = settings.scale == value ? .on : .off
-            scaleMenu.addItem(item)
-        }
-        let scaleItem = NSMenuItem(title: "크기", action: nil, keyEquivalent: "")
-        scaleItem.submenu = scaleMenu
-        menu.addItem(scaleItem)
+        menu.addItem(
+            choiceMenu("크기", values: HUDScale.allCases, current: settings.scale) { [weak self] in
+                self?.settings.scale = $0
+            }
+        )
 
         let versionItem = NSMenuItem(
             title: "버전과 업데이트…",
-            action: #selector(handleChangelog),
+            action: #selector(openUpdates),
             keyEquivalent: ""
         )
         versionItem.target = self
         menu.addItem(versionItem)
 
-        let themeMenu = NSMenu()
-        for value in HUDAppearance.allCases {
-            let item = NSMenuItem(title: value.title, action: #selector(handleAppearance(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = value.rawValue
-            item.state = appearance == value ? .on : .off
-            themeMenu.addItem(item)
-        }
-        let themeItem = NSMenuItem(title: "테마", action: nil, keyEquivalent: "")
-        themeItem.submenu = themeMenu
-        menu.addItem(themeItem)
+        menu.addItem(
+            choiceMenu("테마", values: HUDAppearance.allCases, current: appearance) { [weak self] in
+                self?.settings.appearance = $0
+            }
+        )
 
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "\(AppInfo.name) 종료", action: #selector(handleQuit), keyEquivalent: "q")
@@ -593,12 +601,6 @@ final class HUDController {
         DispatchQueue.main.async { [weak self] in self?.applyAppearance() }
     }
 
-    @objc private func handleAppearance(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let value = HUDAppearance(rawValue: raw) else { return }
-        settings.appearance = value
-    }
-
     @objc private func handleToggleCollapse() {
         settings.isCollapsed.toggle()
     }
@@ -621,7 +623,7 @@ final class HUDController {
         // 잠시 멈추고 끝난 뒤에 다시 맞춘다.
         usageMonitor.stop()
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(collapsed: collapsed, scale: scale)
-        refreshPassThroughRects(collapsed: collapsed)
+        refreshPassThroughRects()
 
         if collapsed {
             // 접을 때는 펼친 내용을 그대로 둔 채 창만 줄여서, 서랍이 밀려 들어가는 것처럼 보이게 한다.
@@ -658,7 +660,8 @@ final class HUDController {
 
     /// 드래그 오버레이가 클릭을 삼키지 않을 자리들을 다시 계산한다.
     /// 버튼 묶음은 항상, 업데이트 표시는 새 버전이 있을 때만 넣는다.
-    private func refreshPassThroughRects(collapsed: Bool) {
+    private func refreshPassThroughRects() {
+        let collapsed = settings.isCollapsed
         var rects = [
             UsageHUDView.controlsHitRectInPanel(
                 collapsed: collapsed,
@@ -701,29 +704,12 @@ final class HUDController {
         )
     }
 
-    /// 업데이트 표시를 눌렀을 때. 설정 창의 버전 화면을 연다.
-    private func openUpdates() {
+    /// 업데이트 표시나 메뉴 항목을 눌렀을 때. 설정 창의 버전 화면을 연다.
+    @objc private func openUpdates() {
         settings.settingsTab = .version
         onOpenSettings?()
     }
 
-    @objc private func handleIconStyle(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let style = ClaudeIconStyle(rawValue: raw) else { return }
-        settings.iconStyle = style
-    }
-
-    /// 설정 창을 버전 탭으로 연다.
-    @objc private func handleChangelog() {
-        settings.settingsTab = .version
-        onOpenSettings?()
-    }
-
-    @objc private func handleScale(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let value = HUDScale(rawValue: raw) else { return }
-        settings.scale = value
-    }
     @objc private func handleQuit() { NSApp.terminate(nil) }
 
     private func observeStore() {

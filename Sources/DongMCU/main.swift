@@ -3,8 +3,7 @@ import AppKit
 let dongMCUVersion = "1.3.0"
 
 if CommandLine.arguments.contains("--version") {
-    let bundled = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
-    print("dong-mcu \(bundled ?? dongMCUVersion)")
+    print("dong-mcu \(AppInfo.version)")
     exit(0)
 }
 
@@ -82,18 +81,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-menubar"),
     let arguments = CommandLine.arguments
     let path = arguments[flagIndex + 1]
     let height = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 16 : 16
-    let bodyTint: NSColor? = arguments.contains("test")
-        ? NSColor(srgbRed: 0.54, green: 0.34, blue: 0.85, alpha: 1)
-        : nil
-    let image = OwlMark.statusItemImage(height: height, bodyTint: bodyTint)
-    let ok: Bool
-    if let tiff = image.tiffRepresentation,
-       let bitmap = NSBitmapImageRep(data: tiff),
-       let png = bitmap.representation(using: .png, properties: [:]) {
-        ok = (try? png.write(to: URL(fileURLWithPath: path))) != nil
-    } else {
-        ok = false
-    }
+    let bodyTint: NSColor? = arguments.contains("test") ? AppInfo.testBuildTint : nil
+    let ok = OwlMark.statusItemImage(height: height, bodyTint: bodyTint).writePNG(to: path)
     print(ok ? "rendered: \(path)" : "render failed")
     exit(ok ? 0 : 1)
 }

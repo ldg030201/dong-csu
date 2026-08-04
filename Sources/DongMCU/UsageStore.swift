@@ -154,11 +154,25 @@ final class UsageStore: ObservableObject {
         return " (\(RemainingTime.text(until: resetsAt, now: Date())))"
     }
 
+    /// 재시도해도 소용없는 상태에서 얼마나 쉬었다 다시 볼지.
+    /// 재로그인 전에는 조회가 반드시 실패하는데, 그때마다 키체인을 읽으려고
+    /// `security` 프로세스를 새로 띄운다(1회 80ms). 그냥 두면 재로그인할 때까지
+    /// 성공할 수 없는 조회를 폴링 주기마다 영원히 반복한다.
+    private static let terminalRetryInterval: TimeInterval = 30 * 60
+
     /// 실패해도 직전 성공값(snapshot)은 유지해서 링이 비어 보이지 않게 한다.
     private func apply(error: Error) {
         let usageError = error as? UsageError
         errorText = usageError?.description ?? error.localizedDescription
         needsReauth = usageError?.isTerminal ?? false
+
+        // 재로그인은 사람이 해야 끝난다. 깨어남·수동 새로고침·로그인 직후에는
+        // force로 들어오므로 여기서 길게 쉬어도 반응이 늦어지지 않는다.
+        if needsReauth {
+            consecutiveRateLimits = 0
+            backoffUntil = Date().addingTimeInterval(Self.terminalRetryInterval)
+            return
+        }
 
         guard let usageError, case .rateLimited(let retryAfter) = usageError else {
             consecutiveRateLimits = 0

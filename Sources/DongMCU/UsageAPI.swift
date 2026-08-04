@@ -236,10 +236,16 @@ enum UsageAPI {
         )
     }
 
+    // 포매터 생성이 파싱보다 비싸다(98µs vs 22µs). 한 번만 만들어 쓴다.
+    private static let iso8601WithFraction: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private static let iso8601 = ISO8601DateFormatter()
+
     private static func parseDate(_ text: String) -> Date? {
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFraction.date(from: text) { return date }
-        return ISO8601DateFormatter().date(from: text)
+        iso8601WithFraction.date(from: text) ?? iso8601.date(from: text)
     }
 }

@@ -7,20 +7,16 @@ import AppKit
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let item: NSStatusItem
-    private let store: UsageStore
     private let populate: (NSMenu) -> Void
 
-    init(store: UsageStore, populate: @escaping (NSMenu) -> Void) {
-        self.store = store
+    init(populate: @escaping (NSMenu) -> Void) {
         self.populate = populate
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
         // 정식판은 앱 아이콘과 같은 색 부엉이를 그대로 쓴다.
         // 테스트판은 메뉴바에 나란히 떠도 구분되도록 몸 색만 바꾼다.
-        let bodyTint: NSColor? = AppInfo.isTestBuild
-            ? NSColor(srgbRed: 0.54, green: 0.34, blue: 0.85, alpha: 1)
-            : nil
+        let bodyTint: NSColor? = AppInfo.isTestBuild ? AppInfo.testBuildTint : nil
         item.button?.image = OwlMark.statusItemImage(height: 16, bodyTint: bodyTint)
         item.button?.imageScaling = .scaleNone
         item.button?.toolTip = AppInfo.name

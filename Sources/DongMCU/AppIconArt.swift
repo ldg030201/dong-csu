@@ -38,16 +38,8 @@ struct AppIconArt: View {
 @MainActor
 enum AppIconRenderer {
     /// 아이콘 한 장을 PNG로 저장한다.
+    /// 픽셀 크기를 side와 같게 맞춘다. 확대·축소는 여기서 끝내고 iconutil에 맡기지 않는다.
     static func write(to path: String, side: CGFloat) -> Bool {
-        let renderer = ImageRenderer(content: AppIconArt(side: side))
-        // 픽셀 크기를 side와 같게 맞춘다. 확대·축소는 여기서 끝내고 iconutil에 맡기지 않는다.
-        renderer.scale = 1
-
-        guard let image = renderer.nsImage,
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:])
-        else { return false }
-        return (try? png.write(to: URL(fileURLWithPath: path))) != nil
+        ImageRenderer(content: AppIconArt(side: side)).writePNG(to: path, scale: 1)
     }
 }

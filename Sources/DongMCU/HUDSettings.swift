@@ -23,7 +23,7 @@ enum HUDExpandSide: String, CaseIterable {
 /// 치수와 글자 크기에 이 배율을 곱한다. `scaleEffect`로 확대하지 않는 이유는
 /// 마스코트가 픽셀 그림이라 확대하면 흐려지기 때문이다. 배율을 곱해서 다시 그리면
 /// 한 칸도 그만큼 커져서 큰 크기에서 오히려 더 선명해진다.
-enum HUDScale: String, CaseIterable {
+enum HUDScale: String, CaseIterable, TitledOption {
     case small
     case normal
     case large
