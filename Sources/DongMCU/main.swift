@@ -50,6 +50,29 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
     exit(ok ? 0 : 1)
 }
 
+// 메뉴바 아이콘을 PNG로 뽑는다: dong-mcu --render-menubar out.png [높이] [test]
+// 한 칸이 1pt까지 작아지는 자리라 눈으로 확인할 통로가 필요하다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-menubar"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let arguments = CommandLine.arguments
+    let path = arguments[flagIndex + 1]
+    let height = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 16 : 16
+    let bodyTint: NSColor? = arguments.contains("test")
+        ? NSColor(srgbRed: 0.54, green: 0.34, blue: 0.85, alpha: 1)
+        : nil
+    let image = OwlMark.statusItemImage(height: height, bodyTint: bodyTint)
+    let ok: Bool
+    if let tiff = image.tiffRepresentation,
+       let bitmap = NSBitmapImageRep(data: tiff),
+       let png = bitmap.representation(using: .png, properties: [:]) {
+        ok = (try? png.write(to: URL(fileURLWithPath: path))) != nil
+    } else {
+        ok = false
+    }
+    print(ok ? "rendered: \(path)" : "render failed")
+    exit(ok ? 0 : 1)
+}
+
 // 앱 아이콘을 PNG로 뽑는다: dong-mcu --render-icon out.png [한변]
 // .icns는 이 PNG들을 iconutil로 묶어 만든다. make-icon.sh 참고.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-icon"),

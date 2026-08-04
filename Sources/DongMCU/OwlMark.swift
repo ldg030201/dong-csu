@@ -218,6 +218,11 @@ enum OwlMark {
         }
     }
 
+    /// AppKit으로 그릴 때(메뉴바 등) 쓰는 같은 색.
+    static func nsColor(for character: Character) -> NSColor? {
+        color(for: character).map(NSColor.init)
+    }
+
     /// 레이어를 좌우로 민다. 캔버스 밖으로 나간 칸은 버린다.
     static func shifted(_ layer: [String], by dx: Int) -> [String] {
         guard dx != 0 else { return layer }
@@ -234,52 +239,52 @@ enum OwlMark {
 }
 
 extension OwlMark {
-    /// 메뉴바용 그리드. 높이가 16px뿐이라 13행짜리 본체를 그대로 줄이면 한 칸이 1.2px가 되어
-    /// 눈도 부리도 뭉갠다. 그래서 8행 × 9열로 다시 그린 별도 그리드를 쓴다.
+    /// 메뉴바용 비트맵.
     ///
-    /// 눈과 부리는 칠하지 않고 구멍으로 남긴다. 밝은 메뉴바에서도 어두운 메뉴바에서도
-    /// 배경이 그대로 비쳐서 이목구비로 읽힌다.
-    static let statusRows = [
-        "##.....##",
-        "#########",
-        "#..###..#",
-        "#..###..#",
-        "####.####",
-        "#########",
-        "#########",
-        "##.###.##",
-    ]
-
-    /// 메뉴바용 비트맵. 높이는 8의 배수로 주는 게 좋다(한 칸이 정수 픽셀이 되어 선명하다).
+    /// 앱 아이콘·HUD와 같은 그림이어야 하므로 본체 그리드를 그대로 쓴다. 한때는
+    /// 메뉴바용으로 8행짜리 그리드를 따로 뒀는데, 그러면 같은 마스코트인데도
+    /// 자리마다 다른 얼굴이 되어서 버렸다.
     ///
-    /// `fill`이 nil이면 템플릿 이미지로 둔다. 그러면 시스템이 메뉴바 밝기에 맞춰
-    /// 알아서 칠해 준다. 부엉이 몸색(진청)은 어두운 메뉴바에서 묻혀서 그대로 못 쓴다.
-    static func statusItemImage(height: CGFloat, fill: NSColor? = nil) -> NSImage {
-        let columns = statusRows[0].count
-        let lines = statusRows.count
-        let width = (height * CGFloat(columns) / CGFloat(lines)).rounded()
-        let color = fill ?? .black
+    /// 메뉴바 높이(16pt)에 13행을 넣으면 한 칸이 1pt다. 레티나에서는 2px이라
+    /// 눈과 부리까지 살아남는다. 한 칸을 정수로 맞춰야 형태가 유지되므로
+    /// 실제 그림 높이는 요청한 높이보다 작을 수 있다.
+    ///
+    /// `bodyTint`를 주면 몸통과 날개만 그 색으로 바꾼다. 눈·부리는 그대로 두어
+    /// 얼굴이 남는다. 테스트판을 색으로 구분할 때 쓴다. 단색으로 칠해 버리면
+    /// 눈까지 사라져서 무슨 그림인지 알 수 없다.
+    static func statusItemImage(height: CGFloat, bodyTint: NSColor? = nil) -> NSImage {
+        let cell = max(1, floor(height / CGFloat(lines)))
+        let size = NSSize(width: cell * CGFloat(columns), height: cell * CGFloat(lines))
 
-        let image = NSImage(size: NSSize(width: width, height: height), flipped: false) { _ in
+        let image = NSImage(size: size, flipped: false) { _ in
             guard let context = NSGraphicsContext.current?.cgContext else { return true }
-            let cellWidth = width / CGFloat(columns)
-            let cellHeight = height / CGFloat(lines)
-            context.setFillColor(color.cgColor)
 
-            for (y, row) in statusRows.enumerated() {
-                // NSImage 좌표계는 아래가 0이므로 행 순서를 뒤집는다.
-                let flipped = lines - 1 - y
-                for (x, character) in row.enumerated() where character == "#" {
-                    let left = (CGFloat(x) * cellWidth).rounded()
-                    let right = (CGFloat(x + 1) * cellWidth).rounded()
-                    let bottom = (CGFloat(flipped) * cellHeight).rounded()
-                    let top = (CGFloat(flipped + 1) * cellHeight).rounded()
-                    context.fill(CGRect(x: left, y: bottom, width: right - left, height: top - bottom))
+            for layer in OwlPose.idle.layers {
+                for (y, row) in layer.enumerated() {
+                    // NSImage 좌표계는 아래가 0이므로 행 순서를 뒤집는다.
+                    let flipped = lines - 1 - y
+                    for (x, character) in row.enumerated() {
+                        let fill: NSColor?
+                        switch (bodyTint, character) {
+                        case (let tint?, "#"): fill = tint
+                        case (let tint?, "d"): fill = tint.shadow(withLevel: 0.3) ?? tint
+                        default: fill = nsColor(for: character)
+                        }
+                        guard let fill else { continue }
+                        context.setFillColor(fill.cgColor)
+                        context.fill(CGRect(
+                            x: CGFloat(x) * cell,
+                            y: CGFloat(flipped) * cell,
+                            width: cell,
+                            height: cell
+                        ))
+                    }
                 }
             }
             return true
         }
-        image.isTemplate = fill == nil
+        // 템플릿으로 두면 단색으로 칠해져 부엉이 색이 사라진다.
+        image.isTemplate = false
         return image
     }
 }

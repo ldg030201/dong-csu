@@ -16,12 +16,12 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         super.init()
 
-        // 정식판과 테스트판이 메뉴바에 나란히 뜰 수 있어서 색으로 구분한다.
-        // 정식판은 색을 주지 않아 템플릿으로 남고, 시스템이 메뉴바 밝기에 맞춰 칠한다.
-        let tint: NSColor? = AppInfo.isTestBuild
-            ? NSColor(srgbRed: 0.36, green: 0.62, blue: 0.86, alpha: 1)
+        // 정식판은 앱 아이콘과 같은 색 부엉이를 그대로 쓴다.
+        // 테스트판은 메뉴바에 나란히 떠도 구분되도록 몸 색만 바꾼다.
+        let bodyTint: NSColor? = AppInfo.isTestBuild
+            ? NSColor(srgbRed: 0.54, green: 0.34, blue: 0.85, alpha: 1)
             : nil
-        item.button?.image = OwlMark.statusItemImage(height: 16, fill: tint)
+        item.button?.image = OwlMark.statusItemImage(height: 16, bodyTint: bodyTint)
         item.button?.imageScaling = .scaleNone
         item.button?.toolTip = AppInfo.name
 

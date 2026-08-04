@@ -147,7 +147,7 @@ Claude Code의 액세스 토큰은 수명이 8시간이라 종종 만료된다. 
 
 개발 중에 띄우는 건 **`dong-mcu-test`** 라는 별개의 앱이다. 번들 ID가 `com.ldg.dong-mcu-test`로
 달라서 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않고, 둘을 동시에 띄워 비교할 수 있다.
-메뉴바 아이콘은 테스트판만 파란색으로 나온다.
+메뉴바 아이콘은 테스트판만 몸 색이 보라색으로 나온다.
 
 ```bash
 VARIANT=test ./build.sh    # dong-mcu-test.app  (dev.sh의 기본값)
@@ -160,8 +160,11 @@ VARIANT=test ./build.sh    # dong-mcu-test.app  (dev.sh의 기본값)
 앱을 띄우지 않고 HUD 모양만 PNG로 확인할 수도 있다.
 
 ```bash
-./dev.sh render 94 71 owl            # 사용률 94% / 71%
-dong-mcu --render out.png 100 71 owl reauth   # 실패 상태까지 재현
+./dev.sh render 94 71 owl                      # 사용률 94% / 71%
+dong-mcu --render out.png 100 71 owl reauth    # 실패 상태까지 재현
+dong-mcu --render-settings out.png icon        # 설정 창의 특정 탭
+dong-mcu --render-menubar out.png 16           # 메뉴바 아이콘
+dong-mcu --render-icon out.png 1024            # 앱 아이콘
 ```
 
 ### 마스코트와 앱 아이콘
@@ -171,9 +174,9 @@ dong-mcu --render out.png 100 71 owl reauth   # 실패 상태까지 재현
 그리드로 나뉘어 있고, `OwlPose`로 조합해서 그린다. 눈만 갈아끼우면 깜빡이고 날개
 레이어만 바꾸면 펴진다.
 
-메뉴바는 높이가 16px뿐이라 13행짜리 본체를 줄이면 눈이 뭉갠다. 그래서 8행짜리 별도
-그리드(`OwlMark.statusRows`)를 쓰고, 정식판은 템플릿으로 둬서 시스템이 메뉴바 밝기에
-맞춰 칠하게 한다.
+HUD 링 안, 메뉴바, 앱 아이콘이 모두 같은 그리드를 쓴다. 한 칸이 정수 크기가 아니면
+어떤 행은 2px, 어떤 행은 3px로 그려져 자리마다 다른 얼굴이 되므로, 칸 크기를 내려서
+정수로 맞추고 남는 여백은 가운데로 몬다. 메뉴바(높이 16pt)에서는 한 칸이 1pt다.
 
 앱 아이콘 그림은 [`AppIconArt.swift`](Sources/DongMCU/AppIconArt.swift)에 있다. 고쳤으면
 아래로 `.icns`를 다시 만든다. 결과물은 커밋해 두고 `build.sh`는 복사만 한다.
