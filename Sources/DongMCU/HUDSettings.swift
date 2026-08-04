@@ -18,6 +18,24 @@ enum HUDExpandSide: String, CaseIterable {
     }
 }
 
+/// 사용량을 얼마나 자주 조회할지.
+/// 너무 조이면 429가 나므로 임의의 초가 아니라 정해진 값 중에서 고르게 한다.
+enum PollInterval: Int, CaseIterable {
+    case oneMinute = 60
+    case threeMinutes = 180
+    case fiveMinutes = 300
+    case tenMinutes = 600
+    case thirtyMinutes = 1800
+
+    static let `default` = PollInterval.tenMinutes
+
+    var seconds: TimeInterval { TimeInterval(rawValue) }
+
+    var title: String {
+        rawValue < 3600 ? "\(rawValue / 60)분마다" : "\(rawValue / 3600)시간마다"
+    }
+}
+
 /// 사용자가 바꿀 수 있는 설정을 한곳에 모은다.
 ///
 /// 메뉴·설정 창·HUD가 모두 이 객체를 보고 움직인다. 예전처럼 컨트롤러 곳곳에서
@@ -56,6 +74,10 @@ final class HUDSettings: ObservableObject {
         }
     }
 
+    @Published var pollInterval: PollInterval {
+        didSet { defaults.set(pollInterval.rawValue, forKey: Keys.pollInterval) }
+    }
+
     /// HUD 왼쪽 아래에 이 앱의 CPU·메모리를 표시할지.
     @Published var showsProcessStats: Bool {
         didSet { defaults.set(showsProcessStats, forKey: Keys.showsProcessStats) }
@@ -75,6 +97,7 @@ final class HUDSettings: ObservableObject {
         static let expandSide = "hud.expandSide"
         static let backdropOpacity = "hud.backdropOpacity"
         static let showsProcessStats = "hud.showsProcessStats"
+        static let pollInterval = "hud.pollInterval"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -87,6 +110,7 @@ final class HUDSettings: ObservableObject {
         let stored = defaults.object(forKey: Keys.backdropOpacity) as? Double
         backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
         showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)
+        pollInterval = PollInterval(rawValue: defaults.integer(forKey: Keys.pollInterval)) ?? .default
     }
 }
 

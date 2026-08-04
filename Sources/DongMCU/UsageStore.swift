@@ -5,8 +5,15 @@ import Foundation
 /// 사용량을 주기적으로 가져와서 UI에 물려주는 상태 저장소.
 @MainActor
 final class UsageStore: ObservableObject {
-    /// 기본 폴링 주기. 사용량 API는 5분 단위 레이트리밋 창을 쓰므로 너무 조이면 429가 난다.
-    static let pollInterval: TimeInterval = 600
+    /// 조회 주기. 사용량 API는 5분 단위 레이트리밋 창을 쓰므로 너무 조이면 429가 난다.
+    private(set) var pollInterval: TimeInterval = PollInterval.default.seconds
+
+    /// 설정에서 주기를 바꾸면 돌고 있던 타이머를 새 주기로 다시 건다.
+    func setPollInterval(_ seconds: TimeInterval) {
+        guard seconds != pollInterval else { return }
+        pollInterval = seconds
+        if timer != nil { startTimer() }
+    }
 
     @Published private(set) var snapshot: UsageSnapshot?
     @Published private(set) var errorText: String?
@@ -57,11 +64,11 @@ final class UsageStore: ObservableObject {
 
     private func startTimer() {
         timer?.invalidate()
-        let timer = Timer(timeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
         // 타이머를 다른 시스템 깨우기와 묶어서 처리하게 여유를 크게 준다(전력 절약).
-        timer.tolerance = Self.pollInterval / 4
+        timer.tolerance = pollInterval / 4
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
     }

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -7,6 +8,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var hud: HUDController?
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindowController?
+    private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)  // Dock 아이콘 없음
@@ -34,6 +36,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(store: store) { [weak hud] menu in
             hud?.populateMenu(menu)
         }
+
+        // 조회 주기는 설정을 따른다.
+        store.setPollInterval(settings.pollInterval.seconds)
+        settings.$pollInterval
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak store] interval in store?.setPollInterval(interval.seconds) }
+            .store(in: &cancellables)
 
         store.start()
     }

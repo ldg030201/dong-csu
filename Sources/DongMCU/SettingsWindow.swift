@@ -4,7 +4,7 @@ import SwiftUI
 /// 설정 창의 내용.
 struct SettingsView: View {
     /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
-    static let size = CGSize(width: 380, height: 682)
+    static let size = CGSize(width: 380, height: 718)
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
@@ -98,6 +98,12 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("가운데 아이콘")
                 iconChooser
+            }
+
+            Picker("조회 주기", selection: $settings.pollInterval) {
+                ForEach(PollInterval.allCases, id: \.self) { value in
+                    Text(value.title).tag(value)
+                }
             }
 
             Picker("펼침 방향", selection: $settings.expandSide) {
@@ -211,8 +217,10 @@ struct SettingsView: View {
 
 /// 설정 창을 하나만 띄우고 재사용한다.
 @MainActor
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    /// 닫을 때 창을 버리므로 자리와 크기만 따로 기억해 둔다.
+    private var lastFrame: NSRect?
     private var didCenter = false
     private let settings: HUDSettings
     private let store: UsageStore
@@ -230,6 +238,18 @@ final class SettingsWindowController {
         self.store = store
         self.actions = actions
         self.preferredScreen = preferredScreen
+        super.init()
+    }
+
+    /// 설정 창은 SwiftUI 트리까지 들고 있어서 열어두면 10MB 넘게 쓴다.
+    /// 닫을 때 참조를 놓아 메모리를 돌려준다. 다음에 열면 다시 만든다.
+    func windowWillClose(_ notification: Notification) {
+        lastFrame = window?.frame
+        // 알림 처리 중에 창을 없애지 않도록 한 턴 미룬다.
+        DispatchQueue.main.async { [weak self] in
+            self?.window?.delegate = nil
+            self?.window = nil
+        }
     }
 
     func show() {
@@ -258,6 +278,9 @@ final class SettingsWindowController {
             // 이보다 줄이면 스크롤로 볼 수 있다.
             window.contentMinSize = NSSize(width: 260, height: 200)
             window.isReleasedWhenClosed = false
+            window.delegate = self
+            // 닫았다 다시 열면 이전 자리·크기를 그대로 쓴다.
+            if let lastFrame { window.setFrame(lastFrame, display: false) }
             self.window = window
         }
 
@@ -266,7 +289,7 @@ final class SettingsWindowController {
         // Dock 아이콘이 없는 앱이라 직접 활성화해야 창이 앞으로 나온다.
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
-        centerOnFirstShow(window)
+        if lastFrame == nil { centerOnFirstShow(window) }
     }
 
     /// NSWindow.center()는 NSScreen.main 기준이라 모니터가 여러 대면

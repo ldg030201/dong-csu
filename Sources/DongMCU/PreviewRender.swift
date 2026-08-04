@@ -97,7 +97,7 @@ enum HUDPreviewRenderer {
             settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-mcu.preview") ?? .standard),
             store: UsageStore(preview: snapshot),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
-            version: dongMCUVersion
+            version: "dong-mcu \(dongMCUVersion)"
         )
         .content
         .frame(width: SettingsView.size.width)
