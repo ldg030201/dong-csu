@@ -23,11 +23,8 @@ class DongMcu < Formula
 DongMCU는 Claude Code가 keychain에 저장한 OAuth 토큰을 읽습니다.
       Claude Code에 로그인되어 있어야 동작하고, 첫 실행 때 keychain 접근 허용을 한 번 묻습니다.
 
-      실행:
-        open #{opt_prefix}/DongMCU.app
-
-      Launchpad와 /Applications 에서 보이게 하려면:
-        ln -sfn #{opt_prefix}/DongMCU.app /Applications/DongMCU.app
+      /Applications 에 등록하고 실행하려면 (formula는 GUI 앱이라도 /Applications 를 건드리지 않습니다):
+        ln -sfn #{opt_prefix}/DongMCU.app /Applications/DongMCU.app && open /Applications/DongMCU.app
 
       로그인하면 자동으로 시작하게 하려면 시스템 설정 > 일반 > 로그인 항목에 추가하세요.
     EOS

@@ -22,20 +22,52 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 
 ### Homebrew
 
+설치부터 `/Applications` 등록, 실행까지 한 번에:
+
 ```bash
-brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu &&
-  brew trust ldg030201/dong-mcu &&
-  brew install dong-mcu
+brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && ln -sfn "$(brew --prefix)/opt/dong-mcu/DongMCU.app" /Applications/DongMCU.app && open /Applications/DongMCU.app
 ```
 
-`brew trust`는 Homebrew가 서드파티 tap의 formula를 기본적으로 거부하기 때문에 필요하다.
-설치는 소스에서 빌드하므로 코드 서명·공증 문제가 없다.
+각 단계가 하는 일:
+
+| 명령 | 하는 일 |
+| --- | --- |
+| `brew tap` | 이 저장소를 Homebrew가 아는 저장소 목록에 넣는다 |
+| `brew trust` | 서드파티 tap의 formula 실행을 허용한다. Homebrew가 기본적으로 거부해서 필요하다 |
+| `brew install` | 소스를 내려받아 빌드하고 `$(brew --prefix)/opt/dong-mcu/` 안에 넣는다 |
+| `ln -sfn` | `/Applications`에 링크를 건다 |
+| `open` | 실행한다 |
+
+**`ln` 줄이 왜 필요한가** — Homebrew에는 두 종류가 있다. GUI 앱용 **cask**(`brew install --cask`)는
+`/Applications`에 자동으로 설치하지만, 이건 소스를 빌드하는 **formula**다. formula는 Homebrew
+디렉터리 밖에 파일을 쓰지 않는 게 규칙이라 `/Applications`를 건드리지 않는다. 대신 코드 서명·공증
+없이도 설치되는 게 이 방식의 장점이다.
+
+첫 실행 때 keychain 접근을 허용할지 한 번 묻는다.
+
+#### 업데이트
 
 ```bash
-open "$(brew --prefix)/opt/dong-mcu/DongMCU.app"
+brew update && brew upgrade dong-mcu
+```
 
-# Launchpad와 /Applications 에서 보이게 하려면
-ln -sfn "$(brew --prefix)/opt/dong-mcu/DongMCU.app" /Applications/DongMCU.app
+`/Applications` 링크는 `opt` 경로를 가리키므로 버전이 올라가도 그대로 유지된다.
+앱 이름 자체가 바뀐 버전으로 올릴 때만 위의 `ln -sfn` 줄을 다시 실행하면 된다.
+
+#### 로그인할 때 자동으로 켜기
+
+시스템 설정 → 일반 → 로그인 항목에서 `+`를 누르고 `/Applications/DongMCU.app`을 고른다.
+
+#### 제거
+
+```bash
+rm -f /Applications/DongMCU.app && brew uninstall dong-mcu && brew untap ldg030201/dong-mcu
+```
+
+설정(창 위치·아이콘·크기)은 남는다. 그것까지 지우려면:
+
+```bash
+defaults delete com.ldg.dong-mcu
 ```
 
 ### 소스에서 빌드
