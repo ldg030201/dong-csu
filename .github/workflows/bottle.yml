@@ -28,10 +28,12 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Homebrew 준비
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@2026.08.03.2
 
       - name: tap 추가
         run: |
+          # 러너에 미리 깔린 tap이 신뢰되지 않아 Homebrew가 매번 경고한다. 쓰지 않으니 뗀다.
+          brew untap aws/tap 2>/dev/null || true
           brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu
           brew trust ldg030201/dong-mcu || true
 
@@ -41,7 +43,7 @@ jobs:
           brew bottle --json --no-rebuild ldg030201/dong-mcu/dong-mcu
 
       - name: 결과 수집
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bottle-${{ matrix.os }}
           path: |
@@ -53,21 +55,23 @@ jobs:
     needs: build
     runs-on: macos-14
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Homebrew 준비
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@2026.08.03.2
 
       - name: tap 추가
         run: |
+          # 러너에 미리 깔린 tap이 신뢰되지 않아 Homebrew가 매번 경고한다. 쓰지 않으니 뗀다.
+          brew untap aws/tap 2>/dev/null || true
           brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu
           brew trust ldg030201/dong-mcu || true
 
       - name: bottle 내려받기
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: bottles
           merge-multiple: true

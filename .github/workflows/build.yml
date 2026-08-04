@@ -25,7 +25,7 @@ jobs:
           - os: macos-15   # arm64 Sequoia
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: 도구 버전
         run: swift --version
