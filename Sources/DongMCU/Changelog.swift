@@ -17,7 +17,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "1.1.0", date: nil, notes: [
+        ChangelogEntry(version: "1.1.0", date: "2026-08-04", notes: [
             "자동 업데이트 확인 추가 (하루 1회, 끄기 가능)",
             "새 버전 알림 표시 추가 (HUD 왼쪽 위)",
             "설정 창에 버전 탭 추가 (버전 확인·업데이트·변경 내역)",
