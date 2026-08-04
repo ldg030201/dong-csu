@@ -137,42 +137,85 @@ struct SettingsView: View {
     // MARK: - 현재 상태
 
     private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
-                Text(store.snapshot?.planName ?? "Claude")
-                    .font(.system(size: 15, weight: .semibold))
-                Spacer()
-                if store.needsReauth {
-                    Label("재로그인 필요", systemImage: "exclamationmark.triangle.fill")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.orange)
-                } else if store.isStale {
-                    Label("오래된 값", systemImage: "clock.arrow.circlepath")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.orange)
+        // 초기화까지 남은 시간과 조회 카운트다운이 있어서 초 단위로 다시 그린다.
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 8) {
+                    Text(store.snapshot?.planName ?? "Claude")
+                        .font(.system(size: 15, weight: .semibold))
+                    Spacer()
+                    if store.needsReauth {
+                        Label("재로그인 필요", systemImage: "exclamationmark.triangle.fill")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.orange)
+                    } else if store.isStale {
+                        Label("오래된 값", systemImage: "clock.arrow.circlepath")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.orange)
+                    }
                 }
-            }
 
-            HStack(spacing: 16) {
-                usageColumn(title: "세션", window: store.snapshot?.fiveHour)
-                usageColumn(title: "주간", window: store.snapshot?.sevenDay)
-                Spacer()
-                Button("새로고침", action: actions.refresh)
+                usageColumn(title: "세션 (5시간)", window: store.snapshot?.fiveHour, now: context.date)
+                usageColumn(title: "주간 (7일)", window: store.snapshot?.sevenDay, now: context.date)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 4) {
+                    statusRow(title: "마지막 조회", value: fetchedText(now: context.date))
+                    statusRow(title: "다음 조회", value: nextPollText(now: context.date))
+                    statusRow(title: "조회 주기", value: settings.pollInterval.title)
+                }
+
+                if let error = store.errorText {
+                    Text(error)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Button(store.isRefreshing ? "조회 중…" : "새로고침", action: actions.refresh)
                     .disabled(store.isRefreshing)
             }
         }
     }
 
-    private func usageColumn(title: String, window: UsageWindow?) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
+    private func usageColumn(title: String, window: UsageWindow?, now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
             Text(title)
                 .font(.system(size: 10, weight: .semibold))
                 .foregroundStyle(.secondary)
-            Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .monospacedDigit()
-                .foregroundStyle(UsageColor.color(for: window?.utilization ?? 0))
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(window.map { "\(Int($0.utilization.rounded()))%" } ?? "—")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .monospacedDigit()
+                    .foregroundStyle(UsageColor.color(for: window?.utilization ?? 0))
+                Text(RemainingTime.text(until: window?.resetsAt, now: now))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
         }
+    }
+
+    private func statusRow(title: String, value: String) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.system(size: 11).monospacedDigit())
+        }
+    }
+
+    private func fetchedText(now: Date) -> String {
+        guard let fetchedAt = store.snapshot?.fetchedAt else { return "아직 없음" }
+        return RemainingTime.ageText(since: fetchedAt, now: now)
+    }
+
+    private func nextPollText(now: Date) -> String {
+        guard let next = store.nextPollDate else { return "멈춤" }
+        guard next.timeIntervalSince(now) > 0 else { return "곧" }
+        return "\(RemainingTime.clockText(until: next, now: now)) 뒤"
     }
 
     // MARK: - 표시 설정

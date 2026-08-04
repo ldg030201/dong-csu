@@ -95,7 +95,8 @@ enum HUDPreviewRenderer {
         )
         let view = SettingsView(
             settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-mcu.preview") ?? .standard),
-            store: UsageStore(preview: snapshot),
+            // 상태 탭이 조회 카운트다운을 그리므로 예정 시각까지 넣어야 실제와 같아진다.
+            store: UsageStore(preview: snapshot, nextPoll: Date().addingTimeInterval(7 * 60 + 12)),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
             version: "dong-mcu \(dongMCUVersion)",
             initialTab: tab
