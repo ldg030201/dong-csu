@@ -19,6 +19,7 @@ enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(version: "1.2.0", date: nil, notes: [
             "설정 창 종료 버튼에 확인 창 추가",
+            "Command Line Tools가 오래된 환경에서 설치가 실패하던 문제 수정",
         ]),
         ChangelogEntry(version: "1.1.0", date: "2026-08-04", notes: [
             "자동 업데이트 확인 추가 (하루 1회, 끄기 가능)",

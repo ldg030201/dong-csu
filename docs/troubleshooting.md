@@ -7,7 +7,7 @@
 옛 버전에서 올라오다 꼬였을 때 쓴다. **이 한 줄로 지우는 것부터 다시 설치까지 끝난다.**
 
 ```bash
-pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap https://github.com/ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*; brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; brew untrust --tap https://github.com/ldg030201/dong-mcu 2>/dev/null; rm -f ~/Library/Caches/Homebrew/dong-mcu*; brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
 ```
 
 지우기만 하려면 `rm -f ~/Library/Caches/Homebrew/dong-mcu*` 까지만 실행한다.
@@ -37,6 +37,30 @@ pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; b
 
 ```bash
 brew update && brew upgrade dong-mcu
+```
+
+### `is using Swift tools version 6.0.0 but the installed version is ...`
+
+Command Line Tools가 오래됐다. **1.2.0부터는 Swift 5.9 이상이면 빌드된다.**
+그 아래 버전이거나 그래도 실패하면 Command Line Tools를 새로 받는다.
+
+```bash
+sudo rm -rf /Library/Developer/CommandLineTools && sudo xcode-select --install
+```
+
+설치한 Swift 버전은 `swift --version`으로 확인한다.
+
+### `xcrun: error: unable to lookup item 'PlatformPath'`
+
+위와 같은 원인이다. Command Line Tools가 깨졌거나 오래된 것이다.
+
+### `brew untrust` 사용법 오류
+
+`Options --tap and --formula are mutually exclusive`가 뜨는 Homebrew 버전이 있다.
+신뢰 목록이 남아도 재설치에는 지장이 없으니 그냥 넘어가도 된다. 굳이 지우려면:
+
+```bash
+brew untrust --tap ldg030201/dong-mcu
 ```
 
 ### `sha256 mismatch`

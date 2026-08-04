@@ -49,7 +49,9 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
     let update = CommandLine.arguments
         .first { $0.hasPrefix("update=") }
         .map { String($0.dropFirst("update=".count)) }
-    let ok = HUDPreviewRenderer.writeSettings(to: path, isDark: isDark, tab: tab, update: update)
+    let ok = MainActor.assumeIsolated {
+        HUDPreviewRenderer.writeSettings(to: path, isDark: isDark, tab: tab, update: update)
+    }
     print(ok ? "rendered: \(path)" : "render failed")
     exit(ok ? 0 : 1)
 }
@@ -84,7 +86,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-icon"),
     let arguments = CommandLine.arguments
     let path = arguments[flagIndex + 1]
     let side = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 1024 : 1024
-    let ok = AppIconRenderer.write(to: path, side: side)
+    let ok = MainActor.assumeIsolated { AppIconRenderer.write(to: path, side: side) }
     print(ok ? "rendered: \(path)" : "render failed")
     exit(ok ? 0 : 1)
 }
@@ -116,24 +118,27 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     // update 를 끼워 넣으면 새 버전이 나온 상태로 그린다.
     let showsUpdateBadge = extras.contains("update")
 
-    let succeeded = HUDPreviewRenderer.write(
-        to: path,
-        utilization: (session, weekly),
-        iconStyle: iconStyle,
-        state: state,
-        collapsed: collapsed,
-        isDark: isDark,
-        side: side,
-        opacity: opacity,
-        showsStats: showsStats,
-        scale: scale,
-        showsUpdateBadge: showsUpdateBadge
-    )
+    let succeeded = MainActor.assumeIsolated {
+        HUDPreviewRenderer.write(
+            to: path,
+            utilization: (session, weekly),
+            iconStyle: iconStyle,
+            state: state,
+            collapsed: collapsed,
+            isDark: isDark,
+            side: side,
+            opacity: opacity,
+            showsStats: showsStats,
+            scale: scale,
+            showsUpdateBadge: showsUpdateBadge
+        )
+    }
     print(succeeded ? "rendered: \(path)" : "render failed")
     exit(succeeded ? 0 : 1)
 }
 
 let application = NSApplication.shared
-let delegate = AppDelegate()
+// NSApplication.delegate는 약한 참조다. 전역에 두어 앱이 도는 동안 살아있게 한다.
+let delegate = MainActor.assumeIsolated { AppDelegate() }
 application.delegate = delegate
 application.run()
