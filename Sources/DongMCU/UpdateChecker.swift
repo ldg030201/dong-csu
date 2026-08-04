@@ -44,9 +44,25 @@ final class UpdateChecker: ObservableObject {
     @Published private(set) var lastCheckedAt: Date?
     @Published private(set) var errorText: String?
 
-    /// 화면에 보여줄 내역. 원격을 받아왔으면 그쪽이 최신이다.
+    /// 화면에 보여줄 내역. 앱에 박힌 것과 원격에서 받은 것을 합친다.
+    ///
+    /// 원격을 그대로 쓰면 안 된다. raw.githubusercontent.com은 몇 분간 캐시되므로
+    /// 방금 올린 버전을 쓰는 앱이 자기보다 뒤처진 목록을 받을 수 있고, 그러면 자기
+    /// 버전 항목이 화면에서 사라진다. 같은 버전은 원격 쪽을 택하고 버전 내림차순으로 세운다.
     var entries: [ChangelogEntry] {
-        remoteEntries.isEmpty ? Changelog.entries : remoteEntries
+        guard !remoteEntries.isEmpty else { return Changelog.entries }
+
+        var byVersion: [String: ChangelogEntry] = [:]
+        for entry in Changelog.entries { byVersion[entry.version] = entry }
+        for entry in remoteEntries { byVersion[entry.version] = entry }
+
+        return byVersion.values.sorted { left, right in
+            guard
+                let leftVersion = AppVersion(left.version),
+                let rightVersion = AppVersion(right.version)
+            else { return left.version > right.version }
+            return leftVersion > rightVersion
+        }
     }
 
     /// 이미 나온 것 중 가장 높은 버전. 날짜가 없는 항목은 아직 안 나간 것이라 뺀다.
@@ -62,6 +78,8 @@ final class UpdateChecker: ObservableObject {
     private var inFlight = false
 
     /// 지금 쓰는 버전보다 새 버전이 나와 있는지.
+    ///
+    /// 지금 버전이 더 높으면(직접 빌드했거나 원격이 캐시로 뒤처졌을 때) 알리지 않는다.
     var hasUpdate: Bool {
         guard let latest, let current = AppVersion(AppInfo.version) else { return false }
         return current < latest

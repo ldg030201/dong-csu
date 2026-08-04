@@ -37,6 +37,9 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "1.3.1", date: nil, notes: [
+            "원격 내역이 뒤처졌을 때 지금 버전 항목이 사라지던 문제 수정",
+        ]),
         ChangelogEntry(version: "1.3.0", date: "2026-08-04", notes: [
             "아직 설치하지 않은 버전의 변경 내역도 볼 수 있게 함",
         ]),
