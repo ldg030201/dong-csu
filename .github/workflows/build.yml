@@ -43,9 +43,11 @@ jobs:
           "$BIN" --render /tmp/hud.png 34 61 owl ok
           "$BIN" --render-icon /tmp/icon.png 128
           "$BIN" --render-menubar /tmp/menubar.png 16
+          "$BIN" --render-owl /tmp/owl.png 64
           "$BIN" --dump-changelog /tmp/changelog.json
           test -s /tmp/hud.png && test -s /tmp/icon.png
-          test -s /tmp/menubar.png && test -s /tmp/changelog.json
+          test -s /tmp/menubar.png && test -s /tmp/owl.png
+          test -s /tmp/changelog.json
 
       - name: 변경 내역 파일이 소스와 맞는지
         run: |

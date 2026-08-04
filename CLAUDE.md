@@ -81,7 +81,12 @@ dong-mcu --render out.png 34 61 owl ok large   # HUD (사용률·아이콘·상�
 dong-mcu --render-settings out.png changelog   # 설정 창의 특정 탭
 dong-mcu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-mcu --render-icon out.png 1024            # 앱 아이콘
+dong-mcu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임
 ```
+
+`--render-owl`은 기분별 프레임을 한 장에 늘어놓는다. 자세를 고칠 때 앱을 띄우고
+몇 초씩 기다리지 말고 이걸로 본다. 다만 **크기가 달라 보인다는 인상은 재지 말고
+픽셀로 확인한다** — 주저앉은 자세는 다리가 몸에 가려져 실제로 한 칸 짧다.
 
 `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은
 `isPreviewRender`로 스크롤을 벗긴 형태를 따로 그린다.
