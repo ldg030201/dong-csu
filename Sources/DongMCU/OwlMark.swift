@@ -54,6 +54,14 @@ enum OwlMark {
     /// 리터럴로 한 벌 더 적어 두면 접은 날개를 손볼 때 이쪽만 옛 모양으로 남는다.
     static let wingsDroop = shifted(wingsFolded, dy: 1)
 
+    /// 매달렸을 때의 몸. 아랫단 한 줄을 비워 다리가 나올 자리를 낸다.
+    ///
+    /// 몸통은 마지막 줄(y11)까지 꽉 차 있어서, 다리를 길게 그려도 그 줄은 몸에
+    /// 덮여 보이지 않는다. 들려 있을 때는 몸이 위로 딸려 올라간 셈이라 이게 자연스럽다.
+    static let bodyHanging = body.enumerated().map {
+        $0.offset == lines - 2 ? String(repeating: ".", count: columns) : $0.element
+    }
+
 
     /// 펼친 날개는 좌우 여백까지 써서 어깨 위로 뻗는다.
     static let wingsSpread = [
@@ -185,8 +193,11 @@ enum OwlMark {
         "...###..###....",
     ]
 
-    /// 매달렸을 때 모아 늘어뜨린 다리.
-    /// 서 있을 때처럼 벌리고 있으면 들려 있어도 딛고 선 것처럼 보인다.
+    /// 매달렸을 때 모아 늘어뜨린 다리. 가는 정강이 아래에 발이 붙는다.
+    ///
+    /// 서 있는 발은 마지막 한 줄뿐이라 들려 있어도 딛고 선 것처럼 보인다.
+    /// 이건 두 줄을 써서 길게 내려오는데, 윗줄(y11)이 몸통 아랫단과 겹치므로
+    /// `bodyHanging`과 짝으로만 쓴다.
     static let feetDangle = [
         "...............",
         "...............",
@@ -199,7 +210,7 @@ enum OwlMark {
         "...............",
         "...............",
         "...............",
-        "...............",
+        "......#.#......",
         ".....##.##.....",
     ]
 
@@ -396,10 +407,13 @@ struct OwlPose: Equatable {
             }
         }()
 
+        // 매달린 다리는 두 줄이라 몸통 아랫단과 겹친다. 그 줄을 비운 몸을 쓴다.
+        let bodyLayer = feet == .dangle ? OwlMark.bodyHanging : OwlMark.body
+
         // 발은 땅(또는 허공)에 매달린 채라 기울임·오르내림에서 빼고 제 값만 쓴다.
         let faceShift = lean + faceLean
         return [
-            OwlMark.shifted(OwlMark.body, dx: lean, dy: bob),
+            OwlMark.shifted(bodyLayer, dx: lean, dy: bob),
             OwlMark.shifted(wingLayer, dx: lean, dy: bob),
             OwlMark.shifted(OwlMark.belly, dx: lean, dy: bob),
             OwlMark.shifted(eyeLayer, dx: faceShift, dy: bob),
@@ -408,16 +422,24 @@ struct OwlPose: Equatable {
         ]
     }
 
-    /// 몸이 기울어도 시선은 한 곳에 남기고, 다리는 따로 흔든다.
+    /// 목을 잡혀 매달린 채 끌려가는 자세.
     ///
-    /// `faceLean`에 매번 손으로 반대 부호를 적으면, 한 프레임만 놓쳐도 거기서만
-    /// 얼굴이 같이 흔들려서 부엉이가 아니라 인형처럼 보인다.
-    func swaying(lean: Int = 0, feetLean: Int = 0) -> OwlPose {
-        var pose = self
-        pose.lean = lean
-        pose.faceLean = -lean
-        pose.feetLean = feetLean
-        return pose
+    /// 몸은 지금 `lean`에 있고, 얼굴은 **한 박자 전** 자리에, 다리는 **두 박자 전**
+    /// 자리에 남는다. 셋이 같이 움직이면 통나무처럼 뻣뻣하고, 반대로 얼굴을 완전히
+    /// 붙박아 두면 노려보는 것처럼 보인다. 차례로 뒤따라오게 두는 쪽이
+    /// 들려서 끌려가는 것으로 읽힌다.
+    ///
+    /// `face`와 `feet`은 화면에서의 자리다. `faceLean`은 몸에 더해지는 값이라
+    /// 여기서 몸 기울기를 빼서 넘긴다.
+    static func carried(lean: Int, face: Int, feet: Int, eyes: Eyes = .open) -> OwlPose {
+        OwlPose(
+            eyes: eyes,
+            wings: .droop,
+            feet: .dangle,
+            lean: lean,
+            faceLean: face - lean,
+            feetLean: feet
+        )
     }
 }
 

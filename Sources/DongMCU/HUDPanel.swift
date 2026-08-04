@@ -34,6 +34,8 @@ final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
 /// 링 자체는 조작할 게 없으므로 마우스 이벤트를 전부 여기서 받는다.
 final class HUDInteractionView: NSView {
     var onDragTo: (@MainActor (NSPoint) -> Void)?
+    /// 드래그하는 동안 마우스의 가로 속도(pt/s). 부엉이가 처지는 방향과 세기를 정한다.
+    var onDragVelocity: (@MainActor (CGFloat) -> Void)?
     var onDragEnded: (@MainActor () -> Void)?
     var menuBuilder: (@MainActor () -> NSMenu)?
     var onDoubleClick: (@MainActor () -> Void)?
@@ -44,6 +46,10 @@ final class HUDInteractionView: NSView {
 
     /// 마우스와 창 원점 사이의 간격. 드래그 내내 이 값을 유지한다.
     private var dragOffset: CGSize?
+
+    /// 직전 드래그 이벤트의 가로 위치와 시각. 속도를 내는 데 쓴다.
+    private var lastDragX: CGFloat?
+    private var lastDragAt: TimeInterval?
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -64,6 +70,8 @@ final class HUDInteractionView: NSView {
         guard let origin = window?.frame.origin else { return }
         let mouse = NSEvent.mouseLocation
         dragOffset = CGSize(width: mouse.x - origin.x, height: mouse.y - origin.y)
+        lastDragX = nil
+        lastDragAt = nil
     }
 
     /// 창을 절대 좌표로 옮긴다.
@@ -73,10 +81,20 @@ final class HUDInteractionView: NSView {
         guard let offset = dragOffset else { return }
         let mouse = NSEvent.mouseLocation
         onDragTo?(NSPoint(x: mouse.x - offset.width, y: mouse.y - offset.height))
+
+        // 이벤트가 실린 시각을 쓴다. 지금 시각으로 재면 이벤트가 밀려 들어올 때
+        // 간격이 0에 가까워져서 속도가 터무니없이 커진다.
+        if let lastDragX, let lastDragAt, event.timestamp > lastDragAt {
+            onDragVelocity?((mouse.x - lastDragX) / CGFloat(event.timestamp - lastDragAt))
+        }
+        lastDragX = mouse.x
+        lastDragAt = event.timestamp
     }
 
     override func mouseUp(with event: NSEvent) {
         dragOffset = nil
+        lastDragX = nil
+        lastDragAt = nil
         onDragEnded?()
     }
 
@@ -214,6 +232,9 @@ final class HUDController {
             guard !self.isDraggingPanel else { return }
             self.isDraggingPanel = true
             self.refreshMood()
+        }
+        interactionView.onDragVelocity = { [weak self] velocity in
+            self?.owlAnimator.setDragVelocity(velocity)
         }
         interactionView.onDragEnded = { [weak self] in
             guard let self else { return }

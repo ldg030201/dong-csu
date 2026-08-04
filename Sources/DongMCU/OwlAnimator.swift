@@ -69,23 +69,19 @@ enum OwlMood: String, CaseIterable {
             return [OwlFrame(OwlPose(eyes: .half), duration: 0)]
 
         case .dragged:
-            // 목을 잡혀 매달린 채 몸이 좌우로 흔들린다.
+            // **실제로는 이 목록을 쓰지 않는다.** 끌림만은 시간표가 아니라 마우스가
+            // 자세를 정하기 때문에 `OwlAnimator`가 따로 돌린다. 여기 목록은 문서와
+            // 렌더 통로가 쓰는 대표 한 바퀴 — 오른쪽으로 끌었다 왼쪽으로 끌 때의 모습이다.
             //
-            // **시선은 그 자리에 남는다** — 몸이 기운 만큼 얼굴을 되돌려서, 머리가
-            // 흔들려도 눈은 한 곳을 본다. 부엉이가 몸을 어떻게 흔들든 시선을 붙잡아
-            // 두는 그 특징이고, 들려 있을 때 가장 부엉이답게 읽히는 자리다.
-            //
-            // 다리는 몸보다 한 박자 늦게 따라간다. 같이 움직이면 통나무처럼 뻣뻣하고,
-            // 번갈아 차면 발버둥으로 보인다. 늦게 따라와야 매달려 흔들리는 게 된다.
-            //
-            // 날개는 늘어뜨리고 다리는 모은다. 퍼덕이며 다리를 벌리면 도망치려는
+            // 날개는 늘어뜨리고 다리는 모아 내린다. 퍼덕이며 다리를 벌리면 도망치려는
             // 몸부림이 되는데, 힘을 뺀 채 들려 있는 쪽이 부엉이답고 덜 사납다.
-            let hanging = OwlPose(wings: .droop, feet: .dangle)
             return [
-                OwlFrame(hanging.swaying(lean: -1), duration: 0.22),
-                OwlFrame(hanging.swaying(feetLean: -1), duration: 0.20),
-                OwlFrame(hanging.swaying(lean: 1), duration: 0.22),
-                OwlFrame(hanging.swaying(feetLean: 1), duration: 0.20),
+                OwlFrame(.carried(lean: -1, face: 0, feet: 0), duration: 0.18),
+                OwlFrame(.carried(lean: -1, face: -1, feet: 0), duration: 0.18),
+                OwlFrame(.carried(lean: 0, face: -1, feet: -1), duration: 0.18),
+                OwlFrame(.carried(lean: 1, face: 0, feet: -1), duration: 0.18),
+                OwlFrame(.carried(lean: 1, face: 1, feet: 0), duration: 0.18),
+                OwlFrame(.carried(lean: 0, face: 1, feet: 1), duration: 0.18),
             ]
         }
     }
@@ -142,7 +138,35 @@ final class OwlAnimator: ObservableObject {
     private var frameIndex = 0
     private var isRunning = false
 
+    // MARK: - 끌림 상태
+    //
+    // 끌림만은 시간표가 아니라 마우스가 자세를 정한다. 어느 쪽으로 얼마나 빨리
+    // 움직이는지에 따라 몸이 반대로 처지고, 얼굴과 다리가 차례로 뒤따라온다.
+
+    private var dragVelocity: CGFloat = 0
+    private var dragVelocityAt: Date = .distantPast
+    /// 한 틱 전과 두 틱 전의 몸 기울기. 얼굴과 다리가 각각 여기에 남는다.
+    private var previousLean = 0
+    private var olderLean = 0
+    private var blinkCountdown = OwlAnimator.blinkInterval
+
+    /// 끌리는 동안 자세를 다시 잡는 주기.
+    private static let dragTick: TimeInterval = 0.09
+    /// 마우스가 멈추면 이벤트가 끊긴다. 이만큼 지난 속도는 0으로 본다.
+    private static let dragIdle: TimeInterval = 0.13
+    /// 이 속도(pt/s)를 넘어야 몸이 처진다. 느리게 움직이면 그냥 매달려 있다.
+    private static let dragLeanSpeed: CGFloat = 140
+    /// 몇 틱마다 깜빡일지. 눈을 붙박아 두기만 하면 노려보는 것처럼 보인다.
+    private static let blinkInterval = 22
+
     var palette: OwlPalette { mood.palette }
+
+    /// 끌려가는 동안 마우스의 가로 속도(pt/s). 부호는 **마우스가 가는 쪽**이고,
+    /// 부엉이는 그 반대로 처진다 — 들고 오른쪽으로 가면 몸이 왼쪽으로 뒤처진다.
+    func setDragVelocity(_ velocity: CGFloat) {
+        dragVelocity = velocity
+        dragVelocityAt = Date()
+    }
 
     /// 보이지 않는 동안에는 부를 이유가 없다. 창을 숨기거나 다른 아이콘을 고르면 멈춘다.
     func start() {
@@ -162,6 +186,11 @@ final class OwlAnimator: ObservableObject {
         guard newMood != mood else { return }
         mood = newMood
         frameIndex = 0
+        // 지난번에 끌던 기울기가 남아 있으면 집어 든 순간 몸이 한쪽으로 튄다.
+        previousLean = 0
+        olderLean = 0
+        dragVelocityAt = .distantPast
+        blinkCountdown = Self.blinkInterval
         if isRunning {
             advance()
         } else {
@@ -175,6 +204,8 @@ final class OwlAnimator: ObservableObject {
 
     /// 지금 프레임을 화면에 올리고, 그 길이만큼 뒤에 다음 프레임을 예약한다.
     private func advance() {
+        guard mood != .dragged else { return advanceDrag() }
+
         let frames = mood.frames
         let frame = frames[frameIndex % frames.count]
         pose = frame.pose
@@ -184,7 +215,41 @@ final class OwlAnimator: ObservableObject {
         // 프레임이 하나뿐인 기분은 정지 그림이다. 타이머를 걸지 않는다.
         guard frames.count > 1 else { return }
 
-        let delay = frame.duration + (frame.jitter > 0 ? .random(in: 0...frame.jitter) : 0)
+        schedule(after: frame.duration + (frame.jitter > 0 ? .random(in: 0...frame.jitter) : 0))
+    }
+
+    /// 끌려가는 동안의 한 틱. 마우스가 어디로 얼마나 빨리 가는지에서 자세를 만든다.
+    ///
+    /// 몸은 지금 기울기에, 얼굴은 한 틱 전 자리에, 다리는 두 틱 전 자리에 남는다.
+    /// 이 시차가 매달린 것을 들고 움직일 때의 뒤따라옴이 된다.
+    private func advanceDrag() {
+        let moving = Date().timeIntervalSince(dragVelocityAt) < Self.dragIdle
+        let lean = moving ? Self.lean(for: dragVelocity) : 0
+
+        blinkCountdown -= 1
+        let eyes: OwlPose.Eyes
+        switch blinkCountdown {
+        case 1: eyes = .closed
+        case 0, 2: eyes = .half
+        default: eyes = .open
+        }
+        if blinkCountdown <= 0 { blinkCountdown = Self.blinkInterval }
+
+        pose = .carried(lean: lean, face: previousLean, feet: olderLean, eyes: eyes)
+        olderLean = previousLean
+        previousLean = lean
+
+        schedule(after: Self.dragTick)
+    }
+
+    /// 마우스가 가는 반대쪽으로 처진다. 매달린 것은 손보다 늦게 따라오기 때문이다.
+    private static func lean(for velocity: CGFloat) -> Int {
+        guard abs(velocity) > dragLeanSpeed else { return 0 }
+        return velocity > 0 ? -1 : 1
+    }
+
+    private func schedule(after delay: TimeInterval) {
+        timer?.invalidate()
         let timer = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
             // 타이머를 메인 런루프에 걸었으므로 콜백도 메인 스레드에서 온다.
             MainActor.assumeIsolated {
