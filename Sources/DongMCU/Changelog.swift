@@ -7,13 +7,20 @@ import Foundation
 /// 달라지는지 알 수 있게 쓴다(내부 구조 설명은 커밋 메시지에 남긴다).
 struct ChangelogEntry {
     let version: String
-    let date: String
+    /// 아직 내보내지 않은 항목은 nil. 릴리스할 때 날짜를 채운다.
+    let date: String?
     let notes: [String]
 }
 
 enum Changelog {
     /// 최신이 위로 온다.
+    ///
+    /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
+    /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "1.1.0", date: nil, notes: [
+            "설정 창에 변경 내역 탭 추가 — 버전마다 무엇이 달라졌는지 볼 수 있다",
+        ]),
         ChangelogEntry(version: "1.0.0", date: "2026-08-04", notes: [
             "마스코트 부엉이를 만들어 링 가운데 기본 아이콘으로",
             "앱 아이콘 추가 — Finder·Launchpad에서 기본 문서 아이콘으로 보이던 문제",

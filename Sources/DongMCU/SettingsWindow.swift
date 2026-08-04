@@ -98,7 +98,8 @@ struct SettingsView: View {
                 footer
             }
         }
-        .frame(width: Self.size.width, height: Self.size.height)
+        // 미리보기는 내용이 창보다 길면 잘린다. 그때는 높이를 풀어 전부 그린다.
+        .frame(width: Self.size.width, height: isPreviewRender ? nil : Self.size.height)
     }
 
     private var sidebar: some View {
@@ -352,6 +353,14 @@ struct SettingsView: View {
         }
     }
 
+    private func changelogBadge(_ text: String, tint: Color) -> some View {
+        Text(text)
+            .font(.system(size: 9, weight: .medium))
+            .padding(.horizontal, 5)
+            .padding(.vertical, 1)
+            .background { Capsule().fill(tint.opacity(0.20)) }
+    }
+
     private var changelogList: some View {
         VStack(alignment: .leading, spacing: 14) {
                 ForEach(Changelog.entries, id: \.version) { entry in
@@ -359,17 +368,15 @@ struct SettingsView: View {
                         HStack(spacing: 6) {
                             Text(entry.version)
                                 .font(.system(size: 12, weight: .semibold))
-                            Text(entry.date)
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                            if entry.version == AppInfo.version {
-                                Text("지금 버전")
-                                    .font(.system(size: 9, weight: .medium))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1)
-                                    .background {
-                                        Capsule().fill(Color.accentColor.opacity(0.20))
-                                    }
+                            if let date = entry.date {
+                                Text(date)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(.tertiary)
+                            }
+                            if entry.date == nil {
+                                changelogBadge("준비 중", tint: .orange)
+                            } else if entry.version == AppInfo.version {
+                                changelogBadge("지금 버전", tint: .accentColor)
                             }
                         }
                         ForEach(entry.notes, id: \.self) { note in
