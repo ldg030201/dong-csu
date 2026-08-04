@@ -2,22 +2,8 @@
 # dong-mcu.app 번들을 만든다. Xcode 없이 Command Line Tools + SwiftPM만 사용.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
-CONFIG="${CONFIG:-release}"
-
-# VARIANT=test 로 부르면 번들 ID가 다른 별개의 앱(dong-mcu-test)이 나온다.
-# 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않아서 둘을 동시에 띄울 수 있다.
-# 번들 이름은 화면에 보이는 이름(DongMCU)이고, 번들 ID는 예전 그대로다.
-# ID를 바꾸면 UserDefaults 키가 달라져서 창 위치·아이콘·크기 설정이 초기화된다.
-VARIANT="${VARIANT:-release}"
-if [[ "$VARIANT" == "test" ]]; then
-  APP_NAME="DongMCU-Test"
-  BUNDLE_ID="com.ldg.dong-mcu-test"
-else
-  APP_NAME="DongMCU"
-  BUNDLE_ID="com.ldg.dong-mcu"
-fi
-APP="$ROOT/build/$APP_NAME.app"
+# 앱 이름·경로·빌드 호출은 lib.sh 한 곳에서 정한다.
+source "$(dirname "$0")/lib.sh"
 
 # 버전은 Info.plist와 main.swift 두 곳에 있다. 어긋난 채로 배포되면
 # `dong-mcu --version`이 태그와 다른 값을 뱉으므로 여기서 막는다.
@@ -28,13 +14,8 @@ if [[ "$PLIST_VERSION" != "$SOURCE_VERSION" ]]; then
   exit 1
 fi
 
-# Homebrew처럼 이미 샌드박스 안에서 도는 환경에서는 SwiftPM의 자체 샌드박스가 중첩되어
-# 실패한다. 그럴 때 SWIFT_BUILD_FLAGS="--disable-sandbox" 로 넘긴다.
-# 단어 분리를 의도한 것이라 따옴표를 씌우지 않는다.
-# shellcheck disable=SC2086
-swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-}
-# shellcheck disable=SC2086
-BIN_DIR="$(swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-} --show-bin-path)"
+swift_build
+BIN_DIR="$(swift_bin_dir)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"

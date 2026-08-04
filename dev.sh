@@ -6,12 +6,9 @@
 #   ./dev.sh render   한 번 빌드하고 HUD를 PNG로 렌더 (앱 안 띄움)
 set -uo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
 # 개발 중에는 테스트판(DongMCU-Test)을 띄운다. brew로 설치한 정식판과 섞이지 않는다.
 export VARIANT="${VARIANT:-test}"
-APP_NAME="DongMCU"
-[[ "$VARIANT" == "test" ]] && APP_NAME="DongMCU-Test"
-APP="$ROOT/build/$APP_NAME.app"
+source "$(dirname "$0")/lib.sh"
 LOG="$ROOT/build/dev-build.log"
 MODE="${1:-watch}"
 
@@ -47,7 +44,7 @@ case "$MODE" in
   render)
     build || exit 1
     OUT="$ROOT/build/hud.png"
-    "$ROOT/.build/release/dong-mcu" --render "$OUT" "${2:-8}" "${3:-60}" "${4:-owl}"
+    "$BIN" --render "$OUT" "${2:-8}" "${3:-60}" "${4:-owl}"
     open "$OUT"
     exit 0
     ;;

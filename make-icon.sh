@@ -4,14 +4,14 @@
 # 아이콘은 자주 바뀌지 않으므로 결과물(.icns)을 커밋해 두고 build.sh는 복사만 한다.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")" && pwd)"
+# 아이콘만 뽑으면 되니 최적화 없이 빠르게 빌드한다.
 CONFIG="${CONFIG:-debug}"
+source "$(dirname "$0")/lib.sh"
 OUT="$ROOT/Resources/AppIcon.icns"
 
-# shellcheck disable=SC2086
-swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-}
-# shellcheck disable=SC2086
-BIN="$(swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-} --show-bin-path)/dong-mcu"
+swift_build
+# lib.sh 의 BIN(번들 안 실행 파일)과 다르다. 여기서는 번들을 만들지 않는다.
+ICON_BIN="$(swift_bin_dir)/dong-mcu"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -19,7 +19,7 @@ ICONSET="$WORK/AppIcon.iconset"
 mkdir -p "$ICONSET"
 
 for SIZE in 16 32 64 128 256 512 1024; do
-  "$BIN" --render-icon "$WORK/$SIZE.png" "$SIZE" >/dev/null
+  "$ICON_BIN" --render-icon "$WORK/$SIZE.png" "$SIZE" >/dev/null
 done
 
 # @2x는 한 단계 큰 그림을 그대로 쓴다. 확대가 아니라 그 크기로 새로 그린 것이다.
