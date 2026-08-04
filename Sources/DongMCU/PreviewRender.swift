@@ -85,8 +85,8 @@ enum HUDPreviewRenderer {
         }
     }
 
-    /// 설정 창을 PNG로 렌더한다.
-    static func writeSettings(to path: String, isDark: Bool) -> Bool {
+    /// 설정 창을 PNG로 렌더한다. 탭마다 화면이 달라서 어느 탭을 그릴지 받는다.
+    static func writeSettings(to path: String, isDark: Bool, tab: SettingsTab = .status) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
             fiveHour: UsageWindow(utilization: 34, resetsAt: Date().addingTimeInterval(3 * 3600)),
@@ -97,10 +97,10 @@ enum HUDPreviewRenderer {
             settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-mcu.preview") ?? .standard),
             store: UsageStore(preview: snapshot),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
-            version: "dong-mcu \(dongMCUVersion)"
+            version: "dong-mcu \(dongMCUVersion)",
+            initialTab: tab
         )
         .content
-        .frame(width: SettingsView.size.width)
         .preferredColorScheme(isDark ? .dark : .light)
         .background(Color(nsColor: .windowBackgroundColor))
 
