@@ -370,7 +370,7 @@ struct SettingsView: View {
             Toggle("커서 피하기", isOn: $settings.petDodgesCursor)
             petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.")
 
-            Toggle("입력 피하기", isOn: Binding(
+            Toggle("입력 피하기 (일부 앱만)", isOn: Binding(
                 get: { settings.petDodgesTyping },
                 // 켜는 순간에만 권한을 묻는다. 꺼 두면 이 앱은 아무것도 요청하지 않는다.
                 set: { on in
@@ -379,6 +379,7 @@ struct SettingsView: View {
                 }
             ))
             petNote(typingDodgeNote)
+            petNote("메모장·Xcode처럼 글자 위치를 알려주는 앱에서만 동작한다. Claude·Slack 같은 Electron 앱은 그 정보를 주지 않아 아무 일도 일어나지 않는다.")
             typingPermissionNotice
         }
         .disabled(!settings.isHUDVisible)
@@ -389,7 +390,7 @@ struct SettingsView: View {
     private var typingDodgeNote: String {
         CaretWatcher.isTrusted
             ? "글자가 닿을 참이면 오른쪽으로, 오른쪽이 막히면 아래로 뛰어서 비킨다."
-            : "글자가 어디까지 왔는지 알아야 해서 손쉬운 사용 권한이 필요하다."
+            : "손쉬운 사용 권한이 필요하다."
     }
 
     private func petNote(_ text: String) -> some View {

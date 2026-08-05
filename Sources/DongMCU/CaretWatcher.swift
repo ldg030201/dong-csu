@@ -123,41 +123,89 @@ final class CaretWatcher {
 
     // MARK: - 캐럿 자리 읽기
 
-    /// 지금 글을 쓰고 있는 자리. 알아내지 못하면 nil이다.
+    /// 지금 글을 쓰고 있는 자리. 아무것도 못 알아내면 nil이다.
     ///
-    /// **두 단계로 떨어진다.**
-    /// 1. 캐럿의 정확한 자리(`AXBoundsForRange`) — 있으면 이게 제일 좋다
-    /// 2. 없으면 **입력창 전체**(`AXPosition`+`AXSize`)
+    /// **세 가지를 한꺼번에 모은다.** 앱마다 내주는 게 달라서다.
+    /// 1. 캐럿(`AXBoundsForRange`) — 있으면 이게 제일 정확하다
+    /// 2. 입력창(`AXFocusedUIElement`의 자리)
+    /// 3. 그 창 전체(`AXFocusedWindow`)
     ///
-    /// 2번이 필요한 이유는 Electron으로 만든 앱들이 캐럿 자리를 안 주기 때문이다.
-    /// 실제로 재 보니 `AXFocusedUIElement`와 `AXSelectedTextRange`까지는 주는데
-    /// `AXBoundsForRange`에서 막힌다. 거기서 포기하면 **그런 앱에서는 이 기능이
-    /// 통째로 죽는다** — 정작 사람들이 글을 제일 많이 쓰는 앱들이 그쪽이다.
+    /// 실제로 재 보니 Electron으로 만든 앱은 1을 안 주고(cmux), 어떤 앱은 2까지도
+    /// 안 준다(Claude). **정작 사람들이 글을 제일 많이 쓰는 앱들이 그쪽이다.**
+    /// 그래서 얻을 수 있는 것 중 가장 정확한 것으로 떨어지게 했다.
     ///
-    /// 입력창 전체도 짐작이 아니라 **권한으로 읽은 사실**이다. 창 목록으로 넘겨짚던
-    /// 것과는 다르다 — 지금 글을 쓰고 있는 바로 그 상자다.
+    /// 값이 늘 멀쩡하지도 않다. 게임처럼 손쉬운 사용을 제대로 구현하지 않은 앱은
+    /// `5,0 0x15` 같은 엉뚱한 자리를 준다. **창 밖에 있는 값은 버린다.**
     private func typingArea() -> TypingArea? {
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, Self.messagingTimeout)
 
-        guard let focused: AXUIElement = Self.attribute(system, kAXFocusedUIElementAttribute)
-        else { return nil }
+        let window = frontmostWindow()
+        let focused: AXUIElement? = Self.attribute(system, kAXFocusedUIElementAttribute)
 
-        if let range: AXValue = Self.attribute(focused, kAXSelectedTextRangeAttribute),
-           let bounds: AXValue = Self.parameterized(
-               focused,
-               kAXBoundsForRangeParameterizedAttribute,
-               range
-           ) {
-            var rect = CGRect.zero
-            if AXValueGetValue(bounds, .cgRect, &rect),
-               rect.width.isFinite, rect.height.isFinite, rect.height > 0 {
-                return TypingArea(rect: rect.flippedFromQuartz, isCaret: true)
+        var caret: CGRect?
+        var field: CGRect?
+        if let focused {
+            field = Self.frame(of: focused)
+            if let range: AXValue = Self.attribute(focused, kAXSelectedTextRangeAttribute),
+               let bounds: AXValue = Self.parameterized(
+                   focused,
+                   kAXBoundsForRangeParameterizedAttribute,
+                   range
+               ) {
+                var rect = CGRect.zero
+                if AXValueGetValue(bounds, .cgRect, &rect), rect.height > 0 {
+                    caret = rect.flippedFromQuartz
+                }
             }
         }
 
-        guard let position: AXValue = Self.attribute(focused, kAXPositionAttribute),
-              let size: AXValue = Self.attribute(focused, kAXSizeAttribute)
+        // 창을 알면 그 안에 있는 값만 믿는다.
+        if let window {
+            if let c = caret, !window.intersects(c) { caret = nil }
+            if let f = field, !window.intersects(f) { field = nil }
+        }
+
+        guard caret != nil || field != nil || window != nil else { return nil }
+        return TypingArea(caret: caret, field: field, window: window)
+    }
+
+    /// 지금 앞에 나와 있는 앱의 포커스된 창.
+    ///
+    /// 손쉬운 사용으로 먼저 물어보고(그쪽이 "지금 쓰고 있는 창"을 정확히 안다),
+    /// 안 주면 창 목록으로 떨어진다.
+    private func frontmostWindow() -> CGRect? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        else { return nil }
+
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, Self.messagingTimeout)
+        if let window: AXUIElement = Self.attribute(app, kAXFocusedWindowAttribute),
+           let rect = Self.frame(of: window) {
+            return rect
+        }
+
+        guard let list = CGWindowListCopyWindowInfo(
+            [.optionOnScreenOnly, .excludeDesktopElements],
+            kCGNullWindowID
+        ) as? [[String: Any]] else { return nil }
+
+        for entry in list {
+            guard entry[kCGWindowOwnerPID as String] as? pid_t == pid,
+                  entry[kCGWindowLayer as String] as? Int == 0,
+                  let raw = entry[kCGWindowBounds as String] as? [String: Any],
+                  let bounds = CGRect(dictionaryRepresentation: raw as CFDictionary),
+                  bounds.width > 160, bounds.height > 100
+            else { continue }
+            return bounds.flippedFromQuartz
+        }
+        return nil
+    }
+
+    /// 손쉬운 사용 요소의 화면 위 자리.
+    private static func frame(of element: AXUIElement) -> CGRect? {
+        guard let position: AXValue = attribute(element, kAXPositionAttribute),
+              let size: AXValue = attribute(element, kAXSizeAttribute)
         else { return nil }
 
         var origin = CGPoint.zero
@@ -166,10 +214,7 @@ final class CaretWatcher {
               AXValueGetValue(size, .cgSize, &extent),
               extent.width > 1, extent.height > 1
         else { return nil }
-        return TypingArea(
-            rect: CGRect(origin: origin, size: extent).flippedFromQuartz,
-            isCaret: false
-        )
+        return CGRect(origin: origin, size: extent).flippedFromQuartz
     }
 
     private static func attribute<T>(_ element: AXUIElement, _ name: String) -> T? {
@@ -208,14 +253,18 @@ final class CaretWatcher {
 
 }
 
-/// 지금 글을 쓰고 있는 자리.
+/// 지금 글을 쓰고 있는 자리. 앱이 내주는 만큼만 채워진다.
 ///
-/// `isCaret`이면 글자가 찍히는 그 지점이고, 아니면 **입력창 전체**다.
-/// 둘은 피하는 방법이 다르다 — 캐럿은 그 앞을 살짝 비켜서면 되지만,
-/// 입력창은 상자 밖으로 나가야 안 가린다.
+/// 셋은 피하는 방법이 다르다. **캐럿은 그 앞을 살짝 비켜서면 되지만, 상자는 밖으로
+/// 나가야 안 가린다.** 상자가 둘인 이유는 창 밖으로 못 나갈 때(거의 전체화면인 창)
+/// 입력창만이라도 벗어나면 가리지는 않기 때문이다.
 struct TypingArea {
-    let rect: CGRect
-    let isCaret: Bool
+    /// 글자가 찍히는 그 지점. 주는 앱이 많지 않다.
+    let caret: CGRect?
+    /// 글을 쓰고 있는 입력 상자.
+    let field: CGRect?
+    /// 그 창 전체.
+    let window: CGRect?
 }
 
 extension CGRect {
