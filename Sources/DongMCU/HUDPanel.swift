@@ -168,7 +168,6 @@ final class HUDController {
     private let owlAnimator = OwlAnimator()
     /// 펫이 혼자 걸어다니고 비켜주는 것들. 창을 옮기는 주인은 여기 하나뿐이다.
     private let motion = PetMotionController()
-    private let caretWatcher = CaretWatcher()
     /// 지금 창을 끌고 있는지. 부엉이가 버둥거릴지를 정한다.
     private var isDraggingPanel = false
     /// 마우스 버튼이 눌려 있는지. 눌린 동안에는 스스로 움직이지 않는다.
@@ -304,7 +303,6 @@ final class HUDController {
             // 움직여야 온다). 자리를 잡은 뒤에 지금 상태를 다시 맞춘다.
             self.setPetHover(self.isMouseInside(UsageHUDView.petHitRect(scale: self.scale)))
         }
-        caretWatcher.onTyping = { [weak self] area in self?.motion.typingAreaMoved(area) }
 
         applyAppearance()
         layoutHosting(for: size)
@@ -366,7 +364,6 @@ final class HUDController {
         }
         observe(settings.$showsVersionBadge) { $0.rebuildRootView() }
         observe(settings.$petWanders) { $0.syncMotion() }
-        observe(settings.$petDodgesTyping) { $0.syncMotion() }
         // 커서를 피하려면 마스코트 위에 커서가 있는지를 알아야 한다.
         // 링을 항상 보이게 해 뒀어도 그때는 추적 영역이 필요하다.
         observe(settings.$petDodgesCursor) {
@@ -482,14 +479,6 @@ final class HUDController {
         motion.wanders = settings.petWanders
         motion.dodgesCursor = settings.petDodgesCursor
         motion.update(active: canMove)
-
-        // 캐럿을 좇는 건 비쌀 뿐 아니라 남의 앱을 들여다보는 일이다.
-        // 정말 쓸 상황에서만 켠다.
-        if canMove, settings.petDodgesTyping {
-            caretWatcher.start()
-        } else {
-            caretWatcher.stop()
-        }
     }
 
     /// 마스코트가 실제로 화면을 가리는 자리(화면 좌표).
@@ -722,22 +711,6 @@ final class HUDController {
         pet.isEnabled = panel.isVisible
         menu.addItem(pet)
 
-        // 권한이 없으면 입력 피하기가 거친 방식으로 내려앉는다. 설정 창을 열어 봐야
-        // 알 수 있으면 사용자는 그냥 고장난 줄 안다. 여기서 바로 갈 수 있게 둔다.
-        if settings.petDodgesTyping, !CaretWatcher.isTrusted {
-            let grant = NSMenuItem(
-                title: "손쉬운 사용 권한 허용…",
-                action: #selector(handleGrantAccessibility),
-                keyEquivalent: ""
-            )
-            grant.target = self
-            grant.attributedTitle = NSAttributedString(
-                string: grant.title,
-                attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)]
-            )
-            menu.addItem(grant)
-        }
-
         let toggle = NSMenuItem(
             title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
             action: #selector(handleToggleHUD),
@@ -810,12 +783,6 @@ final class HUDController {
             self?.store.refresh(force: true)
         }
     }
-    /// 권한 창을 한 번 띄우고, 이미 거절해서 안 뜨는 경우를 대비해 설정도 같이 연다.
-    @objc private func handleGrantAccessibility() {
-        CaretWatcher.requestTrust()
-        CaretWatcher.openAccessibilitySettings()
-    }
-
     @objc private func handleResetPosition() { resetPosition() }
 
     @objc private func handleToggleHUD() {

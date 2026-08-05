@@ -206,15 +206,6 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(petDodgesCursor, forKey: Keys.petDodgesCursor) }
     }
 
-    /// 뒤 입력창에 글을 쓰면 그 자리를 비켜줄지.
-    ///
-    /// **기본으로 꺼 둔다.** 캐럿 자리를 주는 앱에서만 제대로 도는데, 정작 사람들이
-    /// 글을 많이 쓰는 Electron 앱들이 그걸 안 준다. 켜 두면 그런 앱에서는 아무 일도
-    /// 일어나지 않아서 고장난 것처럼 보인다. 쓸 수 있는 앱이 분명한 사람만 켠다.
-    @Published var petDodgesTyping: Bool {
-        didSet { defaults.set(petDodgesTyping, forKey: Keys.petDodgesTyping) }
-    }
-
     static let minOpacity = 0.35
     static let maxOpacity = 1.0
     static let defaultOpacity = 0.92
@@ -240,7 +231,6 @@ final class HUDSettings: ObservableObject {
         static let versionBadgeOff = "hud.versionBadgeOff"
         static let petWanders = "pet.wanders"
         static let petDodgesCursor = "pet.dodgesCursor"
-        static let petDodgesTyping = "pet.dodgesTyping"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -271,7 +261,6 @@ final class HUDSettings: ObservableObject {
         // 꺼 두면 권한을 물어볼 일이 없어서 있는 줄도 모른 채 지나간다.
         petWanders = defaults.bool(forKey: Keys.petWanders)
         petDodgesCursor = defaults.bool(forKey: Keys.petDodgesCursor)
-        petDodgesTyping = defaults.bool(forKey: Keys.petDodgesTyping)
     }
 }
 

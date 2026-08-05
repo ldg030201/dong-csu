@@ -48,11 +48,12 @@ dong-mcu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (
 > `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은
 > `isPreviewRender`로 스크롤을 벗긴 형태를 따로 그린다.
 
-## 서명과 손쉬운 사용 권한
+## 코드 서명 신원 고정 (선택)
 
-**손쉬운 사용 권한은 코드 서명 신원에 걸린다.** 기본값인 ad-hoc 서명(`codesign --sign -`)
-에는 신원이 없어서 macOS는 바이너리 해시(cdhash)로 앱을 알아보는데, 그 해시는 코드가
-바뀔 때마다 달라진다. 그래서 **다시 빌드할 때마다 허용해 둔 권한이 풀린다.**
+macOS가 앱에 걸어 두는 것들(권한·keychain 항목 등) 중 일부는 **코드 서명 신원**에
+붙는다. 기본값인 ad-hoc 서명(`codesign --sign -`)에는 신원이 없어서 macOS는
+바이너리 해시(cdhash)로 앱을 알아보는데, 그 해시는 코드가 바뀔 때마다 달라진다.
+그래서 **다시 빌드할 때마다 그런 것들이 풀린다.**
 
 ```
 ad-hoc  → designated => cdhash H"266bfb…"                       ← 빌드마다 달라짐
@@ -71,16 +72,8 @@ ad-hoc  → designated => cdhash H"266bfb…"                       ← 빌드�
   통째로 안 나오면 곤란하다
 - 지우려면 `security delete-certificate -c "DongMCU Local Signing" ~/Library/Keychains/login.keychain-db`
 
-지금 권한이 붙어 있는지는 이걸로 본다.
-
-```bash
-open -n build/DongMCU-Test.app --args --probe-accessibility /tmp/ax.txt; sleep 2; cat /tmp/ax.txt
-```
-
-> 터미널에서 `dong-mcu --probe-accessibility`를 바로 치면 **틀린 답이 나온다.**
-> 그렇게 띄운 프로세스는 macOS가 터미널 앱을 책임 프로세스로 보기 때문에, 앱에
-> 권한이 있어도 `false`가 나온다. `open -n` 으로 앱이 직접 답하게 해야 한다.
-> `-n` 도 빠뜨리면 안 된다 — 이미 떠 있는 앱이 활성화만 되고 인자가 무시된다.
+> 지금은 앱이 아무 권한도 쓰지 않아서 당장 필요하지는 않다. 권한을 쓰는 기능을
+> 되살릴 때(`pet-typing-dodge` 브랜치) 필요해진다.
 
 ## 마스코트
 

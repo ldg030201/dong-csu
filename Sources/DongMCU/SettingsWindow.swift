@@ -44,10 +44,9 @@ struct SettingsView: View {
     static let sidebarWidth: CGFloat = 124
     static let contentWidth: CGFloat = 356
     /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
-    /// 높이는 가장 긴 탭(펫)이 스크롤 없이 들어가는 값이다. 권한 경고가 떠도
-    /// 잘리지 않게 그만큼 여유를 둔다.
+    /// 높이는 가장 긴 탭(표시)이 스크롤 없이 들어가는 값이다.
     /// 탭에 항목을 더했으면 `--render-settings`로 재어 보고 여기를 함께 올린다.
-    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 540)
+    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 500)
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
@@ -370,27 +369,8 @@ struct SettingsView: View {
             Toggle("커서 피하기", isOn: $settings.petDodgesCursor)
             petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.")
 
-            Toggle("입력 피하기 (일부 앱만)", isOn: Binding(
-                get: { settings.petDodgesTyping },
-                // 켜는 순간에만 권한을 묻는다. 꺼 두면 이 앱은 아무것도 요청하지 않는다.
-                set: { on in
-                    settings.petDodgesTyping = on
-                    if on { CaretWatcher.requestTrust() }
-                }
-            ))
-            petNote(typingDodgeNote)
-            petNote("메모장·Xcode처럼 글자 위치를 알려주는 앱에서만 동작한다. Claude·Slack 같은 Electron 앱은 그 정보를 주지 않아 아무 일도 일어나지 않는다.")
-            typingPermissionNotice
         }
         .disabled(!settings.isHUDVisible)
-    }
-
-    /// 권한이 없으면 **아무것도 안 한다.** 그 사실을 그대로 적는다 —
-    /// 켜져 있는데 안 도는 이유를 화면에서 알 수 있어야 한다.
-    private var typingDodgeNote: String {
-        CaretWatcher.isTrusted
-            ? "글자가 닿을 참이면 오른쪽으로, 오른쪽이 막히면 아래로 뛰어서 비킨다."
-            : "손쉬운 사용 권한이 필요하다."
     }
 
     private func petNote(_ text: String) -> some View {
@@ -398,28 +378,6 @@ struct SettingsView: View {
             .font(.system(size: 11))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
-    }
-
-    /// 권한은 시스템 설정에서 켜므로 앱에 알림이 오지 않는다. 짧은 주기로 다시 확인해서,
-    /// 허용하고 돌아왔을 때 경고가 남아 있지 않게 한다.
-    @ViewBuilder private var typingPermissionNotice: some View {
-        TimelineView(.periodic(from: .now, by: 2)) { _ in
-            if settings.petDodgesTyping, !CaretWatcher.isTrusted {
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.orange)
-                    Text("권한이 없어 지금은 동작하지 않는다")
-                        .font(.system(size: 11))
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 4)
-                    Button("허용하기") {
-                        CaretWatcher.requestTrust()
-                        CaretWatcher.openAccessibilitySettings()
-                    }
-                    .controlSize(.small)
-                }
-            }
-        }
     }
 
     private var iconSection: some View {

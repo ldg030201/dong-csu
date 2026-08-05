@@ -48,12 +48,6 @@ final class PetMotionController {
     private static let edgeMargin: CGFloat = 8
     /// 한 번 걷고 나서 쉬는 시간.
     private static let restRange: ClosedRange<TimeInterval> = 3...11
-    /// 캐럿과 이만큼은 떨어져 있어야 안심한다.
-    private static let caretMargin: CGFloat = 16
-    /// **글자가 다가오는 쪽(왼쪽)은 훨씬 일찍 본다.** 글은 왼쪽에서 오른쪽으로
-    /// 흐르므로 캐럿이 왼쪽에 있다는 건 곧 여기까지 온다는 뜻이다. 닿고 나서
-    /// 움직이면 이미 한 번은 가린 뒤라 "왜 안 비키냐"가 된다.
-    private static let approachMargin: CGFloat = 160
     /// 이보다 짧게 갈 거면 아예 가지 않는다. 찔끔거리는 쪽이 더 성가시다.
     private static let minimumMove: CGFloat = 24
     /// 커서에서 물러나는 거리. 클릭 영역(창 한 변)보다 커야 한 번에 벗어난다.
@@ -64,9 +58,6 @@ final class PetMotionController {
     /// 쓰던 사람 눈에는 "타이핑 중에 왼쪽으로 간다"로 보였다. 문장 사이에 쉬는 시간을
     /// 덮을 만큼은 잡아야 한다.
     private static let typingQuiet: TimeInterval = 5
-    /// 입력창 자리를 이만큼은 기억한다. 배회가 그 위로 걸어 들어가지 않게 쓴다.
-    /// 너무 길게 잡으면 창을 옮긴 뒤에도 없는 상자를 피해 다닌다.
-    private static let typingMemory: TimeInterval = 90
 
     // MARK: - 상태
 
@@ -108,10 +99,9 @@ final class PetMotionController {
 
     /// 글을 쓰는 중이라 얌전히 있어야 하는지.
     ///
-    /// **글을 쓰는 동안에는 비켜주는 것 말고는 아무것도 하지 않는다.** 배회는 방향을
-    /// 가리지 않아서 방금 쓴 글 위를 왼쪽으로 가로지르고, 커서 피하기도 커서가
-    /// 오른쪽에 있으면 왼쪽으로 물러난다. 둘 다 **이미 쓴 글을 덮는** 움직임이다.
-    /// 그동안 움직여도 되는 건 오른쪽·아래로만 가는 입력 회피뿐이다.
+    /// **글을 쓰는 동안에는 아무것도 하지 않는다.** 배회는 방향을 가리지 않아서
+    /// 방금 쓴 글 위를 왼쪽으로 가로지르고, 커서 피하기도 커서가 오른쪽에 있으면
+    /// 왼쪽으로 물러난다. 둘 다 **이미 쓴 글을 덮는** 움직임이다.
     var isTypingQuiet: Bool { Self.secondsSinceKey < Self.typingQuiet }
 
     // MARK: - 켜고 끄기
@@ -300,101 +290,6 @@ final class PetMotionController {
         }
     }
 
-    // MARK: - 입력 피하기
-
-    /// 마지막으로 확인한 입력창 자리. 배회가 그 위로 걸어 들어가지 않게 기억해 둔다.
-    private var lastTypingRect: CGRect?
-    private var lastTypingAt = Date.distantPast
-
-    /// 직전에 찍은 줄. 같은 상황이 이어지면 다시 찍지 않는다.
-    private static var lastKey = ""
-
-    /// 지금 글을 쓰는 자리가 갱신됐다. 펫이 가릴 참이면 비킨다.
-    ///
-    /// **앱이 내주는 것 중 가장 정확한 것을 쓴다.**
-    /// 캐럿을 주면 그 앞만 살짝 비켜서고, 안 주면 상자(창·입력창) 밖으로 나간다.
-    /// 상자 회피는 캐럿이 아직 멀리 있어도 미리 움직이는 셈이라 거칠지만,
-    /// **캐럿을 안 주는 앱에서 그거라도 없으면 이 기능은 통째로 죽는다.**
-    func typingAreaMoved(_ area: TypingArea) {
-        // 배회가 글 쓰던 자리로 걸어 들어가지 않게 기억해 둔다.
-        // 이건 캐럿이 없어도 되는 판단이라 창·입력창 자리로도 충분하다.
-        lastTypingRect = area.field ?? area.window
-        lastTypingAt = Date()
-
-        // **캐럿을 아는 앱에서만 비킨다.**
-        //
-        // 창이나 입력창 자리만 가지고 어림잡아 물러나게도 만들어 봤는데 걷어냈다.
-        // 얼마나 가려졌는지를 모르니 "글자를 칠 때마다 조금씩 물러난다"가 되어서,
-        // **가리지도 않았는데 도망가는** 꼴이 됐다. 비켜주는 게 아니라 성가신 쪽이다.
-        // 캐럿을 안 주는 앱(Electron으로 만든 것들이 대부분 그렇다)에서는 아무것도
-        // 하지 않는다 — 어설프게 도는 것보다 낫다.
-        guard let caret = area.caret else { return }
-        guard isActive, !isDodging else { return }
-
-        let visual = visualFrame()
-        guard Self.danger(around: visual).intersects(caret) else { return }
-        guard let target = caretDodgeTarget(caret: caret) else { return }
-        begin(dodge: target, hurried: true)
-    }
-
-    /// 글자가 닿기 전에 미리 움직일 구역.
-    ///
-    /// 왼쪽으로만 크게 넓힌다. 오른쪽으로 넓히면 이미 지나간 글자에도 반응하고,
-    /// 위아래로 넓히면 다른 줄을 쓰는데 움직인다.
-    private static func danger(around visual: CGRect) -> CGRect {
-        CGRect(
-            x: visual.minX - approachMargin,
-            y: visual.minY - caretMargin,
-            width: visual.width + approachMargin + caretMargin,
-            height: visual.height + caretMargin * 2
-        )
-    }
-
-    /// 이 자리로 가면 입력창을 가리는지. 기억이 오래됐으면 따지지 않는다.
-    private func avoidsTyping(_ origin: NSPoint) -> Bool {
-        guard let rect = lastTypingRect,
-              Date().timeIntervalSince(lastTypingAt) < Self.typingMemory
-        else { return true }
-
-        let panel = frame()
-        let visual = visualFrame()
-        let moved = CGRect(
-            x: origin.x + (visual.minX - panel.minX),
-            y: origin.y + (visual.minY - panel.minY),
-            width: visual.width,
-            height: visual.height
-        )
-        return !moved.intersects(rect)
-    }
-
-    /// 글은 왼쪽에서 오른쪽으로 흐른다. 그래서 **오른쪽으로 먼저** 비키고, 오른쪽이
-    /// 막히면 한 줄 내려간다 — 줄바꿈과 같은 움직임이라 다음에 어디로 갈지 예측된다.
-    /// 아래까지 막히면 맨 위로 돌아가서 다시 시작한다.
-    ///
-    /// **왼쪽으로는 어느 갈래에서도 가지 않는다.** 캐럿 왼쪽은 방금 쓴 글이 있는
-    /// 자리라서, 거기로 물러나면 비켜준 게 아니라 읽던 것을 덮는 셈이 된다.
-    private func caretDodgeTarget(caret: CGRect) -> NSPoint? {
-        guard let area = walkArea() else { return nil }
-        let panel = frame()
-        let visual = visualFrame()
-        let leftPad = visual.minX - panel.minX
-
-        let rightX = caret.maxX + Self.caretMargin - leftPad
-        if rightX <= area.maxX, rightX - panel.minX >= Self.minimumMove {
-            return NSPoint(x: rightX, y: panel.minY)
-        }
-
-        // 가장자리 여백 때문에 걸을 수 있는 오른쪽 끝이 지금 자리보다 왼쪽일 수 있다.
-        // 창을 화면 맨 끝까지 끌어다 놨을 때가 그렇다. 그때는 제자리에서 내려가기만 한다.
-        let edgeX = max(panel.minX, area.maxX)
-        let lineDrop = max(visual.height * 0.9, caret.height * 1.6)
-        let down = panel.minY - lineDrop
-        if down >= area.minY {
-            return NSPoint(x: edgeX, y: down)
-        }
-        return NSPoint(x: edgeX, y: area.maxY)
-    }
-
     // MARK: - 배회
 
     private func wanderTarget() -> NSPoint? {
@@ -410,8 +305,6 @@ final class PetMotionController {
                 y: origin.y + .random(in: -70...70)
             )
             guard let target = clamped(candidate) else { return nil }
-            // 글 쓰던 상자 위로 걸어 들어가지 않는다.
-            guard avoidsTyping(target) else { continue }
             if Self.distance(origin, target) >= Self.minimumMove { return target }
         }
         return nil
