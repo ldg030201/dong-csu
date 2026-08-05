@@ -47,7 +47,7 @@ keychain 항목 `Claude Code-credentials`에서 OAuth 토큰을 읽어
 허용해 둔 게 풀리는데, 그때마다 창을 띄우지는 않는다. 다시 켜려면 메뉴바 아이콘 메뉴의
 **손쉬운 사용 권한 허용…** 또는 시스템 설정 → 개인정보 보호 및 보안 → 손쉬운 사용에서 켠다.
 
-지금 붙어 있는지는 `dong-mcu --probe-accessibility`로 확인한다.
+지금 붙어 있는지 확인하는 방법은 [문제 해결](troubleshooting.md)에 있다.
 
 ### 권한 없이 읽는 것 하나
 
