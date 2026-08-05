@@ -306,23 +306,34 @@ final class PetMotionController {
     private var lastTypingRect: CGRect?
     private var lastTypingAt = Date.distantPast
 
-    /// 지금 글을 쓰는 자리가 갱신됐다. 펫에 닿을 참이면 비킨다.
+    /// 직전에 찍은 줄. 같은 상황이 이어지면 다시 찍지 않는다.
+    private static var lastKey = ""
+
+    /// 지금 글을 쓰는 자리가 갱신됐다. 펫이 가릴 참이면 비킨다.
+    ///
+    /// **앱이 내주는 것 중 가장 정확한 것을 쓴다.**
+    /// 캐럿을 주면 그 앞만 살짝 비켜서고, 안 주면 상자(창·입력창) 밖으로 나간다.
+    /// 상자 회피는 캐럿이 아직 멀리 있어도 미리 움직이는 셈이라 거칠지만,
+    /// **캐럿을 안 주는 앱에서 그거라도 없으면 이 기능은 통째로 죽는다.**
     func typingAreaMoved(_ area: TypingArea) {
-        lastTypingRect = area.rect
+        // 배회가 글 쓰던 자리로 걸어 들어가지 않게 기억해 둔다.
+        // 이건 캐럿이 없어도 되는 판단이라 창·입력창 자리로도 충분하다.
+        lastTypingRect = area.field ?? area.window
         lastTypingAt = Date()
 
-        // 이미 비키는 중이면 목표를 흔들지 않는다. 글자마다 목표를 다시 잡으면
-        // 캐럿을 따라 옆걸음질만 치다가 영영 도착하지 못한다.
+        // **캐럿을 아는 앱에서만 비킨다.**
+        //
+        // 창이나 입력창 자리만 가지고 어림잡아 물러나게도 만들어 봤는데 걷어냈다.
+        // 얼마나 가려졌는지를 모르니 "글자를 칠 때마다 조금씩 물러난다"가 되어서,
+        // **가리지도 않았는데 도망가는** 꼴이 됐다. 비켜주는 게 아니라 성가신 쪽이다.
+        // 캐럿을 안 주는 앱(Electron으로 만든 것들이 대부분 그렇다)에서는 아무것도
+        // 하지 않는다 — 어설프게 도는 것보다 낫다.
+        guard let caret = area.caret else { return }
         guard isActive, !isDodging else { return }
 
         let visual = visualFrame()
-        guard Self.danger(around: visual).intersects(area.rect) else { return }
-
-        // 캐럿은 그 앞을 살짝 비켜서면 되지만, 입력창은 상자 밖으로 나가야 안 가린다.
-        let target = area.isCaret
-            ? caretDodgeTarget(caret: area.rect)
-            : escapeTarget(from: area.rect)
-        guard let target else { return }
+        guard Self.danger(around: visual).intersects(caret) else { return }
+        guard let target = caretDodgeTarget(caret: caret) else { return }
         begin(dodge: target, hurried: true)
     }
 
@@ -337,31 +348,6 @@ final class PetMotionController {
             width: visual.width + approachMargin + caretMargin,
             height: visual.height + caretMargin * 2
         )
-    }
-
-    /// 상자 **밖으로** 나간다. 캐럿 자리를 못 주는 앱에서 입력창을 통째로 비켜줄 때 쓴다.
-    ///
-    /// 오른쪽 → 아래 → 위 순이다. **왼쪽은 없다** — 글이 시작되는 쪽이라 거기로 가면
-    /// 방금 쓴 것을 덮는다. 셋 다 막히면(입력창이 화면을 거의 다 덮으면) 그냥 있는다.
-    private func escapeTarget(from box: CGRect) -> NSPoint? {
-        guard let area = walkArea() else { return nil }
-        let panel = frame()
-        let visual = visualFrame()
-        let gap = Self.caretMargin
-        // 창과 그림 사이의 여백. 상자 밖으로 내보내야 하는 건 창이 아니라 그림이다.
-        let leftPad = visual.minX - panel.minX
-        let bottomPad = visual.minY - panel.minY
-
-        let right = box.maxX + gap - leftPad
-        if right <= area.maxX, right > panel.minX { return NSPoint(x: right, y: panel.minY) }
-
-        let below = box.minY - gap - visual.height - bottomPad
-        if below >= area.minY { return NSPoint(x: panel.minX, y: below) }
-
-        let above = box.maxY + gap - bottomPad
-        if above <= area.maxY { return NSPoint(x: panel.minX, y: above) }
-
-        return nil
     }
 
     /// 이 자리로 가면 입력창을 가리는지. 기억이 오래됐으면 따지지 않는다.
