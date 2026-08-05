@@ -41,10 +41,25 @@ if CommandLine.arguments.contains("--probe") {
 // 권한은 **코드 서명에 걸린다.** 테스트판은 빌드할 때마다 ad-hoc 서명이 달라져서
 // 허용해 둔 게 풀릴 수 있는데, 그러면 앱은 조용히 거친 방식으로 내려앉는다.
 // 밖에서 들여다볼 방법이 없어서 이 통로를 둔다.
-if CommandLine.arguments.contains("--probe-accessibility") {
-    print("trusted: \(CaretWatcher.isTrusted)")
-    print("bundle: \(Bundle.main.bundleIdentifier ?? "(없음)")")
-    exit(CaretWatcher.isTrusted ? 0 : 1)
+// 파일 경로를 붙이면 거기에 쓴다. **터미널에서 직접 실행하면 답이 다를 수 있다** —
+// 그렇게 띄운 프로세스는 macOS가 터미널 앱을 책임 프로세스로 보기 때문이다.
+// 앱이 스스로 답하게 하려면 `open <앱> --args --probe-accessibility /tmp/ax.txt`.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--probe-accessibility") {
+    let trusted = CaretWatcher.isTrusted
+    let report = """
+        trusted: \(trusted)
+        bundle: \(Bundle.main.bundleIdentifier ?? "(없음)")
+        """
+    if flagIndex + 1 < CommandLine.arguments.count {
+        try? report.write(
+            toFile: CommandLine.arguments[flagIndex + 1],
+            atomically: true,
+            encoding: .utf8
+        )
+    } else {
+        print(report)
+    }
+    exit(trusted ? 0 : 1)
 }
 
 // 설정 창을 PNG로 그려서 확인: dong-mcu --render-settings out.png [light] [status|display|icon|account]

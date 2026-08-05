@@ -30,7 +30,6 @@ VARIANT=test ./build.sh    # DongMCU-Test.app  (dev.sh의 기본값)
 dong-mcu --render out.png 34 61 owl ok large   # HUD (사용률·아이콘·상태·배율)
 dong-mcu --render out.png 34 61 owl ok pet hover   # 펫 모드 (마우스 올린 모습)
 dong-mcu --render out.png 34 61 owl ok test    # 테스트판 모습 (보라 마스코트 + 버전 딱지)
-dong-mcu --probe-accessibility                 # 손쉬운 사용 권한이 붙어 있나
 dong-mcu --render-settings out.png version     # 설정 창의 특정 탭
 dong-mcu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-mcu --render-icon out.png 1024            # 앱 아이콘
@@ -75,8 +74,13 @@ ad-hoc  → designated => cdhash H"266bfb…"                       ← 빌드�
 지금 권한이 붙어 있는지는 이걸로 본다.
 
 ```bash
-dong-mcu --probe-accessibility
+open -n build/DongMCU-Test.app --args --probe-accessibility /tmp/ax.txt; sleep 2; cat /tmp/ax.txt
 ```
+
+> 터미널에서 `dong-mcu --probe-accessibility`를 바로 치면 **틀린 답이 나온다.**
+> 그렇게 띄운 프로세스는 macOS가 터미널 앱을 책임 프로세스로 보기 때문에, 앱에
+> 권한이 있어도 `false`가 나온다. `open -n` 으로 앱이 직접 답하게 해야 한다.
+> `-n` 도 빠뜨리면 안 된다 — 이미 떠 있는 앱이 활성화만 되고 인자가 무시된다.
 
 ## 마스코트
 

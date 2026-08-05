@@ -115,8 +115,12 @@ macOS가 다른 앱으로 본다. keychain 쪽과 달리 여기는 앱 자체에
 지금 붙어 있는지부터 확인한다.
 
 ```bash
-dong-mcu --probe-accessibility
+open -n /Applications/DongMCU.app --args --probe-accessibility /tmp/ax.txt; sleep 2; cat /tmp/ax.txt
 ```
+
+> 터미널에서 `dong-mcu --probe-accessibility`를 바로 치면 **틀린 답이 나온다.**
+> 그렇게 띄운 프로세스는 macOS가 터미널 앱을 책임 프로세스로 보기 때문에, 앱에
+> 권한이 있어도 `false`가 나온다. `open -n` 으로 앱이 직접 답하게 해야 한다.
 
 `trusted: false`가 나오면 메뉴바 아이콘 메뉴의 **손쉬운 사용 권한 허용…** 을 누른다.
 목록에 이미 체크된 채로 남아 있으면 **한 번 빼고 다시 넣어야** 새 서명으로 다시 잡힌다.
