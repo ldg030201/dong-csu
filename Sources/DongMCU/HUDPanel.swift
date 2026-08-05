@@ -744,12 +744,7 @@ final class HUDController {
             handleToggleCollapse()
             return
         }
-        if mode == .pet {
-            settings.mode = settings.modeBeforePet
-        } else {
-            settings.modeBeforePet = mode
-            settings.mode = .pet
-        }
+        handleTogglePet()
     }
 
     @objc private func handleTogglePet() {
@@ -787,7 +782,6 @@ final class HUDController {
         isHoveringPet = false
         applyAppearance()
         refreshPassThroughRects()
-        refreshTrackingArea()
 
         // 작아질 때는 옛 내용을 그대로 둔 채 창만 줄여서 서랍이 밀려 들어가는 것처럼 보이게 하고,
         // 커질 때는 새 내용을 먼저 깔아두고 창을 키워서 드러나게 한다.
@@ -799,6 +793,7 @@ final class HUDController {
                 self.layoutHosting(for: newSize)
                 self.saveOrigin()
                 self.syncUsageMonitor()
+                self.refreshTrackingArea()
             }
         } else {
             rebuildRootView()
@@ -806,6 +801,7 @@ final class HUDController {
             animate(to: target) { [weak self] in
                 self?.saveOrigin()
                 self?.syncUsageMonitor()
+                self?.refreshTrackingArea()
             }
         }
     }
@@ -835,6 +831,18 @@ final class HUDController {
         )
         interactionView.addTrackingArea(area)
         trackingArea = area
+
+        // 추적 영역은 **이미 안에 들어와 있는 커서에는 mouseEntered를 보내지 않는다.**
+        // 마스코트를 더블클릭해서 펫으로 들어오면 커서가 바로 그 위에 있으므로,
+        // 이걸 빠뜨리면 한 번 밖으로 나갔다 들어올 때까지 링이 뜨지 않는다.
+        setPetHover(isMouseInside(area.rect))
+    }
+
+    /// 뷰 좌표의 사각형 안에 지금 마우스가 있는지.
+    private func isMouseInside(_ rect: CGRect) -> Bool {
+        guard panel.isVisible else { return false }
+        let inWindow = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
+        return rect.contains(interactionView.convert(inWindow, from: nil))
     }
 
     private func setPetHover(_ hovering: Bool) {
@@ -854,6 +862,8 @@ final class HUDController {
         }
         syncUsageMonitor(visible: visible)
         syncOwlAnimator(visible: visible)
+        // 숨겨져 있는 동안 커서가 움직였을 수 있다. 다시 보일 때 호버 상태를 맞춘다.
+        refreshTrackingArea()
         rebuildRootView()
     }
 

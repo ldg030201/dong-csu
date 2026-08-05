@@ -40,7 +40,7 @@ dong-mcu --render-owl-gif docs/characters/owl  # 기분마다 움직이는 GIF (
 보기(`expanded` `collapsed` `pet`), `hover` `light` `expandLeft` `stats` `update`,
 배율(`small`~`extraLarge`), 상태(`ok` `stale` `reauth`), 0~1 사이 숫자는 배경 불투명도.
 
-`--render-settings`는 탭 이름(`status` `display` `icon` `account` `version`)과
+`--render-settings`는 탭 이름(`status` `display` `icon` `pet` `account` `version`)과
 `update=1.2.0`(새 버전이 있는 것처럼 그리기)을 받는다.
 
 > `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은

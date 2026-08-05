@@ -51,9 +51,6 @@ struct UsageHUDView: View {
     static let baseStatsRowHeight: CGFloat = 17
     /// 접은 모습: 링 + 오른쪽에 버튼 세 개가 세로로 붙는다.
     static let baseCollapsedSize = CGSize(width: 108, height: 88)
-    /// 펫 모습: 마스코트 하나. 마우스를 올리면 뒤에 링이 드러나므로,
-    /// 창은 링이 들어갈 만큼 잡아 두고 평소에는 그 안이 비어 있다.
-    /// 창을 늘였다 줄이면 마우스가 창 밖으로 밀려나 호버가 끊긴다.
     /// 펫 마스코트의 높이. 펫에서는 캐릭터가 주인공이라 크게 잡는다.
     static let basePetOwlHeight: CGFloat = 84
     /// 뒤에 두르는 링의 바깥 지름. 마스코트가 링 안쪽에 여유 있게 들어가야 한다.
@@ -197,6 +194,10 @@ struct UsageHUDView: View {
         showsStats: Bool,
         scale: CGFloat = 1
     ) -> CGRect {
+        // 펫은 배지를 그리지 않는다. 그런데도 자리를 돌려주면 그만큼이 클릭 통과
+        // 구멍이 되어, 마스코트 한 귀퉁이를 눌러도 끌리지 않는다.
+        guard mode != .pet else { return .zero }
+
         let badge = updateBadgeSize(scale: scale)
         let inset = refreshInset(scale: scale)
         let panel = size(mode: mode, showsStats: showsStats, scale: scale)
@@ -244,7 +245,7 @@ struct UsageHUDView: View {
                 outerWidth: s(5),
                 innerWidth: s(4)
             )
-            .opacity(showsPetRing ? (store.isStale ? 0.4 : 0.95) : 0)
+            .opacity(showsPetRing ? (isDisconnected ? 0.4 : 0.95) : 0)
             .animation(.easeOut(duration: 0.18), value: showsPetRing)
 
             ClaudeIconView(
