@@ -40,6 +40,10 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "1.5.2", date: "2026-08-05", notes: [
+            "앱 안의 업데이트가 Homebrew 확인 물음 앞에서 멈추던 문제 수정",
+            "혼자 돌아다니기·커서 피하기 기본값을 켜짐으로 변경",
+        ]),
         ChangelogEntry(version: "1.5.1", date: "2026-08-05", notes: [
             "HUD 왼쪽 위 버전 글자가 둥근 모서리에 잘리던 문제 수정",
             "조회가 끊겨 회색이 된 펫을 끌면 색이 돌아오던 문제 수정",

@@ -57,7 +57,7 @@ Xcode는 필요 없다. Command Line Tools(`xcode-select --install`)만 있으�
 새 것으로 바꾼 뒤 앱을 다시 띄운다. 직접 하려면:
 
 ```bash
-brew update && brew upgrade dong-mcu && rm -rf /Applications/DongMCU.app && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+brew update && brew upgrade -y dong-mcu && rm -rf /Applications/DongMCU.app && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
 ```
 
 `brew update`가 빠지면 tap이 갱신되지 않아 옛 formula를 보고 `already installed and

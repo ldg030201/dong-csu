@@ -36,8 +36,11 @@ pkill -f DongMCU; rm -rf /Applications/DongMCU.app /Applications/dong-mcu.app; b
 설치 명령을 다시 실행하는 게 아니라 **업데이트 명령**을 써야 한다.
 
 ```bash
-brew update && brew upgrade dong-mcu
+brew update && brew upgrade -y dong-mcu
 ```
+
+> `-y`는 Homebrew 6부터 업그레이드 전에 묻는 y/n 확인을 건너뛴다.
+> 옛 Homebrew라 `-y`를 모른다고 하면 빼고 실행한다.
 
 ### `is using Swift tools version 6.0.0 but the installed version is ...`
 

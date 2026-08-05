@@ -190,6 +190,11 @@ final class UpdateChecker: ObservableObject {
         #!/bin/bash
         echo "DongMCU 업데이트"
         echo
+        # Homebrew 6부터 업그레이드 전에 y/n 을 묻는다(ask 모드가 기본).
+        # 그대로 두면 이 창이 물음표 앞에서 멈춰 선 채로 끝난 것처럼 보인다.
+        # 플래그(-y) 대신 환경변수를 쓴다 — 옛 Homebrew 는 모르는 변수를 그냥 무시하지만,
+        # 모르는 플래그를 만나면 통째로 실패한다.
+        export HOMEBREW_NO_ASK=1
         brew update && brew upgrade dong-mcu || exit 1
 
         if [ -d /Applications/DongMCU.app ]; then

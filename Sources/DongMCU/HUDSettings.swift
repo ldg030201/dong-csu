@@ -198,12 +198,12 @@ final class HUDSettings: ObservableObject {
 
     /// 펫이 가만히 두면 혼자 화면을 걸어다닐지.
     @Published var petWanders: Bool {
-        didSet { defaults.set(petWanders, forKey: Keys.petWanders) }
+        didSet { defaults.set(!petWanders, forKey: Keys.petWandersOff) }
     }
 
     /// 커서를 펫 위에 올려둔 채 잡지 않으면 비켜줄지.
     @Published var petDodgesCursor: Bool {
-        didSet { defaults.set(petDodgesCursor, forKey: Keys.petDodgesCursor) }
+        didSet { defaults.set(!petDodgesCursor, forKey: Keys.petDodgesCursorOff) }
     }
 
     static let minOpacity = 0.35
@@ -229,8 +229,9 @@ final class HUDSettings: ObservableObject {
         static let pollInterval = "hud.pollInterval"
         // 버전 표시도 기본값이 켜짐이라 반대 의미로 저장한다.
         static let versionBadgeOff = "hud.versionBadgeOff"
-        static let petWanders = "pet.wanders"
-        static let petDodgesCursor = "pet.dodgesCursor"
+        // 둘 다 기본값이 켜짐이라 반대 의미로 저장한다.
+        static let petWandersOff = "pet.wandersOff"
+        static let petDodgesCursorOff = "pet.dodgesCursorOff"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -255,12 +256,10 @@ final class HUDSettings: ObservableObject {
         showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)
         pollInterval = PollInterval(rawValue: defaults.integer(forKey: Keys.pollInterval)) ?? .default
         showsVersionBadge = !defaults.bool(forKey: Keys.versionBadgeOff)
-        // 혼자 걸어다니고 커서를 피하는 건 꺼진 채로 시작한다. 쓰던 사람의 펫이
-        // 업데이트한 날 갑자기 걸어나가면 고장난 줄 안다.
-        // 입력 피하기만은 켜 둔다 — 가리는 걸 막는 쪽이라 놀랄 일이 없고,
-        // 꺼 두면 권한을 물어볼 일이 없어서 있는 줄도 모른 채 지나간다.
-        petWanders = defaults.bool(forKey: Keys.petWanders)
-        petDodgesCursor = defaults.bool(forKey: Keys.petDodgesCursor)
+        // 펫 모드를 고른 사람은 마스코트를 보려고 고른 것이다. 꺼 둔 채로 내보니
+        // 설정을 열어보기 전까지 이런 게 있는 줄도 모른 채 지나갔다.
+        petWanders = !defaults.bool(forKey: Keys.petWandersOff)
+        petDodgesCursor = !defaults.bool(forKey: Keys.petDodgesCursorOff)
     }
 }
 
