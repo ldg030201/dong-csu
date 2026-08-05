@@ -49,6 +49,35 @@ dong-mcu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (
 > `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은
 > `isPreviewRender`로 스크롤을 벗긴 형태를 따로 그린다.
 
+## 서명과 손쉬운 사용 권한
+
+**손쉬운 사용 권한은 코드 서명 신원에 걸린다.** 기본값인 ad-hoc 서명(`codesign --sign -`)
+에는 신원이 없어서 macOS는 바이너리 해시(cdhash)로 앱을 알아보는데, 그 해시는 코드가
+바뀔 때마다 달라진다. 그래서 **다시 빌드할 때마다 허용해 둔 권한이 풀린다.**
+
+```
+ad-hoc  → designated => cdhash H"266bfb…"                       ← 빌드마다 달라짐
+인증서  → designated => identifier "…" and certificate leaf = H"3ae5df…"   ← 고정
+```
+
+자체 서명 인증서를 한 번 만들면 신원이 고정된다.
+
+```bash
+./make-signing-cert.sh     # 한 번만. 로그인 암호를 묻는다
+```
+
+- `build.sh`는 이 인증서가 **있을 때만** 쓰고, 없으면 예전처럼 ad-hoc으로 떨어진다.
+  brew로 받는 사람은 인증서가 없으므로 **아무것도 달라지지 않는다**
+- 인증서로 서명하지 못해도 빌드는 ad-hoc으로 끝난다. 서명 하나 때문에 앱이
+  통째로 안 나오면 곤란하다
+- 지우려면 `security delete-certificate -c "DongMCU Local Signing" ~/Library/Keychains/login.keychain-db`
+
+지금 권한이 붙어 있는지는 이걸로 본다.
+
+```bash
+dong-mcu --probe-accessibility
+```
+
 ## 마스코트
 
 그리드 구조·자세·팔레트·애니메이션은 캐릭터마다 문서가 따로 있다.

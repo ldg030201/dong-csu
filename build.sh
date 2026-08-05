@@ -41,7 +41,21 @@ if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
   cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
 
-# ad-hoc 서명. 개발자 계정 없이 로컬 실행에 필요한 최소 서명이다.
-codesign --force --sign - "$APP"
+# 개발자 계정 없이 로컬 실행에 필요한 최소 서명.
+#
+# 자체 서명 인증서가 있으면 그걸 쓴다 — **손쉬운 사용 권한이 서명 신원에 걸리기**
+# 때문에, ad-hoc으로 서명하면 다시 빌드할 때마다 허용해 둔 게 풀린다.
+# 인증서가 없으면 예전처럼 ad-hoc(`-`)이다. `./make-signing-cert.sh` 참고.
+#
+# **인증서로 서명하지 못해도 빌드는 끝나게 한다.** 키체인 접근을 거절하거나 잠겨
+# 있으면 여기서 멈추는데, 그러면 서명만 못 한 게 아니라 앱이 통째로 안 나온다.
+IDENTITY="$(sign_identity)"
+if ! codesign --force --sign "$IDENTITY" "$APP" 2>/dev/null; then
+  if [[ "$IDENTITY" != "-" ]]; then
+    echo "'$IDENTITY' 으로 서명하지 못해 ad-hoc으로 서명한다." >&2
+    echo "키체인 창이 뜨면 '항상 허용'을 눌러라 — 그래야 다음 빌드부터 안 묻는다." >&2
+  fi
+  codesign --force --sign - "$APP"
+fi
 
 echo "built: $APP"
