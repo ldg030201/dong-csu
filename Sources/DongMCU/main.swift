@@ -36,6 +36,17 @@ if CommandLine.arguments.contains("--probe") {
     exit(0)
 }
 
+// 손쉬운 사용 권한이 실제로 붙었는지 확인: dong-mcu --probe-accessibility
+//
+// 권한은 **코드 서명에 걸린다.** 테스트판은 빌드할 때마다 ad-hoc 서명이 달라져서
+// 허용해 둔 게 풀릴 수 있는데, 그러면 앱은 조용히 거친 방식으로 내려앉는다.
+// 밖에서 들여다볼 방법이 없어서 이 통로를 둔다.
+if CommandLine.arguments.contains("--probe-accessibility") {
+    print("trusted: \(CaretWatcher.isTrusted)")
+    print("bundle: \(Bundle.main.bundleIdentifier ?? "(없음)")")
+    exit(CaretWatcher.isTrusted ? 0 : 1)
+}
+
 // 설정 창을 PNG로 그려서 확인: dong-mcu --render-settings out.png [light] [status|display|icon|account]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
    flagIndex + 1 < CommandLine.arguments.count {
@@ -159,6 +170,11 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     let scale = extras.compactMap(HUDScale.init(rawValue:)).first ?? .normal
     // update 를 끼워 넣으면 새 버전이 나온 상태로 그린다.
     let showsUpdateBadge = extras.contains("update")
+    // 왼쪽 위 버전 딱지: version 은 정식판 모습, test 는 테스트판 모습으로 그린다.
+    let versionBadgeIsTest = extras.contains("test")
+    let versionBadge: String? = versionBadgeIsTest
+        ? "\(AppInfo.version) test"
+        : (extras.contains("version") ? AppInfo.version : nil)
 
     let succeeded = MainActor.assumeIsolated {
         HUDPreviewRenderer.write(
@@ -173,7 +189,9 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
             opacity: opacity,
             showsStats: showsStats,
             scale: scale,
-            showsUpdateBadge: showsUpdateBadge
+            showsUpdateBadge: showsUpdateBadge,
+            versionBadge: versionBadge,
+            versionBadgeIsTest: versionBadgeIsTest
         )
     }
     print(succeeded ? "rendered: \(path)" : "render failed")

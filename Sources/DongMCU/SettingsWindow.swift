@@ -44,8 +44,10 @@ struct SettingsView: View {
     static let sidebarWidth: CGFloat = 124
     static let contentWidth: CGFloat = 356
     /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
-    /// 높이는 가장 긴 탭(표시)이 스크롤 없이 들어가는 값이다.
-    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 460)
+    /// 높이는 가장 긴 탭(펫)이 스크롤 없이 들어가는 값이다. 권한 경고가 떠도
+    /// 잘리지 않게 그만큼 여유를 둔다.
+    /// 탭에 항목을 더했으면 `--render-settings`로 재어 보고 여기를 함께 올린다.
+    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 540)
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
@@ -282,6 +284,9 @@ struct SettingsView: View {
             Toggle("아래 줄에 CPU·메모리 표시", isOn: $settings.showsProcessStats)
                 .disabled(!settings.isHUDVisible || settings.mode != .expanded)
 
+            Toggle(versionBadgeTitle, isOn: $settings.showsVersionBadge)
+                .disabled(!settings.isHUDVisible)
+
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
             // 펫은 여기 넣지 않는다. 펫 탭이 따로 있고, 접기와 한 줄에 묶어 두면
             // 접으려다 펫으로 넘어가는 것과 같은 혼란이 설정 창에도 생긴다.
@@ -299,6 +304,14 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// 버전 딱지는 펼친 보기의 왼쪽 위에만 붙는다. 접힌 카드는 자리가 없고,
+    /// 펫에는 붙일 배경이 없다 — 거기서는 마스코트 색이 테스트판인지 알려준다.
+    private var versionBadgeTitle: String {
+        AppInfo.isTestBuild
+            ? "왼쪽 위에 버전 표시 (테스트판은 test)"
+            : "왼쪽 위에 버전 표시"
     }
 
     // MARK: - 아이콘
@@ -339,6 +352,72 @@ struct SettingsView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Divider()
+            motionSection
+        }
+    }
+
+    /// 펫이 스스로 움직이는 것들. 전부 펫 모드에서만 돈다 —
+    /// 숫자가 붙은 카드가 혼자 걸어다니면 읽으려던 값이 도망간다.
+    private var motionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("스스로 움직이기 (펫 모드에서만)")
+
+            Toggle("혼자 돌아다니기", isOn: $settings.petWanders)
+            petNote("가만히 두면 화면을 천천히 걸어다닌다. 글을 쓰는 동안에는 멈춘다.")
+
+            Toggle("커서 피하기", isOn: $settings.petDodgesCursor)
+            petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.")
+
+            Toggle("입력 피하기", isOn: Binding(
+                get: { settings.petDodgesTyping },
+                // 켜는 순간에만 권한을 묻는다. 꺼 두면 이 앱은 아무것도 요청하지 않는다.
+                set: { on in
+                    settings.petDodgesTyping = on
+                    if on { CaretWatcher.requestTrust() }
+                }
+            ))
+            petNote(typingDodgeNote)
+            typingPermissionNotice
+        }
+        .disabled(!settings.isHUDVisible)
+    }
+
+    /// 권한이 있고 없고에 따라 하는 일이 달라진다. 있는 그대로 적는다 —
+    /// "권한 필요"라고만 적어 두면 안 줬을 때 왜 이렇게 도는지 알 수 없다.
+    private var typingDodgeNote: String {
+        CaretWatcher.isTrusted
+            ? "글자가 닿을 참이면 오른쪽으로, 오른쪽이 막히면 아래로 뛰어서 비킨다."
+            : "쓰는 창 위에 있으면 창 밖으로 비킨다. 권한을 주면 글자 자리까지 따라간다."
+    }
+
+    private func petNote(_ text: String) -> some View {
+        Text(text)
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// 권한은 시스템 설정에서 켜므로 앱에 알림이 오지 않는다. 짧은 주기로 다시 확인해서,
+    /// 허용하고 돌아왔을 때 경고가 남아 있지 않게 한다.
+    @ViewBuilder private var typingPermissionNotice: some View {
+        TimelineView(.periodic(from: .now, by: 2)) { _ in
+            if settings.petDodgesTyping, !CaretWatcher.isTrusted {
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("지금은 권한이 없어 거친 방식으로 돌고 있다")
+                        .font(.system(size: 11))
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Button("허용하기") {
+                        CaretWatcher.requestTrust()
+                        CaretWatcher.openAccessibilitySettings()
+                    }
+                    .controlSize(.small)
+                }
+            }
         }
     }
 
