@@ -304,7 +304,7 @@ final class HUDController {
             // 움직여야 온다). 자리를 잡은 뒤에 지금 상태를 다시 맞춘다.
             self.setPetHover(self.isMouseInside(UsageHUDView.petHitRect(scale: self.scale)))
         }
-        caretWatcher.onCaret = { [weak self] rect in self?.motion.caretMoved(to: rect) }
+        caretWatcher.onTyping = { [weak self] area in self?.motion.typingAreaMoved(area) }
 
         applyAppearance()
         layoutHosting(for: size)
