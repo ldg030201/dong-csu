@@ -32,17 +32,17 @@ extension ImageRenderer {
 enum OwlSheetRenderer {
     static func write(to path: String, cell: CGFloat) -> Bool {
         let content = VStack(alignment: .leading, spacing: cell * 0.18) {
-            ForEach(OwlMood.allCases, id: \.self) { mood in
+            ForEach(Array(OwlAnimation.all.enumerated()), id: \.offset) { _, row in
                 HStack(alignment: .top, spacing: cell * 0.12) {
-                    Text(mood.title)
+                    Text(row.title)
                         .font(.system(size: cell * 0.2, weight: .semibold))
                         .foregroundStyle(.white)
                         .frame(width: cell * 0.9, alignment: .leading)
                         .padding(.top, cell * 0.35)
 
-                    ForEach(Array(mood.frames.enumerated()), id: \.offset) { _, frame in
+                    ForEach(Array(row.frames.enumerated()), id: \.offset) { _, frame in
                         VStack(spacing: cell * 0.06) {
-                            OwlMarkView(pose: frame.pose, palette: mood.palette)
+                            OwlMarkView(pose: frame.pose, palette: row.palette)
                                 .frame(height: cell)
                             Text(durationText(frame))
                                 .font(.system(size: cell * 0.14, design: .rounded))
@@ -84,16 +84,16 @@ enum OwlGIFRenderer {
         }
 
         var written: [String] = []
-        for mood in OwlMood.allCases {
-            let url = base.appendingPathComponent("\(mood.rawValue).gif")
-            guard write(mood: mood, to: url, cell: cell) else { return nil }
+        for animation in OwlAnimation.all {
+            let url = base.appendingPathComponent("\(animation.name).gif")
+            guard write(animation, to: url, cell: cell) else { return nil }
             written.append(url.path)
         }
         return written
     }
 
-    private static func write(mood: OwlMood, to url: URL, cell: CGFloat) -> Bool {
-        let frames = mood.frames
+    private static func write(_ animation: OwlAnimation, to url: URL, cell: CGFloat) -> Bool {
+        let frames = animation.frames
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL,
             UTType.gif.identifier as CFString,
@@ -109,7 +109,7 @@ enum OwlGIFRenderer {
         for frame in frames {
             // 투명 배경으로 두면 프레임이 지워지는 방식에 따라 잔상이 남는다.
             // 배경을 칠해서 프레임마다 화면을 통째로 덮게 한다.
-            let content = OwlMarkView(pose: frame.pose, palette: mood.palette)
+            let content = OwlMarkView(pose: frame.pose, palette: animation.palette)
                 .frame(height: cell)
                 .padding(cell * 0.22)
                 .background(Color(white: 0.13))
@@ -164,7 +164,9 @@ enum HUDPreviewRenderer {
         opacity: Double = 0.92,
         showsStats: Bool = false,
         scale: HUDScale = .normal,
-        showsUpdateBadge: Bool = false
+        showsUpdateBadge: Bool = false,
+        versionBadge: String? = nil,
+        versionBadgeIsTest: Bool = false
     ) -> Bool {
         let snapshot = UsageSnapshot(
             planName: "Max",
@@ -191,6 +193,11 @@ enum HUDPreviewRenderer {
         // 멈춘 애니메이터는 그 기분의 첫 프레임에 머물러 있어 정지 그림이 된다.
         let animator = OwlAnimator()
         animator.setMood(OwlMood.resolve(store: store, isDragging: false))
+        // 테스트판 모습을 그릴 때는 마스코트 색도 함께 바꾼다. 실제 테스트 번들에서는
+        // `AppInfo.owlPalette`가 같은 색을 주므로 미리보기가 어긋나지 않는다.
+        if versionBadgeIsTest {
+            animator.paletteOverride = .tinted(body: AppInfo.testBuildTint)
+        }
 
         let palette = HUDPalette(isDark: isDark)
         let content = UsageHUDView(
@@ -203,6 +210,8 @@ enum HUDPreviewRenderer {
             usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil,
             scale: scale.factor,
             showsUpdateBadge: showsUpdateBadge,
+            versionBadge: versionBadge,
+            versionBadgeIsTest: versionBadgeIsTest,
             owlAnimator: animator
         )
             .background {

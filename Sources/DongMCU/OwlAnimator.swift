@@ -30,8 +30,9 @@ enum OwlMood: String, CaseIterable {
     }
 
     /// 조회가 안 되는 동안에는 색을 빼서 지금 값이 아님을 몸으로 드러낸다.
+    /// 그 밖에는 빌드에 맞는 색을 쓴다 — 테스트판은 몸이 보라색이다.
     var palette: OwlPalette {
-        self == .offline ? .offline : .normal
+        self == .offline ? .offline : AppInfo.owlPalette
     }
 
     /// 이 기분에서 차례로 보여줄 프레임들. 마지막까지 가면 처음으로 돌아간다.
@@ -99,6 +100,76 @@ enum OwlMood: String, CaseIterable {
                 OwlFrame(OwlPose(eyes: .dizzy, lean: 1), duration: 0.13),
                 OwlFrame(OwlPose(eyes: .dizzy, faceLean: 1), duration: 0.13),
             ]
+        }
+    }
+}
+
+/// 걸음걸이.
+///
+/// 배회하거나 커서를 피할 때는 **걷는다** — 산책이고, 급할 게 없다.
+/// 글자에 쫓길 때만 **뛴다.** 타이핑은 계속 밀고 들어오므로 느긋하게 비키면
+/// 비키는 도중에 이미 덮인다.
+enum OwlGait: String, CaseIterable {
+    case walk
+    case run
+
+    var title: String {
+        switch self {
+        case .walk: return "걷기"
+        case .run: return "달리기"
+        }
+    }
+
+    /// 한 칸에 머무는 시간. 걷기는 이보다 빠르면 종종거리고, 느리면 미끄러져 보인다.
+    var tick: TimeInterval {
+        switch self {
+        case .walk: return 0.14
+        case .run: return 0.08
+        }
+    }
+
+    /// 문서와 미리보기가 늘어놓는 한 바퀴. 두 바퀴를 이어 붙인 것이다.
+    ///
+    /// 실제로 깜빡이는 간격은 몇 초에 한 번이고 지터도 붙는다. 한 바퀴가 그보다
+    /// 훨씬 짧아서 뒤쪽에 깜빡임을 한 번 끼워 뒀다 — **간격만은 실제와 다르다.**
+    @MainActor
+    var cycle: [OwlFrame] {
+        (0..<8).map { phase in
+            var pose = OwlAnimator.gaitPose(base: OwlPose(), phase: phase, gait: self)
+            switch phase {
+            case 5, 7: pose.eyes = .half
+            case 6: pose.eyes = .closed
+            default: break
+            }
+            return OwlFrame(pose, duration: tick)
+        }
+    }
+}
+
+/// 렌더 통로가 늘어놓는 애니메이션 한 줄.
+///
+/// **걸음걸이는 기분이 아니라 기분 위에 얹히는 것**이라 `OwlMood.allCases`에 없다.
+/// 기분만 돌면 문서와 미리보기에서 걷기·달리기가 통째로 빠지므로, 보여줄 것들을 여기 모은다.
+struct OwlAnimation {
+    /// 파일 이름에 쓰는 이름.
+    let name: String
+    let title: String
+    let frames: [OwlFrame]
+    let palette: OwlPalette
+
+    /// 걸음걸이 한 바퀴가 `OwlAnimator`(메인 액터)에 있어서 여기도 메인 액터다.
+    /// 부르는 쪽은 전부 렌더 통로라 문제되지 않는다.
+    @MainActor
+    static var all: [OwlAnimation] {
+        OwlMood.allCases.map {
+            OwlAnimation(name: $0.rawValue, title: $0.title, frames: $0.frames, palette: $0.palette)
+        } + OwlGait.allCases.map {
+            OwlAnimation(
+                name: $0.rawValue,
+                title: $0.title,
+                frames: $0.cycle,
+                palette: OwlMood.idle.palette
+            )
         }
     }
 }
@@ -177,6 +248,8 @@ final class OwlAnimator: ObservableObject {
     private static let wingSpreadSpeed: CGFloat = 620
     /// 몇 틱마다 깜빡일지. 눈을 붙박아 두기만 하면 노려보는 것처럼 보인다.
     private static let blinkInterval = 22
+    /// 그 간격에 얹는 지터(틱). 없으면 시계처럼 정확한 박자로 깜빡인다.
+    private static let blinkJitter = 12
 
     // MARK: - 어지러움
     //
@@ -202,6 +275,69 @@ final class OwlAnimator: ObservableObject {
     private static let dizzyDuration: TimeInterval = 2.4
 
     private var isDizzy: Bool { dizzyUntil > Date() }
+
+    // MARK: - 걷기
+    //
+    // **걷기는 기분이 아니다.** 지친 부엉이도 걸어다녀야 하고, 걷는다고 눈이 다시
+    // 떠지면 사용량이 줄어든 것처럼 읽힌다. 그래서 기분이 정한 눈·날개는 그대로 두고
+    // 발과 몸 흔들림만 덮어쓴다.
+
+    /// 지금 걸음걸이. nil이면 서 있다.
+    private var gait: OwlGait?
+
+    /// 걷는·뛰는 모습을 켜고 끈다.
+    func setGait(_ next: OwlGait?) {
+        guard next != gait else { return }
+        let wasMoving = gait != nil
+        gait = next
+        guard isRunning else { return }
+        // 걷다 뛰기로 바뀌면 박자만 빨라지면 된다. 다음 칸에서 알아서 따라간다.
+        guard wasMoving != (next != nil) else { return }
+        frameIndex = 0
+        advance()
+    }
+
+    /// 한 칸의 자세. 렌더 통로도 같은 계산을 써야 문서가 실제와 어긋나지 않는다.
+    ///
+    /// 네 칸 한 바퀴다. 한 발 딛고 → 모으고 → 다른 발 딛고 → 모은다. 두 칸만 쓰면
+    /// 발이 좌우로 튀기만 해서 걷는 게 아니라 미끄러지는 것으로 보인다.
+    /// 발은 `lean`을 받지 않으므로 몸만 흔들리고 발은 제자리에서 갈아 딛는다.
+    ///
+    /// **얼굴은 몸을 그대로 따라간다(`faceLean` 0).** 매달렸을 때처럼 얼굴을 뒤에
+    /// 남기면 몸만 흔들리고 눈·부리는 공간에 못 박힌 것처럼 보여서 징그럽다. 걷는
+    /// 부엉이는 매달린 게 아니라 통짜로 뒤뚱거린다.
+    ///
+    /// **뛸 때는 발을 모으는 칸마다 날개를 펼친다.** 부엉이는 다리가 짧아서 발만 빨리
+    /// 놀리면 종종거리는 것으로 보인다. 날개를 써야 급한 것으로 읽힌다.
+    ///
+    /// 펼친 날개는 좌우 여백 두 칸을 끝까지 쓴다. 그래서 **몸이 기운 칸에서 펴면
+    /// 바깥쪽 한 칸이 캔버스 밖으로 잘려** 한쪽 날개만 짧아진다. 기울기가 0인
+    /// 칸에서만 펴면 그 일이 없고, 딛고 → 펴고 → 딛고 순서라 도약으로도 읽힌다.
+    static func gaitPose(base: OwlPose, phase: Int, gait: OwlGait) -> OwlPose {
+        var pose = base
+        let planted: Bool
+        switch phase % 4 {
+        case 0:
+            pose.feet = .stepA
+            pose.lean = -1
+            planted = true
+        case 2:
+            pose.feet = .stepB
+            pose.lean = 1
+            planted = true
+        default:
+            pose.feet = .stand
+            pose.lean = 0
+            planted = false
+        }
+        if gait == .run {
+            pose.wings = planted ? .folded : .spread
+        }
+        pose.faceLean = 0
+        // 주저앉은 채로 걸으면 다리가 몸에 가려져서 미끄러지는 것으로 보인다.
+        pose.bob = 0
+        return pose
+    }
 
     /// 이번 틱의 흔들림을 점수에 반영한다.
     /// 방향 뒤집힘은 가로만 보고, 빠르기는 위아래를 합친 값으로 본다 —
@@ -233,7 +369,16 @@ final class OwlAnimator: ObservableObject {
         dizzyUntil = Date().addingTimeInterval(Self.dizzyDuration)
     }
 
-    var palette: OwlPalette { mood.palette }
+    /// 팔레트를 바깥에서 덮어쓴다. **렌더 통로 전용** — 테스트판 모습(보라색 몸)을
+    /// 실제 테스트 번들 없이 그려 보려고 둔 자리다. `@Published`가 아니라서 뷰가 생긴
+    /// 뒤에 바꿔도 다시 그려지지 않는다. 그리기 전에 한 번만 꽂는다.
+    var paletteOverride: OwlPalette?
+
+    var palette: OwlPalette {
+        // 끊김의 회색은 색 자체가 정보라 덮어쓰지 않는다.
+        guard mood != .offline, let paletteOverride else { return mood.palette }
+        return paletteOverride
+    }
 
     /// 끌려가는 동안 마우스의 속도(pt/s). 부호는 **마우스가 가는 쪽**이다.
     ///
@@ -310,6 +455,8 @@ final class OwlAnimator: ObservableObject {
         // 바깥에서 알려줄 사람이 없어서 틱마다 스스로 확인한다.
         if mood == .dizzy, !isDizzy { return applyMood() }
         guard mood != .dragged else { return advanceDrag() }
+        // 들려 있는 동안에는 걷지 않는다. 허공에서 발을 갈아 딛으면 우스워진다.
+        if let gait { return advanceGait(gait) }
 
         let frames = mood.frames
         let frame = frames[frameIndex % frames.count]
@@ -337,7 +484,7 @@ final class OwlAnimator: ObservableObject {
             lean: lean,
             face: previousLean,
             feet: olderLean,
-            eyes: draggedEyes,
+            eyes: blinkingEyes(base: .open),
             wings: Self.wings(for: velocity.dy)
         )
         olderLean = previousLean
@@ -346,15 +493,34 @@ final class OwlAnimator: ObservableObject {
         schedule(after: Self.dragTick)
     }
 
-    /// 끌려가는 동안의 눈. 흔들려 놨으면 풀린 채로, 아니면 이따금 깜빡인다.
-    private var draggedEyes: OwlPose.Eyes {
+    /// 움직이는 동안의 한 칸. 기분이 정한 눈·날개 위에 발과 몸 흔들림만 얹는다.
+    ///
+    /// 눈은 기분이 준 첫 프레임에 붙박아 두지 않는다. 걷는 내내 뜨고만 있으면
+    /// 살아 있는 게 아니라 굳은 것처럼 보인다 — 끌릴 때와 같은 이유다.
+    private func advanceGait(_ gait: OwlGait) {
+        var next = Self.gaitPose(base: mood.frames[0].pose, phase: frameIndex, gait: gait)
+        next.eyes = blinkingEyes(base: next.eyes)
+        pose = next
+        schedule(after: gait.tick)
+    }
+
+    /// 스스로 도는 상태(끌림·걷기)의 눈. 흔들려 놨으면 풀린 채로, 아니면 이따금 깜빡인다.
+    ///
+    /// **지친 눈을 억지로 뜨게 하지 않는다.** 걷는다고 눈이 다시 떠지면 사용량이 줄어든
+    /// 것처럼 읽힌다. 이미 감고 있는 부엉이(탈진)는 반대로 이따금 실눈을 뜨는 것으로 대신한다.
+    private func blinkingEyes(base: OwlPose.Eyes) -> OwlPose.Eyes {
         if isDizzy { return .dizzy }
         blinkCountdown -= 1
-        defer { if blinkCountdown <= 0 { blinkCountdown = Self.blinkInterval } }
+        // 지터가 없으면 정확히 같은 박자로 깜빡여서 시계처럼 보인다.
+        defer {
+            if blinkCountdown <= 0 {
+                blinkCountdown = Self.blinkInterval + .random(in: 0...Self.blinkJitter)
+            }
+        }
         switch blinkCountdown {
-        case 1: return .closed
+        case 1: return base == .closed ? .half : .closed
         case 0, 2: return .half
-        default: return .open
+        default: return base
         }
     }
 

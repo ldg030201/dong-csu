@@ -12,6 +12,9 @@ import SwiftUI
 enum OwlMark {
     static let columns = 15
     static let lines = 13
+    /// 몸통이 실제로 쓰는 열 수. 좌우 2열씩은 날개를 펼 여백이라 정지 상태에서는 비어 있다.
+    /// 마스코트가 화면에서 얼마를 가리는지 따질 때는 이쪽을 쓴다.
+    static let bodyColumns = 11
     /// 좌우 여백이 있어 가로가 더 길다. 링 안에 넣을 때는 높이를 기준으로 맞춘다.
     static let aspectRatio = CGFloat(columns) / CGFloat(lines)
 
