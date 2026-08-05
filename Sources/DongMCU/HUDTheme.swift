@@ -75,6 +75,14 @@ struct HUDPalette {
             : Color(red: 0.11, green: 0.44, blue: 0.90)
     }
 
+    /// 테스트판 버전 딱지. 메뉴바 아이콘의 몸 색(`AppInfo.testBuildTint`)과 같은
+    /// 보라 계열이되, 카드 배경 위에서 읽히도록 밝기만 각 모드에 맞춰 잡는다.
+    var testBadge: Color {
+        isDark
+            ? Color(red: 0.74, green: 0.60, blue: 0.99)
+            : Color(red: 0.40, green: 0.22, blue: 0.72)
+    }
+
     /// Clawd의 눈. 배경이 밝아도 어둡게 유지한다.
     var markEye: Color { Color.black.opacity(isDark ? 0.88 : 0.75) }
 

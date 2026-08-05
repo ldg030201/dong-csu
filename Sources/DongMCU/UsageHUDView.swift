@@ -28,6 +28,11 @@ struct UsageHUDView: View {
     var scale: CGFloat = 1
     /// 새 버전이 나와 있으면 버튼 반대편 위 모서리에 표시를 띄운다.
     var showsUpdateBadge: Bool = false
+    /// 같은 모서리에 붙일 버전 딱지. nil이면 그리지 않는다.
+    var versionBadge: String?
+    /// 그 딱지를 테스트판 색으로 그릴지. 렌더 통로가 실제 빌드와 무관하게 넘길 수 있게
+    /// `AppInfo`를 직접 읽지 않고 받는다.
+    var versionBadgeIsTest: Bool = false
     /// 그 표시를 눌렀을 때. 버전 화면을 연다.
     var onOpenUpdates: (() -> Void)?
     /// 가운데 부엉이를 움직이게 할 애니메이터. 없으면 정지 자세로 그린다.
@@ -283,7 +288,9 @@ struct UsageHUDView: View {
             width: Self.size(mode: .collapsed, scale: scale).width,
             height: Self.size(mode: .collapsed, scale: scale).height
         )
-        .overlay(alignment: badgeAlignment) { updateBadge }
+        // 접은 카드는 108pt뿐이라 버전 딱지를 붙이면 링 위에 겹친다.
+        // 테스트판인지는 마스코트 색(보라)이 알려준다.
+        .overlay(alignment: badgeAlignment) { cornerBadges(showsVersion: false) }
     }
 
     private var buttonColumn: some View {
@@ -329,7 +336,7 @@ struct UsageHUDView: View {
         .padding(.trailing, expandSide == .right ? s(10) : s(13))
         .frame(width: s(Self.baseExpandedSize.width), height: s(Self.baseExpandedSize.height))
         .overlay(alignment: expandSide == .right ? .topTrailing : .topLeading) { controlButtons }
-        .overlay(alignment: badgeAlignment) { updateBadge }
+        .overlay(alignment: badgeAlignment) { cornerBadges(showsVersion: true) }
         // 아래 줄이 생기면 카운트다운도 거기로 내려가 자원 사용량과 같은 높이에 놓인다.
         .overlay(alignment: expandSide == .right ? .bottomTrailing : .bottomLeading) {
             if usageMonitor == nil { resetCountdown }
@@ -434,10 +441,32 @@ struct UsageHUDView: View {
         return "다음 사용량 조회까지 남은 시간"
     }
 
-    // MARK: - 업데이트 표시
+    // MARK: - 위 모서리 표시 (업데이트 · 버전)
 
     private var badgeAlignment: Alignment {
         expandSide == .right ? .topLeading : .topTrailing
+    }
+
+    /// 버튼 묶음 반대편 위 모서리에 붙는 것들.
+    ///
+    /// 업데이트 표시와 버전 딱지가 같은 자리를 노려서, 각자 오버레이로 얹으면 겹친다.
+    /// 한 줄에 묶어 두면 새 버전이 잡히는 순간 버전 딱지가 옆으로 밀려난다.
+    /// **업데이트 표시가 늘 바깥쪽이다** — 클릭 통과 영역이 모서리 기준으로 계산된다
+    /// (`updateBadgeRectInPanel`).
+    @ViewBuilder private func cornerBadges(showsVersion: Bool) -> some View {
+        let version = showsVersion ? versionBadge : nil
+        if showsUpdateBadge || version != nil {
+            HStack(spacing: s(3)) {
+                if expandSide == .right {
+                    updateBadge
+                    versionLabel(version)
+                } else {
+                    versionLabel(version)
+                    updateBadge
+                }
+            }
+            .padding(Self.refreshInset(scale: scale))
+        }
     }
 
     @ViewBuilder private var updateBadge: some View {
@@ -457,7 +486,28 @@ struct UsageHUDView: View {
             }
             .buttonStyle(.plain)
             .help("새 버전이 나왔다 — 눌러서 확인")
-            .padding(Self.refreshInset(scale: scale))
+        }
+    }
+
+    /// 지금 버전. 테스트판은 색을 입힌 알약으로 그려서 곁눈으로도 걸린다.
+    @ViewBuilder private func versionLabel(_ text: String?) -> some View {
+        if let text {
+            Text(text)
+                .font(font(9, weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                // 좁은 카드에서 줄바꿈되거나 말줄임표가 뜨지 않게 제 크기를 지킨다.
+                .fixedSize()
+                .foregroundStyle(versionBadgeIsTest ? palette.testBadge : palette.faintText)
+                .shadow(color: palette.textShadow, radius: s(1.5))
+                .padding(.horizontal, versionBadgeIsTest ? s(5) : 0)
+                .padding(.vertical, versionBadgeIsTest ? s(1) : 0)
+                .background {
+                    if versionBadgeIsTest {
+                        Capsule().fill(palette.testBadge.opacity(0.18))
+                    }
+                }
+                .help(versionBadgeIsTest ? "테스트 빌드다 — 배포본이 아니다" : "지금 버전")
         }
     }
 
