@@ -384,12 +384,12 @@ struct SettingsView: View {
         .disabled(!settings.isHUDVisible)
     }
 
-    /// 권한이 있고 없고에 따라 하는 일이 달라진다. 있는 그대로 적는다 —
-    /// "권한 필요"라고만 적어 두면 안 줬을 때 왜 이렇게 도는지 알 수 없다.
+    /// 권한이 없으면 **아무것도 안 한다.** 그 사실을 그대로 적는다 —
+    /// 켜져 있는데 안 도는 이유를 화면에서 알 수 있어야 한다.
     private var typingDodgeNote: String {
         CaretWatcher.isTrusted
             ? "글자가 닿을 참이면 오른쪽으로, 오른쪽이 막히면 아래로 뛰어서 비킨다."
-            : "쓰는 창 위에 있으면 창 밖으로 비킨다. 권한을 주면 글자 자리까지 따라간다."
+            : "글자가 어디까지 왔는지 알아야 해서 손쉬운 사용 권한이 필요하다."
     }
 
     private func petNote(_ text: String) -> some View {
@@ -407,7 +407,7 @@ struct SettingsView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)
-                    Text("지금은 권한이 없어 거친 방식으로 돌고 있다")
+                    Text("권한이 없어 지금은 동작하지 않는다")
                         .font(.system(size: 11))
                         .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 4)

@@ -481,8 +481,6 @@ final class HUDController {
 
         motion.wanders = settings.petWanders
         motion.dodgesCursor = settings.petDodgesCursor
-        motion.dodgesTyping = settings.petDodgesTyping
-        motion.canReadCaret = { CaretWatcher.isTrusted }
         motion.update(active: canMove)
 
         // 캐럿을 좇는 건 비쌀 뿐 아니라 남의 앱을 들여다보는 일이다.
@@ -495,13 +493,23 @@ final class HUDController {
         }
     }
 
-    /// 권한 창은 **살면서 딱 한 번만** 띄운다.
+    /// 권한 창을 띄울지 정한다.
     ///
-    /// 권한은 코드 서명에 걸려 있어서, 앱을 업데이트하면 허용해 둔 게 풀린 채로 뜬다.
-    /// 그때마다 창을 띄우면 허락을 받아낼 때까지 조르는 앱이 된다. 풀린 사실은
-    /// 메뉴와 설정 창에 조용히 남겨 두고, 다시 허용할지는 사용자가 정한다.
+    /// 한 번 묻고 나면 다시 묻지 않는다 — 거절한 사람에게 계속 띄우면 허락을 받아낼
+    /// 때까지 조르는 앱이 된다. **딱 하나 예외가 있다:** 잘 쓰고 있던 권한이 풀린
+    /// 경우다. 권한은 코드 서명에 걸려 있어서 앱을 업데이트하면 저절로 풀리는데,
+    /// 그건 거절과 달리 사용자가 한 일이 아니다. 그때는 한 번 더 물어본다.
     private func askForAccessibilityOnce() {
-        guard !settings.didAskAccessibility, !CaretWatcher.isTrusted else { return }
+        guard !CaretWatcher.isTrusted else {
+            settings.hadAccessibility = true
+            return
+        }
+        // 쓰던 게 풀렸다. 거절한 적 없는 사람이므로 다시 물어봐도 된다.
+        if settings.hadAccessibility {
+            settings.hadAccessibility = false
+            settings.didAskAccessibility = false
+        }
+        guard !settings.didAskAccessibility else { return }
         settings.didAskAccessibility = true
         CaretWatcher.requestTrust()
     }
