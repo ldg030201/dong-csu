@@ -11,8 +11,8 @@ import ApplicationServices
 /// 저장하지 않는다 — 그때 비킬 자리를 정하는 데만 쓰고 버린다.
 @MainActor
 final class CaretWatcher {
-    /// 캐럿이 있는 자리(Cocoa 좌표, 원점 왼쪽 아래).
-    var onCaret: ((CGRect) -> Void)?
+    /// 지금 글을 쓰고 있는 자리.
+    var onTyping: ((TypingArea) -> Void)?
 
     private var keyMonitor: Any?
     private var pollTimer: Timer?
@@ -112,8 +112,8 @@ final class CaretWatcher {
 
     private func poll() {
         guard Date() < typingUntil else { return stopPolling() }
-        guard let rect = caretRect() else { return }
-        onCaret?(rect)
+        guard let area = typingArea() else { return }
+        onTyping?(area)
     }
 
     private func stopPolling() {
@@ -125,28 +125,51 @@ final class CaretWatcher {
 
     /// 지금 글을 쓰고 있는 자리. 알아내지 못하면 nil이다.
     ///
-    /// 앱마다 손쉬운 사용 지원 정도가 달라서 캐럿 자리를 못 주는 곳이 있다.
-    /// 그럴 때 입력창 전체를 대신 쓰면 커서가 멀리 있는데도 비켜서 더 성가시므로,
-    /// **모르면 그냥 안 비킨다.**
-    private func caretRect() -> CGRect? {
+    /// **두 단계로 떨어진다.**
+    /// 1. 캐럿의 정확한 자리(`AXBoundsForRange`) — 있으면 이게 제일 좋다
+    /// 2. 없으면 **입력창 전체**(`AXPosition`+`AXSize`)
+    ///
+    /// 2번이 필요한 이유는 Electron으로 만든 앱들이 캐럿 자리를 안 주기 때문이다.
+    /// 실제로 재 보니 `AXFocusedUIElement`와 `AXSelectedTextRange`까지는 주는데
+    /// `AXBoundsForRange`에서 막힌다. 거기서 포기하면 **그런 앱에서는 이 기능이
+    /// 통째로 죽는다** — 정작 사람들이 글을 제일 많이 쓰는 앱들이 그쪽이다.
+    ///
+    /// 입력창 전체도 짐작이 아니라 **권한으로 읽은 사실**이다. 창 목록으로 넘겨짚던
+    /// 것과는 다르다 — 지금 글을 쓰고 있는 바로 그 상자다.
+    private func typingArea() -> TypingArea? {
         let system = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(system, Self.messagingTimeout)
 
-        guard let focused: AXUIElement = Self.attribute(system, kAXFocusedUIElementAttribute),
-              let range: AXValue = Self.attribute(focused, kAXSelectedTextRangeAttribute),
-              let bounds: AXValue = Self.parameterized(
-                  focused,
-                  kAXBoundsForRangeParameterizedAttribute,
-                  range
-              )
+        guard let focused: AXUIElement = Self.attribute(system, kAXFocusedUIElementAttribute)
         else { return nil }
 
-        var rect = CGRect.zero
-        guard AXValueGetValue(bounds, .cgRect, &rect),
-              rect.width.isFinite, rect.height.isFinite,
-              rect.height > 0
+        if let range: AXValue = Self.attribute(focused, kAXSelectedTextRangeAttribute),
+           let bounds: AXValue = Self.parameterized(
+               focused,
+               kAXBoundsForRangeParameterizedAttribute,
+               range
+           ) {
+            var rect = CGRect.zero
+            if AXValueGetValue(bounds, .cgRect, &rect),
+               rect.width.isFinite, rect.height.isFinite, rect.height > 0 {
+                return TypingArea(rect: rect.flippedFromQuartz, isCaret: true)
+            }
+        }
+
+        guard let position: AXValue = Self.attribute(focused, kAXPositionAttribute),
+              let size: AXValue = Self.attribute(focused, kAXSizeAttribute)
         else { return nil }
-        return rect.flippedFromQuartz
+
+        var origin = CGPoint.zero
+        var extent = CGSize.zero
+        guard AXValueGetValue(position, .cgPoint, &origin),
+              AXValueGetValue(size, .cgSize, &extent),
+              extent.width > 1, extent.height > 1
+        else { return nil }
+        return TypingArea(
+            rect: CGRect(origin: origin, size: extent).flippedFromQuartz,
+            isCaret: false
+        )
     }
 
     private static func attribute<T>(_ element: AXUIElement, _ name: String) -> T? {
@@ -183,6 +206,16 @@ final class CaretWatcher {
         return value as? T
     }
 
+}
+
+/// 지금 글을 쓰고 있는 자리.
+///
+/// `isCaret`이면 글자가 찍히는 그 지점이고, 아니면 **입력창 전체**다.
+/// 둘은 피하는 방법이 다르다 — 캐럿은 그 앞을 살짝 비켜서면 되지만,
+/// 입력창은 상자 밖으로 나가야 안 가린다.
+struct TypingArea {
+    let rect: CGRect
+    let isCaret: Bool
 }
 
 extension CGRect {

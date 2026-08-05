@@ -50,14 +50,23 @@ final class PetMotionController {
     private static let restRange: ClosedRange<TimeInterval> = 3...11
     /// 캐럿과 이만큼은 떨어져 있어야 안심한다.
     private static let caretMargin: CGFloat = 16
+    /// **글자가 다가오는 쪽(왼쪽)은 훨씬 일찍 본다.** 글은 왼쪽에서 오른쪽으로
+    /// 흐르므로 캐럿이 왼쪽에 있다는 건 곧 여기까지 온다는 뜻이다. 닿고 나서
+    /// 움직이면 이미 한 번은 가린 뒤라 "왜 안 비키냐"가 된다.
+    private static let approachMargin: CGFloat = 160
     /// 이보다 짧게 갈 거면 아예 가지 않는다. 찔끔거리는 쪽이 더 성가시다.
     private static let minimumMove: CGFloat = 24
     /// 커서에서 물러나는 거리. 클릭 영역(창 한 변)보다 커야 한 번에 벗어난다.
     private static let cursorRetreat: CGFloat = 1.15
-    /// 마지막 입력 뒤 이만큼은 얌전히 있는다. `CaretWatcher`가 캐럿을 좇는 시간보다
-    /// 길게 잡아서, 좇기가 끝나기도 전에 다시 걸어나가지 않게 한다.
-    /// 이 값이 짧아도 걷다 멈춘 뒤에는 `restRange`만큼 더 쉬므로 바로 걸어나가지는 않는다.
-    private static let typingQuiet: TimeInterval = 2
+    /// 마지막 입력 뒤 이만큼은 얌전히 있는다.
+    ///
+    /// **2초로 뒀더니 짧았다.** 글을 쓰다 잠깐 생각하는 사이에 배회가 걸어나가서,
+    /// 쓰던 사람 눈에는 "타이핑 중에 왼쪽으로 간다"로 보였다. 문장 사이에 쉬는 시간을
+    /// 덮을 만큼은 잡아야 한다.
+    private static let typingQuiet: TimeInterval = 5
+    /// 입력창 자리를 이만큼은 기억한다. 배회가 그 위로 걸어 들어가지 않게 쓴다.
+    /// 너무 길게 잡으면 창을 옮긴 뒤에도 없는 상자를 피해 다닌다.
+    private static let typingMemory: TimeInterval = 90
 
     // MARK: - 상태
 
@@ -293,17 +302,83 @@ final class PetMotionController {
 
     // MARK: - 입력 피하기
 
-    /// 뒤 입력창의 캐럿이 움직였다. 펫에 닿을 참이면 비킨다.
-    func caretMoved(to caret: CGRect) {
+    /// 마지막으로 확인한 입력창 자리. 배회가 그 위로 걸어 들어가지 않게 기억해 둔다.
+    private var lastTypingRect: CGRect?
+    private var lastTypingAt = Date.distantPast
+
+    /// 지금 글을 쓰는 자리가 갱신됐다. 펫에 닿을 참이면 비킨다.
+    func typingAreaMoved(_ area: TypingArea) {
+        lastTypingRect = area.rect
+        lastTypingAt = Date()
+
         // 이미 비키는 중이면 목표를 흔들지 않는다. 글자마다 목표를 다시 잡으면
         // 캐럿을 따라 옆걸음질만 치다가 영영 도착하지 못한다.
         guard isActive, !isDodging else { return }
 
         let visual = visualFrame()
-        let danger = visual.insetBy(dx: -Self.caretMargin, dy: -Self.caretMargin)
-        guard danger.intersects(caret) else { return }
-        guard let target = caretDodgeTarget(caret: caret) else { return }
+        guard Self.danger(around: visual).intersects(area.rect) else { return }
+
+        // 캐럿은 그 앞을 살짝 비켜서면 되지만, 입력창은 상자 밖으로 나가야 안 가린다.
+        let target = area.isCaret
+            ? caretDodgeTarget(caret: area.rect)
+            : escapeTarget(from: area.rect)
+        guard let target else { return }
         begin(dodge: target, hurried: true)
+    }
+
+    /// 글자가 닿기 전에 미리 움직일 구역.
+    ///
+    /// 왼쪽으로만 크게 넓힌다. 오른쪽으로 넓히면 이미 지나간 글자에도 반응하고,
+    /// 위아래로 넓히면 다른 줄을 쓰는데 움직인다.
+    private static func danger(around visual: CGRect) -> CGRect {
+        CGRect(
+            x: visual.minX - approachMargin,
+            y: visual.minY - caretMargin,
+            width: visual.width + approachMargin + caretMargin,
+            height: visual.height + caretMargin * 2
+        )
+    }
+
+    /// 상자 **밖으로** 나간다. 캐럿 자리를 못 주는 앱에서 입력창을 통째로 비켜줄 때 쓴다.
+    ///
+    /// 오른쪽 → 아래 → 위 순이다. **왼쪽은 없다** — 글이 시작되는 쪽이라 거기로 가면
+    /// 방금 쓴 것을 덮는다. 셋 다 막히면(입력창이 화면을 거의 다 덮으면) 그냥 있는다.
+    private func escapeTarget(from box: CGRect) -> NSPoint? {
+        guard let area = walkArea() else { return nil }
+        let panel = frame()
+        let visual = visualFrame()
+        let gap = Self.caretMargin
+        // 창과 그림 사이의 여백. 상자 밖으로 내보내야 하는 건 창이 아니라 그림이다.
+        let leftPad = visual.minX - panel.minX
+        let bottomPad = visual.minY - panel.minY
+
+        let right = box.maxX + gap - leftPad
+        if right <= area.maxX, right > panel.minX { return NSPoint(x: right, y: panel.minY) }
+
+        let below = box.minY - gap - visual.height - bottomPad
+        if below >= area.minY { return NSPoint(x: panel.minX, y: below) }
+
+        let above = box.maxY + gap - bottomPad
+        if above <= area.maxY { return NSPoint(x: panel.minX, y: above) }
+
+        return nil
+    }
+
+    /// 이 자리로 가면 입력창을 가리는지. 기억이 오래됐으면 따지지 않는다.
+    private func avoidsTyping(_ origin: NSPoint) -> Bool {
+        guard let rect = lastTypingRect,
+              Date().timeIntervalSince(lastTypingAt) < Self.typingMemory
+        else { return true }
+
+        let panel = frame()
+        let visual = visualFrame()
+        let moved = CGRect(
+            x: origin.x + (visual.minX - panel.minX),
+            y: origin.y + (visual.minY - panel.minY),
+            width: visual.width,
+            height: visual.height
+        )
+        return !moved.intersects(rect)
     }
 
     /// 글은 왼쪽에서 오른쪽으로 흐른다. 그래서 **오른쪽으로 먼저** 비키고, 오른쪽이
@@ -312,12 +387,10 @@ final class PetMotionController {
     ///
     /// **왼쪽으로는 어느 갈래에서도 가지 않는다.** 캐럿 왼쪽은 방금 쓴 글이 있는
     /// 자리라서, 거기로 물러나면 비켜준 게 아니라 읽던 것을 덮는 셈이 된다.
-    /// 세 갈래가 내놓는 x는 전부 지금 자리보다 오른쪽이거나 같다.
     private func caretDodgeTarget(caret: CGRect) -> NSPoint? {
         guard let area = walkArea() else { return nil }
         let panel = frame()
         let visual = visualFrame()
-        // 창과 그림 사이의 여백. 비켜야 하는 건 창이 아니라 그림이다.
         let leftPad = visual.minX - panel.minX
 
         let rightX = caret.maxX + Self.caretMargin - leftPad
@@ -325,12 +398,8 @@ final class PetMotionController {
             return NSPoint(x: rightX, y: panel.minY)
         }
 
-        // 오른쪽 끝에 붙인 채 한 줄 내려간다. 줄 높이는 캐럿 높이를 따라간다 —
-        // 큰 글씨로 쓰고 있으면 그만큼 크게 내려가야 다음 줄에서 또 부딪히지 않는다.
-        //
-        // 가장자리 여백(`edgeMargin`) 때문에 걸을 수 있는 오른쪽 끝이 지금 자리보다
-        // 왼쪽일 수 있다. 창을 화면 맨 끝까지 끌어다 놨을 때가 그렇다. 그때는
-        // 제자리에서 내려가기만 한다.
+        // 가장자리 여백 때문에 걸을 수 있는 오른쪽 끝이 지금 자리보다 왼쪽일 수 있다.
+        // 창을 화면 맨 끝까지 끌어다 놨을 때가 그렇다. 그때는 제자리에서 내려가기만 한다.
         let edgeX = max(panel.minX, area.maxX)
         let lineDrop = max(visual.height * 0.9, caret.height * 1.6)
         let down = panel.minY - lineDrop
@@ -355,6 +424,8 @@ final class PetMotionController {
                 y: origin.y + .random(in: -70...70)
             )
             guard let target = clamped(candidate) else { return nil }
+            // 글 쓰던 상자 위로 걸어 들어가지 않는다.
+            guard avoidsTyping(target) else { continue }
             if Self.distance(origin, target) >= Self.minimumMove { return target }
         }
         return nil
