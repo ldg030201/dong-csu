@@ -81,12 +81,13 @@ dong-mcu --render out.png 34 61 owl ok large   # HUD (사용률·아이콘·상�
 dong-mcu --render-settings out.png changelog   # 설정 창의 특정 탭
 dong-mcu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-mcu --render-icon out.png 1024            # 앱 아이콘
-dong-mcu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임
-dong-mcu --render-owl-gif docs/characters/owl  # 기분마다 움직이는 GIF (문서용)
+dong-mcu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임 (기분 + 걷기·달리기)
+dong-mcu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
 ```
 
-`--render-owl`은 기분별 프레임을 한 장에 늘어놓는다. 자세를 고칠 때 앱을 띄우고
-몇 초씩 기다리지 말고 이걸로 본다. 다만 **크기가 달라 보인다는 인상은 재지 말고
+`--render-owl`은 `OwlAnimation.all`을 한 장에 늘어놓는다. 자세를 고칠 때 앱을 띄우고
+몇 초씩 기다리지 말고 이걸로 본다. **걸음걸이는 기분이 아니라서 `OwlMood.allCases`에 없다**
+— 보여줄 것을 더할 자리는 `OwlAnimation.all` 한 곳이다. 다만 **크기가 달라 보인다는 인상은 재지 말고
 픽셀로 확인한다** — 주저앉은 자세는 다리가 몸에 가려져 실제로 한 칸 짧다.
 
 **자세나 프레임 시간을 고쳤으면 `--render-owl-gif`를 다시 돌린다.** 캐릭터 문서의

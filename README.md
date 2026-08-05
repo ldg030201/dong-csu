@@ -62,7 +62,9 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 </tr>
 <tr>
 <td align="center"><img src="docs/characters/owl/dizzy.gif" width="96" alt="어지러움"><br><sub><b>어지러움</b><br>마구 흔들면</sub></td>
-<td colspan="4"></td>
+<td align="center"><img src="docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
+<td align="center"><img src="docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>글자를 피할 때</sub></td>
+<td colspan="2" align="left"><sub>펫 모드에서 <b>혼자 돌아다니게</b> 할 수 있다.<br>커서를 올려두면 비켜주고, 뒤 입력창에 글을 쓰면 <b>가만히 섰다가</b><br>글자가 닿을 참에 <b>뛰어서</b> 비킨다. 설정 창의 <b>펫</b> 탭에서 켠다.</sub></td>
 </tr>
 </table>
 
@@ -115,7 +117,7 @@ brew update && brew upgrade dong-mcu && rm -rf /Applications/DongMCU.app && cp -
 | **상태** | 사용량, 초기화·조회 시각 |
 | **표시** | 테마, 크기, 조회 주기, 방향 |
 | **아이콘** | 가운데 그림 |
-| **펫** | 펫 모드, 사용량 링 표시 |
+| **펫** | 펫 모드, 사용량 링, 스스로 움직이기 |
 | **버전** | 업데이트와 변경 내역 |
 
 - **드래그**로 이동, **더블클릭**으로 접기
@@ -137,6 +139,8 @@ brew update && brew upgrade dong-mcu && rm -rf /Applications/DongMCU.app && cp -
 - 🔑 토큰은 **Authorization 헤더로만** 쓰이고 디스크에 쓰거나 로그에 남기지 않는다
 - 🌐 Anthropic 사용량 API와 **업데이트 확인용 GitHub** 외에는 접속하지 않는다
 - 🚫 통계·추적 없음. 외부 Swift 패키지 **의존성 0개**
+- 🖱️ 펫의 **입력 피하기**가 켜져 있을 때만 손쉬운 사용 권한을 묻는다. 글을 쓰는
+  **자리만** 읽고, 무슨 키를 눌렀는지·입력창 내용·화면 그림은 읽지 않는다
 
 업데이트 확인을 끄면 Anthropic API 외에 아무 데도 접속하지 않는다.
 자세한 내용은 **[사용량과 토큰](docs/privacy.md)**.

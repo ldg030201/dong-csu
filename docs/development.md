@@ -29,16 +29,19 @@ VARIANT=test ./build.sh    # DongMCU-Test.app  (dev.sh의 기본값)
 ```bash
 dong-mcu --render out.png 34 61 owl ok large   # HUD (사용률·아이콘·상태·배율)
 dong-mcu --render out.png 34 61 owl ok pet hover   # 펫 모드 (마우스 올린 모습)
+dong-mcu --render out.png 34 61 owl ok test    # 테스트판 모습 (보라 마스코트 + 버전 딱지)
+dong-mcu --probe-accessibility                 # 손쉬운 사용 권한이 붙어 있나
 dong-mcu --render-settings out.png version     # 설정 창의 특정 탭
 dong-mcu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-mcu --render-icon out.png 1024            # 앱 아이콘
-dong-mcu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임
-dong-mcu --render-owl-gif docs/characters/owl  # 기분마다 움직이는 GIF (문서용)
+dong-mcu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임 (기분 + 걸음걸이)
+dong-mcu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
 ```
 
 `--render`의 뒤쪽 인자는 순서와 무관하게 인식한다:
 보기(`expanded` `collapsed` `pet`), `hover` `light` `expandLeft` `stats` `update`,
-배율(`small`~`extraLarge`), 상태(`ok` `stale` `reauth`), 0~1 사이 숫자는 배경 불투명도.
+버전 딱지(`version` 정식판 · `test` 테스트판), 배율(`small`~`extraLarge`),
+상태(`ok` `stale` `reauth`), 0~1 사이 숫자는 배경 불투명도.
 
 `--render-settings`는 탭 이름(`status` `display` `icon` `pet` `account` `version`)과
 `update=1.2.0`(새 버전이 있는 것처럼 그리기)을 받는다.
