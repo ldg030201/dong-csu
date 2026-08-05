@@ -191,6 +191,39 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(showsProcessStats, forKey: Keys.showsProcessStats) }
     }
 
+    /// HUD 왼쪽 위에 버전을 표시할지. 테스트판은 뒤에 `test`가 붙는다.
+    @Published var showsVersionBadge: Bool {
+        didSet { defaults.set(!showsVersionBadge, forKey: Keys.versionBadgeOff) }
+    }
+
+    /// 펫이 가만히 두면 혼자 화면을 걸어다닐지.
+    @Published var petWanders: Bool {
+        didSet { defaults.set(petWanders, forKey: Keys.petWanders) }
+    }
+
+    /// 커서를 펫 위에 올려둔 채 잡지 않으면 비켜줄지.
+    @Published var petDodgesCursor: Bool {
+        didSet { defaults.set(petDodgesCursor, forKey: Keys.petDodgesCursor) }
+    }
+
+    /// 뒤 입력창에 글을 쓰면 그 자리를 비켜줄지.
+    ///
+    /// **기본으로 켜 둔다.** 손쉬운 사용 권한을 주면 글자가 닿는 자리까지 정확히
+    /// 따라가고, 안 주면 앞 창 밖으로 물러나는 거친 방식으로 내려앉는다.
+    /// 꺼 두면 권한을 묻지도 않는다.
+    @Published var petDodgesTyping: Bool {
+        didSet { defaults.set(!petDodgesTyping, forKey: Keys.petDodgesTypingOff) }
+    }
+
+    /// 손쉬운 사용 권한을 이미 한 번 물어봤는지.
+    ///
+    /// **다시는 묻지 않는다.** 권한은 코드 서명에 걸려 있어서 앱을 업데이트하면
+    /// 허용해 둔 게 풀릴 수 있는데, 그때마다 창을 띄우면 허락을 받아내려고 조르는
+    /// 앱이 된다. 풀린 건 메뉴와 설정 창에 남겨 두고, 누를지는 사용자가 정한다.
+    @Published var didAskAccessibility: Bool {
+        didSet { defaults.set(didAskAccessibility, forKey: Keys.didAskAccessibility) }
+    }
+
     static let minOpacity = 0.35
     static let maxOpacity = 1.0
     static let defaultOpacity = 0.92
@@ -212,6 +245,13 @@ final class HUDSettings: ObservableObject {
         static let backdropOpacity = "hud.backdropOpacity"
         static let showsProcessStats = "hud.showsProcessStats"
         static let pollInterval = "hud.pollInterval"
+        // 버전 표시도 기본값이 켜짐이라 반대 의미로 저장한다.
+        static let versionBadgeOff = "hud.versionBadgeOff"
+        static let petWanders = "pet.wanders"
+        static let petDodgesCursor = "pet.dodgesCursor"
+        // 기본값을 켜짐으로 두려고 반대 의미로 저장한다.
+        static let petDodgesTypingOff = "pet.dodgesTypingOff"
+        static let didAskAccessibility = "pet.didAskAccessibility"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -235,6 +275,15 @@ final class HUDSettings: ObservableObject {
         backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
         showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)
         pollInterval = PollInterval(rawValue: defaults.integer(forKey: Keys.pollInterval)) ?? .default
+        showsVersionBadge = !defaults.bool(forKey: Keys.versionBadgeOff)
+        // 혼자 걸어다니고 커서를 피하는 건 꺼진 채로 시작한다. 쓰던 사람의 펫이
+        // 업데이트한 날 갑자기 걸어나가면 고장난 줄 안다.
+        // 입력 피하기만은 켜 둔다 — 가리는 걸 막는 쪽이라 놀랄 일이 없고,
+        // 꺼 두면 권한을 물어볼 일이 없어서 있는 줄도 모른 채 지나간다.
+        petWanders = defaults.bool(forKey: Keys.petWanders)
+        petDodgesCursor = defaults.bool(forKey: Keys.petDodgesCursor)
+        petDodgesTyping = !defaults.bool(forKey: Keys.petDodgesTypingOff)
+        didAskAccessibility = defaults.bool(forKey: Keys.didAskAccessibility)
     }
 }
 

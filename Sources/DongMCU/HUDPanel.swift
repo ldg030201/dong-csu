@@ -52,6 +52,10 @@ final class HUDInteractionView: NSView {
     /// 마스코트 위에 마우스가 올라오고 나갈 때. 추적 영역을 걸어야 불린다.
     var onHoverChanged: (@MainActor (Bool) -> Void)?
 
+    /// 마우스를 누르고 있는 동안. 스스로 움직이던 걸 그동안 멈춘다.
+    /// 손에 잡힌 채로 걸어나가면 잡은 자리에서 미끄러진다.
+    var onPressChanged: (@MainActor (Bool) -> Void)?
+
     /// 마우스와 창 원점 사이의 간격. 드래그 내내 이 값을 유지한다.
     private var dragOffset: CGSize?
 
@@ -73,6 +77,7 @@ final class HUDInteractionView: NSView {
     override func mouseExited(with event: NSEvent) { onHoverChanged?(false) }
 
     override func mouseDown(with event: NSEvent) {
+        onPressChanged?(true)
         // 더블클릭으로 접었다 폈다 한다. 이때는 드래그를 시작하지 않는다.
         if event.clickCount == 2 {
             dragOffset = nil
@@ -112,11 +117,17 @@ final class HUDInteractionView: NSView {
         lastDragPoint = nil
         lastDragAt = nil
         onDragEnded?()
+        onPressChanged?(false)
     }
 
+    /// 메뉴가 떠 있는 동안에도 멈춰 있어야 한다. `popUpContextMenu`는 메뉴가 닫힐 때까지
+    /// 돌아오지 않지만, 타이머는 `.common` 모드라 그동안에도 울린다. 눌러 둔 것으로 쳐서
+    /// 메뉴 뒤에서 펫이 걸어나가지 않게 한다.
     override func rightMouseDown(with event: NSEvent) {
         guard let menu = menuBuilder?() else { return }
+        onPressChanged?(true)
         NSMenu.popUpContextMenu(menu, with: event, for: self)
+        onPressChanged?(false)
     }
 }
 
@@ -155,14 +166,24 @@ final class HUDController {
     private let backdrop = NSView()
     private let usageMonitor = ProcessUsageMonitor()
     private let owlAnimator = OwlAnimator()
+    /// 펫이 혼자 걸어다니고 비켜주는 것들. 창을 옮기는 주인은 여기 하나뿐이다.
+    private let motion = PetMotionController()
+    private let caretWatcher = CaretWatcher()
     /// 지금 창을 끌고 있는지. 부엉이가 버둥거릴지를 정한다.
     private var isDraggingPanel = false
+    /// 마우스 버튼이 눌려 있는지. 눌린 동안에는 스스로 움직이지 않는다.
+    private var isPressed = false
+    /// 커서가 펫 위에 머문 채 잡히지 않으면 비킨다. 그때까지 기다리는 타이머.
+    private var hoverDodgeTimer: Timer?
     /// 화면이 꺼져 있는지. 꺼진 동안에는 부엉이를 움직일 이유가 없다.
     private var areScreensAsleep = false
 
     private static let originXKey = "hud.origin.x"
     private static let originYKey = "hud.origin.y"
     private static let margin: CGFloat = 16
+    /// 커서가 올라온 채 이만큼 지나도 잡지 않으면 비켜준다.
+    /// 더 짧으면 지나가는 커서에도 도망가고, 더 길면 비켜준 걸 알아채기 전에 손이 간다.
+    private static let hoverDodgeDelay: TimeInterval = 0.9
 
     private var mode: HUDMode { settings.mode }
     private var iconStyle: ClaudeIconStyle { settings.iconStyle }
@@ -248,6 +269,7 @@ final class HUDController {
             guard !self.isDraggingPanel else { return }
             self.isDraggingPanel = true
             self.refreshMood()
+            self.syncMotion()
         }
         interactionView.onDragVelocity = { [weak self] velocity in
             self?.owlAnimator.setDragVelocity(velocity)
@@ -255,15 +277,34 @@ final class HUDController {
         interactionView.onHoverChanged = { [weak self] hovering in
             self?.setPetHover(hovering)
         }
+        interactionView.onPressChanged = { [weak self] pressed in
+            guard let self, self.isPressed != pressed else { return }
+            self.isPressed = pressed
+            self.syncMotion()
+        }
         interactionView.onDragEnded = { [weak self] in
             guard let self else { return }
             self.saveOrigin()
             guard self.isDraggingPanel else { return }
             self.isDraggingPanel = false
             self.refreshMood()
+            self.syncMotion()
         }
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
         interactionView.onDoubleClick = { [weak self] point in self?.handleDoubleClick(at: point) }
+
+        motion.frame = { [weak self] in self?.panel.frame ?? .zero }
+        motion.visualFrame = { [weak self] in self?.mascotScreenRect() ?? .zero }
+        motion.move = { [weak self] origin in self?.panel.setFrameOrigin(origin) }
+        motion.setGait = { [weak self] gait in self?.owlAnimator.setGait(gait) }
+        motion.didSettle = { [weak self] in
+            guard let self else { return }
+            self.saveOrigin()
+            // 스스로 움직이는 동안에는 추적 영역이 커서를 놓친다(mouseEntered는 커서가
+            // 움직여야 온다). 자리를 잡은 뒤에 지금 상태를 다시 맞춘다.
+            self.setPetHover(self.isMouseInside(UsageHUDView.petHitRect(scale: self.scale)))
+        }
+        caretWatcher.onCaret = { [weak self] rect in self?.motion.caretMoved(to: rect) }
 
         applyAppearance()
         layoutHosting(for: size)
@@ -271,6 +312,7 @@ final class HUDController {
         refreshTrackingArea()
         syncUsageMonitor(visible: true)
         syncOwlAnimator(visible: true)
+        syncMotion(visible: true)
         refreshMood()
 
         panel.setFrameOrigin(restoredOrigin())
@@ -321,6 +363,15 @@ final class HUDController {
         observe(settings.$petRingDisplay) {
             $0.refreshTrackingArea()
             $0.rebuildRootView()
+        }
+        observe(settings.$showsVersionBadge) { $0.rebuildRootView() }
+        observe(settings.$petWanders) { $0.syncMotion() }
+        observe(settings.$petDodgesTyping) { $0.syncMotion() }
+        // 커서를 피하려면 마스코트 위에 커서가 있는지를 알아야 한다.
+        // 링을 항상 보이게 해 뒀어도 그때는 추적 영역이 필요하다.
+        observe(settings.$petDodgesCursor) {
+            $0.syncMotion()
+            $0.refreshTrackingArea()
         }
         observe(settings.$isHUDVisible) { $0.applyHUDVisible() }
         observe(settings.$expandSide) { $0.applyExpandSide() }
@@ -416,14 +467,75 @@ final class HUDController {
         }
     }
 
+    /// 펫이 스스로 움직여도 되는 상황인지 다시 판단한다.
+    ///
+    /// 펫 모드에서만 돈다. 숫자가 붙은 카드가 혼자 걸어다니면 읽으려던 값이 도망가고,
+    /// 접힌 링은 서랍 손잡이라 자리가 고정돼 있어야 한다.
+    private func syncMotion(visible: Bool? = nil) {
+        let isVisible = visible ?? panel.isVisible
+        let canMove = isVisible
+            && !areScreensAsleep
+            && settings.mode == .pet
+            && !isDraggingPanel
+            && !isPressed
+
+        motion.wanders = settings.petWanders
+        motion.dodgesCursor = settings.petDodgesCursor
+        motion.dodgesTyping = settings.petDodgesTyping
+        motion.canReadCaret = { CaretWatcher.isTrusted }
+        motion.update(active: canMove)
+
+        // 캐럿을 좇는 건 비쌀 뿐 아니라 남의 앱을 들여다보는 일이다.
+        // 정말 쓸 상황에서만 켠다.
+        if canMove, settings.petDodgesTyping {
+            askForAccessibilityOnce()
+            caretWatcher.start()
+        } else {
+            caretWatcher.stop()
+        }
+    }
+
+    /// 권한 창은 **살면서 딱 한 번만** 띄운다.
+    ///
+    /// 권한은 코드 서명에 걸려 있어서, 앱을 업데이트하면 허용해 둔 게 풀린 채로 뜬다.
+    /// 그때마다 창을 띄우면 허락을 받아낼 때까지 조르는 앱이 된다. 풀린 사실은
+    /// 메뉴와 설정 창에 조용히 남겨 두고, 다시 허용할지는 사용자가 정한다.
+    private func askForAccessibilityOnce() {
+        guard !settings.didAskAccessibility, !CaretWatcher.isTrusted else { return }
+        settings.didAskAccessibility = true
+        CaretWatcher.requestTrust()
+    }
+
+    /// 마스코트가 실제로 화면을 가리는 자리(화면 좌표).
+    ///
+    /// 펫의 창은 링이 들어갈 만큼 크지만 그림은 그보다 작다. 창으로 따지면 아직
+    /// 글자를 가리지도 않았는데 비켜서, 왜 움직였는지 알 수 없어진다.
+    private func mascotScreenRect() -> NSRect {
+        let panelFrame = panel.frame
+        guard settings.mode == .pet else { return panelFrame }
+
+        let height = UsageHUDView.petOwlHeight(scale: scale)
+        // 그리드 15열 중 몸통이 쓰는 건 가운데 11열이다. 나머지는 날개를 펼 여백이라
+        // 평소에는 비어 있어서, 그 폭까지 가린다고 치면 쓸데없이 멀리 비킨다.
+        let width = height * CGFloat(OwlMark.bodyColumns) / CGFloat(OwlMark.lines)
+        return NSRect(
+            x: panelFrame.midX - width / 2,
+            y: panelFrame.midY - height / 2,
+            width: width,
+            height: height
+        )
+    }
+
     @objc private func handleScreensSleep() {
         areScreensAsleep = true
         syncOwlAnimator()
+        syncMotion()
     }
 
     @objc private func handleScreensWake() {
         areScreensAsleep = false
         syncOwlAnimator()
+        syncMotion()
     }
 
     /// 사용량·연결 상태·드래그 여부에서 지금 기분을 다시 정한다.
@@ -624,6 +736,22 @@ final class HUDController {
         pet.isEnabled = panel.isVisible
         menu.addItem(pet)
 
+        // 권한이 없으면 입력 피하기가 거친 방식으로 내려앉는다. 설정 창을 열어 봐야
+        // 알 수 있으면 사용자는 그냥 고장난 줄 안다. 여기서 바로 갈 수 있게 둔다.
+        if settings.petDodgesTyping, !CaretWatcher.isTrusted {
+            let grant = NSMenuItem(
+                title: "손쉬운 사용 권한 허용…",
+                action: #selector(handleGrantAccessibility),
+                keyEquivalent: ""
+            )
+            grant.target = self
+            grant.attributedTitle = NSAttributedString(
+                string: grant.title,
+                attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)]
+            )
+            menu.addItem(grant)
+        }
+
         let toggle = NSMenuItem(
             title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
             action: #selector(handleToggleHUD),
@@ -696,6 +824,12 @@ final class HUDController {
             self?.store.refresh(force: true)
         }
     }
+    /// 권한 창을 한 번 띄우고, 이미 거절해서 안 뜨는 경우를 대비해 설정도 같이 연다.
+    @objc private func handleGrantAccessibility() {
+        CaretWatcher.requestTrust()
+        CaretWatcher.openAccessibilitySettings()
+    }
+
     @objc private func handleResetPosition() { resetPosition() }
 
     @objc private func handleToggleHUD() {
@@ -778,8 +912,10 @@ final class HUDController {
         // 애니메이션 도중에 표본이 갱신되면 화면이 다시 배치되면서 끊겨 보인다.
         // 잠시 멈추고 끝난 뒤에 다시 맞춘다.
         usageMonitor.stop()
+        // 보기가 바뀌는 동안 혼자 걸어가면 창이 두 곳에서 동시에 움직인다.
+        syncMotion()
         container.layer?.cornerRadius = UsageHUDView.cornerRadius(mode: mode, scale: scale)
-        isHoveringPet = false
+        setPetHover(false)
         applyAppearance()
         refreshPassThroughRects()
 
@@ -794,6 +930,7 @@ final class HUDController {
                 self.saveOrigin()
                 self.syncUsageMonitor()
                 self.refreshTrackingArea()
+                self.syncMotion()
             }
         } else {
             rebuildRootView()
@@ -802,6 +939,7 @@ final class HUDController {
                 self?.saveOrigin()
                 self?.syncUsageMonitor()
                 self?.refreshTrackingArea()
+                self?.syncMotion()
             }
         }
     }
@@ -818,8 +956,10 @@ final class HUDController {
             interactionView.removeTrackingArea(trackingArea)
             self.trackingArea = nil
         }
-        // 링을 항상 보이거나 아예 안 보이게 해 뒀으면 마우스를 좇을 이유가 없다.
-        guard settings.mode == .pet, settings.petRingDisplay == .hover else { return }
+        // 링을 항상 보이거나 아예 안 보이게 해 뒀으면 마우스를 좇을 이유가 없다 —
+        // 커서를 피하게 해 뒀다면 그때는 링과 무관하게 커서 자리를 알아야 한다.
+        guard settings.mode == .pet else { return }
+        guard settings.petRingDisplay == .hover || settings.petDodgesCursor else { return }
 
         let area = NSTrackingArea(
             rect: UsageHUDView.petHitRect(scale: scale),
@@ -846,9 +986,36 @@ final class HUDController {
     }
 
     private func setPetHover(_ hovering: Bool) {
+        // 대기 타이머는 상태가 그대로여도 다시 잡는다. 비키고 나서 커서가 여전히
+        // 위에 있으면 mouseEntered가 다시 오지 않아서, 여기서 이어 걸어야 계속 비킨다.
+        scheduleHoverDodge(hovering)
         guard isHoveringPet != hovering else { return }
         isHoveringPet = hovering
         rebuildRootView()
+    }
+
+    /// 커서가 올라와 있으면 잠시 뒤에 비키도록 예약한다.
+    /// 올라오자마자 도망가면 잡을 수가 없어서, 잡을 틈을 주고 나서 움직인다.
+    private func scheduleHoverDodge(_ hovering: Bool) {
+        hoverDodgeTimer?.invalidate()
+        hoverDodgeTimer = nil
+        guard hovering, settings.petDodgesCursor, settings.mode == .pet, panel.isVisible else { return }
+
+        let timer = Timer(timeInterval: Self.hoverDodgeDelay, repeats: false) { _ in
+            MainActor.assumeIsolated { [weak self] in self?.dodgeCursorIfIdle() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        hoverDodgeTimer = timer
+    }
+
+    private func dodgeCursorIfIdle() {
+        hoverDodgeTimer = nil
+        // 잡고 있는 중이면 비키지 않는다. 손에 들린 게 도망가면 놀란다.
+        guard !isPressed, !isDraggingPanel, NSEvent.pressedMouseButtons == 0 else { return }
+        // 글을 쓰는 동안에는 커서를 피하지 않는다(왼쪽으로 물러나면 쓴 글을 덮는다).
+        // 다 쓰고 나서도 커서가 그대로 올라와 있으면 그때 비킨다.
+        guard !motion.isTypingQuiet else { return scheduleHoverDodge(isHoveringPet) }
+        motion.dodgeCursor()
     }
 
     private func applyHUDVisible() {
@@ -862,6 +1029,7 @@ final class HUDController {
         }
         syncUsageMonitor(visible: visible)
         syncOwlAnimator(visible: visible)
+        syncMotion(visible: visible)
         // 숨겨져 있는 동안 커서가 움직였을 수 있다. 다시 보일 때 호버 상태를 맞춘다.
         refreshTrackingArea()
         rebuildRootView()
@@ -913,6 +1081,8 @@ final class HUDController {
             usageMonitor: settings.showsProcessStats && mode == .expanded ? usageMonitor : nil,
             scale: scale,
             showsUpdateBadge: updates.hasUpdate,
+            versionBadge: settings.showsVersionBadge ? AppInfo.badgeVersion : nil,
+            versionBadgeIsTest: AppInfo.isTestBuild,
             onOpenUpdates: { [weak self] in self?.openUpdates() },
             owlAnimator: owlAnimator
         )
