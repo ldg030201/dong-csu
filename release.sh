@@ -54,6 +54,16 @@ if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
   exit 1
 fi
 
+# 원격이 앞서 있으면 먼저 따라잡는다.
+#
+# bottle 워크플로가 릴리스가 끝난 뒤 formula 커밋을 main 에 밀어 넣기 때문에,
+# 연달아 릴리스하면 여기서 뒤처져 있다. 그대로 두면 태그만 올라가고 main 푸시가
+# 거부되어, 태그가 main 에 없는 커밋을 가리키는 상태로 남는다.
+if [[ -n "$(git log --oneline HEAD..origin/main)" ]]; then
+  echo "▸ 원격이 앞서 있다 — 리베이스"
+  git pull --rebase --quiet origin main
+fi
+
 echo "▸ $TAG 준비"
 
 # ── 2. 버전 올리고 빌드로 검증 ──────────────────────────────────
