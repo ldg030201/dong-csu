@@ -1,6 +1,6 @@
 import AppKit
 
-let dongMCUVersion = "1.5.0"
+let dongMCUVersion = "1.5.1"
 
 if CommandLine.arguments.contains("--version") {
     print("dong-mcu \(AppInfo.version)")
