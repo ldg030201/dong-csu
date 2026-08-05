@@ -6,6 +6,12 @@ class DongMcu < Formula
   license "MIT"
   head "https://github.com/ldg030201/dong-mcu.git", branch: "main"
 
+  bottle do
+    root_url "https://github.com/ldg030201/dong-mcu/releases/download/v1.4.0.2"
+    sha256 cellar: :any_skip_relocation, arm64_sequoia: "8e2e5ee78488846279d53945fca66a19bb2d935c1379a3491cbf40d03e27e8b6"
+    sha256 cellar: :any_skip_relocation, arm64_sonoma:  "6af8dccf6c9fc6356cfca7f321e9e0f149d6827f00f72e19e11b3e00d260903e"
+  end
+
 
   depends_on macos: :sonoma
 
