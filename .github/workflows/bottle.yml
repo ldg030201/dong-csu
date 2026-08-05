@@ -91,10 +91,19 @@ jobs:
 
           # --root-url 이 formula 에 기록되지 않는 경우가 있다. 없으면 직접 넣는다.
           # 이게 빠지면 Homebrew 가 공식 저장소(ghcr.io)에서 찾다가 404 로 실패한다.
+          # awk로 줄을 하나 끼워 넣는다. macOS의 BSD sed는 치환문의 \n을 개행으로
+          # 바꾸지 않아서, 예전에 리터럴 "\n"이 그대로 박혀 formula가 깨졌다(v1.4.0).
           if ! grep -q 'root_url' Formula/dong-mcu.rb; then
             ROOT_URL="https://github.com/ldg030201/dong-mcu/releases/download/$TAG"
-            sed -i '' "s|^  bottle do$|  bottle do\\\n    root_url \"$ROOT_URL\"|" Formula/dong-mcu.rb
+            awk -v url="$ROOT_URL" '
+              { print }
+              /^  bottle do$/ { print "    root_url \"" url "\"" }
+            ' Formula/dong-mcu.rb > Formula/dong-mcu.rb.tmp
+            mv Formula/dong-mcu.rb.tmp Formula/dong-mcu.rb
           fi
+
+          # 문법이 깨지면 아무도 설치할 수 없다. 올리기 전에 여기서 막는다.
+          ruby -c Formula/dong-mcu.rb
           grep -A4 'bottle do' Formula/dong-mcu.rb
 
       - name: 릴리스에 올리기
