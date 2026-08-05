@@ -40,6 +40,10 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "1.4.0.1", date: "2026-08-05", notes: [
+            "Homebrew formula가 깨져 설치·업데이트가 실패하던 문제 수정",
+            "업데이트가 끝난 뒤 키를 누르면 터미널 창이 닫히는 기능 추가",
+        ]),
         ChangelogEntry(version: "1.4.0", date: "2026-08-05", notes: [
             "펫 모드 추가 (마스코트만 표시, 설정 창에 펫 탭 추가)",
             "펫 모드 사용량 링 표시 설정 추가 (항상 / 마우스를 올리면 / 표시 안 함)",

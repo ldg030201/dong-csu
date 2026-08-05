@@ -185,8 +185,9 @@ final class UpdateChecker: ObservableObject {
     static func openUpgrade() -> Bool {
         // /Applications 에 있는 건 복사본이라 brew upgrade만으로는 갱신되지 않는다.
         // 있으면 새 것으로 덮고 다시 띄운다.
+        // /bin/sh 로 두면 `read -n 1`(한 글자만 받기)이 없다. bash 는 macOS 에 늘 있다.
         let script = """
-        #!/bin/sh
+        #!/bin/bash
         echo "DongMCU 업데이트"
         echo
         brew update && brew upgrade dong-mcu || exit 1
@@ -203,6 +204,29 @@ final class UpdateChecker: ObservableObject {
 
         echo
         echo "업데이트가 끝났습니다."
+        echo
+        read -n 1 -s -r -p "아무 키나 누르면 이 창이 닫힙니다…"
+        echo
+
+        # 스크립트가 끝나도 터미널 설정에 따라 창이 남는다. 직접 닫는다.
+        # **지금 셸이 붙어 있는 tty로 창을 찾는다** — 제목으로 찾으면 사용자가 열어둔
+        # 다른 창까지 닫힐 수 있다.
+        # 셸이 아직 살아 있는 동안 닫으면 "실행 중인 프로세스를 끝낼까요?"를 묻기 때문에,
+        # 잠깐 미뤘다가 닫도록 떼어 놓고 곧바로 빠져나온다.
+        TTY="$(tty)"
+        (
+          sleep 0.3
+          osascript <<APPLESCRIPT
+        tell application "Terminal"
+          repeat with w in windows
+            repeat with t in tabs of w
+              if tty of t is "$TTY" then close w saving no
+            end repeat
+          end repeat
+        end tell
+        APPLESCRIPT
+        ) >/dev/null 2>&1 &
+        exit 0
         """
         return TerminalScript.run(script, fileName: "dong-mcu-upgrade.command")
     }
