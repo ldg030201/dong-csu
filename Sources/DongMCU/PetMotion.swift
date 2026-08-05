@@ -38,9 +38,11 @@ final class PetMotionController {
     /// 배회 속도(pt/s). 걸음 한 바퀴(0.56초)에 한 칸 남짓 나아가는 정도라
     /// 발을 갈아 딛는 것과 실제 이동이 크게 어긋나지 않는다.
     private static let walkSpeed: CGFloat = 26
-    /// 커서를 피할 때의 속도(pt/s). 배회보다 빠르되 순간이동처럼 보이지는 않게.
-    /// 커서는 가만히 있어 주므로 느긋해도 된다.
-    private static let dodgeSpeed: CGFloat = 120
+    /// 커서를 피할 때의 속도(pt/s).
+    ///
+    /// 처음엔 120으로 뒀는데 **비키는 데 1.2초가 걸려서 굼떠 보였다.**
+    /// 커서는 이미 위에 올라와 있는 상태라, 비키기로 정한 뒤에는 지체할 이유가 없다.
+    private static let dodgeSpeed: CGFloat = 210
     /// 쫓길 때의 속도(pt/s). 걸어서 비키는 것과 확실히 구별돼야 한다.
     private static let dashSpeed: CGFloat = 300
     /// 화면 가장자리에서 이만큼은 띄운다.

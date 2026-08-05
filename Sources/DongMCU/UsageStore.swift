@@ -24,6 +24,13 @@ final class UsageStore: ObservableObject {
     /// 화면에 떠 있는 숫자가 마지막 성공값(= 지금 값이 아닐 수 있음)인지.
     var isStale: Bool { snapshot != nil && errorText != nil }
 
+    /// 화면 숫자가 지금 값이 아닌 상태. 재로그인이 필요하거나 갱신이 끊겼다.
+    ///
+    /// 마스코트가 회색이 되는 조건이자 스스로 움직이기를 멈추는 조건이다.
+    /// 여러 곳에서 같은 판단을 하므로 한 곳에 둔다 — 어긋나면 캐릭터만 회색이고
+    /// 나머지는 멀쩡해 보인다.
+    var isDisconnected: Bool { needsReauth || isStale }
+
     private var timer: Timer?
     private var backoffUntil: Date?
     private var consecutiveRateLimits = 0

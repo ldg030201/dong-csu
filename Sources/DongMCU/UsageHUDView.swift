@@ -223,9 +223,7 @@ struct UsageHUDView: View {
         }
     }
 
-    /// 조회가 안 되는 상태. 마스코트가 회색으로 바뀌는 조건과 같은 것을 쓴다
-    /// (`OwlMood.resolve`). 두 곳이 어긋나면 캐릭터만 회색이고 나머지는 멀쩡해 보인다.
-    private var isDisconnected: Bool { store.needsReauth || store.isStale }
+    private var isDisconnected: Bool { store.isDisconnected }
 
     private var ringDiameter: CGFloat { s(62) }
     private var outerLineWidth: CGFloat { s(6) }
@@ -500,8 +498,12 @@ struct UsageHUDView: View {
                 .fixedSize()
                 .foregroundStyle(versionBadgeIsTest ? palette.testBadge : palette.faintText)
                 .shadow(color: palette.textShadow, radius: s(1.5))
-                .padding(.horizontal, versionBadgeIsTest ? s(5) : 0)
-                .padding(.vertical, versionBadgeIsTest ? s(1) : 0)
+                // 카드의 둥근 모서리가 글자를 깎지 않게 띄운다. 모서리 반지름이
+                // 20pt라 글자 높이쯤에서 카드 경계가 x≈5.7pt까지 들어와 있는데,
+                // 여백 없이 두면 **첫 글자 왼쪽이 잘린다.** 테스트판은 알약 배경
+                // 덕에 우연히 여백이 있어서 멀쩡했고, 정식판만 깨져 보였다.
+                .padding(.horizontal, s(5))
+                .padding(.vertical, s(1))
                 .background {
                     if versionBadgeIsTest {
                         Capsule().fill(palette.testBadge.opacity(0.18))

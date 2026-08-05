@@ -181,8 +181,10 @@ final class HUDController {
     private static let originYKey = "hud.origin.y"
     private static let margin: CGFloat = 16
     /// 커서가 올라온 채 이만큼 지나도 잡지 않으면 비켜준다.
-    /// 더 짧으면 지나가는 커서에도 도망가고, 더 길면 비켜준 걸 알아채기 전에 손이 간다.
-    private static let hoverDodgeDelay: TimeInterval = 0.9
+    ///
+    /// 지나가는 커서에까지 도망가지 않을 만큼은 기다려야 하지만, 0.9초는 길었다 —
+    /// 비키는 시간까지 더하면 손을 올리고 2초를 기다리는 셈이라 굼떠 보였다.
+    private static let hoverDodgeDelay: TimeInterval = 0.5
 
     private var mode: HUDMode { settings.mode }
     private var iconStyle: ClaudeIconStyle { settings.iconStyle }
@@ -470,11 +472,14 @@ final class HUDController {
     /// 접힌 링은 서랍 손잡이라 자리가 고정돼 있어야 한다.
     private func syncMotion(visible: Bool? = nil) {
         let isVisible = visible ?? panel.isVisible
+        // 조회가 끊긴 동안에는 멈춰 있는다. 회색으로 굳은 채 걸어다니면
+        // "멈췄다"는 표시가 무색해진다.
         let canMove = isVisible
             && !areScreensAsleep
             && settings.mode == .pet
             && !isDraggingPanel
             && !isPressed
+            && !store.isDisconnected
 
         motion.wanders = settings.petWanders
         motion.dodgesCursor = settings.petDodgesCursor
@@ -1055,6 +1060,8 @@ final class HUDController {
             .sink { [weak self] _ in
                 self?.updateTooltip()
                 self?.refreshMood()
+                // 끊겼다 돌아오면 다시 걸어다녀야 하고, 끊기면 멈춰야 한다.
+                self?.syncMotion()
             }
             .store(in: &cancellables)
         updateTooltip()
