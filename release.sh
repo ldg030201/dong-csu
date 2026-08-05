@@ -109,6 +109,21 @@ echo "▸ sha256 ${SHA:0:16}…"
 # ── 5. formula 갱신 ────────────────────────────────────────────
 sed -i '' -E "s|^  url \".*\"$|  url \"$TARBALL\"|" Formula/dong-mcu.rb
 sed -i '' -E "s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" Formula/dong-mcu.rb
+
+# 지난 버전의 bottle 블록을 지운다.
+#
+# 그냥 두면 root_url과 체크섬이 옛 태그를 가리킨 채로 남는다. 새 버전에는 그런
+# bottle이 없으므로 Homebrew가 받으려다 404를 내고 **설치가 통째로 실패한다.**
+# 지우면 bottle 워크플로가 새로 만들어 붙일 때까지 소스 빌드로 넘어간다 —
+# 느릴 뿐 실패하지는 않는다.
+awk '
+  /^  bottle do$/ { skip = 1 }
+  skip && /^  end$/ { skip = 0; next }
+  !skip { print }
+' Formula/dong-mcu.rb > Formula/dong-mcu.rb.tmp
+mv Formula/dong-mcu.rb.tmp Formula/dong-mcu.rb
+ruby -c Formula/dong-mcu.rb >/dev/null
+
 git add Formula/dong-mcu.rb
 git commit -q -m "📦 formula를 $TAG 로 갱신"
 git push -q origin main
