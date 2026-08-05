@@ -41,8 +41,7 @@ final class PetMotionController {
     /// 커서를 피할 때의 속도(pt/s). 배회보다 빠르되 순간이동처럼 보이지는 않게.
     /// 커서는 가만히 있어 주므로 느긋해도 된다.
     private static let dodgeSpeed: CGFloat = 120
-    /// 글자를 피할 때의 속도(pt/s). **타이핑은 기다려 주지 않는다** —
-    /// 느긋하게 비키면 비키는 도중에 이미 덮인다. 이때만 뛴다.
+    /// 쫓길 때의 속도(pt/s). 걸어서 비키는 것과 확실히 구별돼야 한다.
     private static let dashSpeed: CGFloat = 300
     /// 화면 가장자리에서 이만큼은 띄운다.
     private static let edgeMargin: CGFloat = 8
@@ -52,6 +51,8 @@ final class PetMotionController {
     private static let minimumMove: CGFloat = 24
     /// 커서에서 물러나는 거리. 클릭 영역(창 한 변)보다 커야 한 번에 벗어난다.
     private static let cursorRetreat: CGFloat = 1.15
+    /// 비킨 지 이 안에 또 비켜야 하면 쫓기는 것으로 본다.
+    private static let chaseWindow: TimeInterval = 4
     /// 마지막 입력 뒤 이만큼은 얌전히 있는다.
     ///
     /// **2초로 뒀더니 짧았다.** 글을 쓰다 잠깐 생각하는 사이에 배회가 걸어나가서,
@@ -73,6 +74,8 @@ final class PetMotionController {
     }
 
     private var motion: Motion = .still
+    /// 마지막으로 커서를 피한 시각. 연달아 피하면 쫓기는 중이다.
+    private var lastCursorDodgeAt = Date.distantPast
     private var isActive = false
     private var timer: Timer?
 
@@ -285,7 +288,11 @@ final class PetMotionController {
                 y: panel.minY + direction.dy * retreat
             )) else { return }
             guard Self.distance(panel.origin, target) >= Self.minimumMove else { continue }
-            begin(dodge: target, hurried: false)
+            // 한 번 비켰는데 또 올라왔으면 장난치는 것이다. 그때도 느긋하게 걸으면
+            // 잡히려고 서 있는 것처럼 보인다. **쫓아오면 뛴다.**
+            let chased = Date().timeIntervalSince(lastCursorDodgeAt) < Self.chaseWindow
+            lastCursorDodgeAt = Date()
+            begin(dodge: target, hurried: chased)
             return
         }
     }
