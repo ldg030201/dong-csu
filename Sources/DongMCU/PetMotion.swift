@@ -30,13 +30,6 @@ final class PetMotionController {
     var wanders = false
     /// 커서를 위에 올려두고 잡지 않으면 비킨다.
     var dodgesCursor = false
-    /// 글을 쓰는 자리를 비켜준다.
-    var dodgesTyping = false
-    /// 캐럿 자리를 읽을 수 있는지(손쉬운 사용 권한).
-    ///
-    /// 읽을 수 있으면 **거친 회피는 쓰지 않는다** — 캐럿이 창 저쪽 끝에 있는데도
-    /// 창 밖으로 튀어나가면 왜 움직였는지 알 수 없다. 정밀한 쪽이 늘 이긴다.
-    var canReadCaret: () -> Bool = { false }
 
     // MARK: - 치수
 
@@ -61,12 +54,6 @@ final class PetMotionController {
     private static let minimumMove: CGFloat = 24
     /// 커서에서 물러나는 거리. 클릭 영역(창 한 변)보다 커야 한 번에 벗어난다.
     private static let cursorRetreat: CGFloat = 1.15
-    /// 글을 쓰기 **시작한 순간**을 잡으려면 이 주기로 깨어나야 한다.
-    /// 깨어나서 하는 일은 마지막 입력 시각 하나를 읽는 것뿐이라 싸다 —
-    /// 비싼 창 목록 조회는 시작을 잡은 그 순간에만 한다.
-    private static let typingPoll: TimeInterval = 0.3
-    /// 창 밖으로 물러날 때 창과 띄우는 간격.
-    private static let windowGap: CGFloat = 10
     /// 마지막 입력 뒤 이만큼은 얌전히 있는다. `CaretWatcher`가 캐럿을 좇는 시간보다
     /// 길게 잡아서, 좇기가 끝나기도 전에 다시 걸어나가지 않게 한다.
     /// 이 값이 짧아도 걷다 멈춘 뒤에는 `restRange`만큼 더 쉬므로 바로 걸어나가지는 않는다.
@@ -118,9 +105,6 @@ final class PetMotionController {
     /// 그동안 움직여도 되는 건 오른쪽·아래로만 가는 입력 회피뿐이다.
     var isTypingQuiet: Bool { Self.secondsSinceKey < Self.typingQuiet }
 
-    /// 직전 틱에도 쓰고 있었는지. 안 쓰다가 **쓰기 시작한 순간**을 잡는 데 쓴다.
-    private var wasTyping = false
-
     // MARK: - 켜고 끄기
 
     /// 스스로 움직여도 되는 상황인지 알려준다.
@@ -159,8 +143,6 @@ final class PetMotionController {
         case .still:
             return nil
         case .resting(let until):
-            // 글쓰기를 피해야 하면 시작하는 순간을 놓치지 않게 짧게 깨어난다.
-            if dodgesTyping { return Self.typingPoll }
             guard wanders else { return nil }
             // 글을 쓰는 중이면 그게 멎을 때까지도 기다린다. 쓰는 내내 깨어나서
             // 시계만 확인할 이유가 없다.
@@ -196,7 +178,6 @@ final class PetMotionController {
 
     private func tick() {
         guard isActive else { return halt() }
-        noticeTypingStart()
 
         switch motion {
         case .still:
@@ -325,78 +306,6 @@ final class PetMotionController {
         begin(dodge: target, hurried: true)
     }
 
-    /// 안 쓰다가 **쓰기 시작한 순간**을 잡는다.
-    ///
-    /// 여기서만 창 목록을 물어본다. 창 목록 조회는 WindowServer에 말을 거는 일이라
-    /// 틱마다 하면 비싸다. 시작하는 순간에 한 번이면 충분하다 — 한 번 창 밖으로
-    /// 나가고 나면 더 밀려날 데가 없어서 타이핑이 이어져도 다시 움직일 일이 없다.
-    private func noticeTypingStart() {
-        let typing = isTypingQuiet
-        defer { wasTyping = typing }
-        guard typing, !wasTyping, dodgesTyping, !isDodging else { return }
-        // 캐럿을 읽을 수 있으면 그쪽이 정확하다. 거친 판단은 쓰지 않는다.
-        guard !canReadCaret() else { return }
-        guard let target = windowDodgeTarget() else { return }
-        begin(dodge: target, hurried: true)
-    }
-
-    /// 손쉬운 사용 권한 없이 쓰는 **거친** 회피.
-    ///
-    /// 캐럿이 어디 있는지는 모르지만 **앞 창이 어디까지 차지하는지는 권한 없이 읽힌다.**
-    /// 글을 쓰기 시작했는데 마스코트가 그 창을 덮고 있으면 창 밖으로 물러난다.
-    /// 캐럿이 닿기 전에 미리 비키는 셈이라 정밀하지는 않지만, 가릴 일이 없어진다.
-    ///
-    /// **왼쪽으로는 가지 않는다.** 정밀 회피와 같은 규칙이다 — 창을 가로질러 왼쪽으로
-    /// 날아가면 방금 쓴 글 위를 지나가는 것으로 보인다. 오른쪽·아래·위가 다 막혔으면
-    /// (전체화면 창처럼) 그냥 있는다.
-    private func windowDodgeTarget() -> NSPoint? {
-        guard let window = Self.frontmostWindowFrame(), let area = walkArea() else { return nil }
-        let panel = frame()
-        let visual = visualFrame()
-        guard visual.intersects(window) else { return nil }
-
-        // 창과 그림 사이의 여백. 창 밖으로 내보내야 하는 건 창이 아니라 그림이다.
-        let leftPad = visual.minX - panel.minX
-        let bottomPad = visual.minY - panel.minY
-        let gap = Self.windowGap
-
-        let right = window.maxX + gap - leftPad
-        if right <= area.maxX { return NSPoint(x: right, y: panel.minY) }
-
-        let below = window.minY - gap - visual.height - bottomPad
-        if below >= area.minY { return NSPoint(x: panel.minX, y: below) }
-
-        let above = window.maxY + gap - bottomPad
-        if above <= area.maxY { return NSPoint(x: panel.minX, y: above) }
-
-        return nil
-    }
-
-    /// 지금 앞에 나와 있는 앱의 창 자리. **아무 권한도 필요 없다.**
-    ///
-    /// 창 목록은 앞에서부터 오므로 그 앱의 첫 일반 창(`layer` 0)이 맨 앞 창이다.
-    /// 메뉴·툴팁 같은 것들은 레이어가 달라서 걸러진다.
-    private static func frontmostWindowFrame() -> CGRect? {
-        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-              let list = CGWindowListCopyWindowInfo(
-                  [.optionOnScreenOnly, .excludeDesktopElements],
-                  kCGNullWindowID
-              ) as? [[String: Any]]
-        else { return nil }
-
-        for entry in list {
-            guard entry[kCGWindowOwnerPID as String] as? pid_t == pid,
-                  entry[kCGWindowLayer as String] as? Int == 0,
-                  let raw = entry[kCGWindowBounds as String] as? [String: Any],
-                  let bounds = CGRect(dictionaryRepresentation: raw as CFDictionary),
-                  // 아주 작은 창은 입력창이 아니라 팔레트·인디케이터일 가능성이 크다.
-                  bounds.width > 160, bounds.height > 100
-            else { continue }
-            return bounds.flippedFromQuartz
-        }
-        return nil
-    }
-
     /// 글은 왼쪽에서 오른쪽으로 흐른다. 그래서 **오른쪽으로 먼저** 비키고, 오른쪽이
     /// 막히면 한 줄 내려간다 — 줄바꿈과 같은 움직임이라 다음에 어디로 갈지 예측된다.
     /// 아래까지 막히면 맨 위로 돌아가서 다시 시작한다.
@@ -478,17 +387,5 @@ final class PetMotionController {
         let dx = rhs.x - lhs.x
         let dy = rhs.y - lhs.y
         return (dx * dx + dy * dy).squareRoot()
-    }
-}
-
-extension CGRect {
-    /// Quartz 좌표를 AppKit 좌표로 뒤집는다.
-    ///
-    /// 창 목록(`CGWindowListCopyWindowInfo`)과 손쉬운 사용이 주는 좌표는 원점이
-    /// **주 화면 왼쪽 위**고, 창 프레임(`NSWindow.frame`)은 왼쪽 아래다.
-    /// 뒤집지 않고 섞어 쓰면 세로가 통째로 반대인 자리가 나온다.
-    var flippedFromQuartz: CGRect {
-        guard let primary = NSScreen.screens.first else { return self }
-        return CGRect(x: minX, y: primary.frame.maxY - maxY, width: width, height: height)
     }
 }

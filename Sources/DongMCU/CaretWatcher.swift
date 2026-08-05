@@ -184,3 +184,15 @@ final class CaretWatcher {
     }
 
 }
+
+extension CGRect {
+    /// Quartz 좌표를 AppKit 좌표로 뒤집는다.
+    ///
+    /// 창 목록(`CGWindowListCopyWindowInfo`)과 손쉬운 사용이 주는 좌표는 원점이
+    /// **주 화면 왼쪽 위**고, 창 프레임(`NSWindow.frame`)은 왼쪽 아래다.
+    /// 뒤집지 않고 섞어 쓰면 세로가 통째로 반대인 자리가 나온다.
+    var flippedFromQuartz: CGRect {
+        guard let primary = NSScreen.screens.first else { return self }
+        return CGRect(x: minX, y: primary.frame.maxY - maxY, width: width, height: height)
+    }
+}

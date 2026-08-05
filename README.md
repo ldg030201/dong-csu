@@ -64,7 +64,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 <td align="center"><img src="docs/characters/owl/dizzy.gif" width="96" alt="어지러움"><br><sub><b>어지러움</b><br>마구 흔들면</sub></td>
 <td align="center"><img src="docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
 <td align="center"><img src="docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>글자를 피할 때</sub></td>
-<td colspan="2" align="left"><sub>펫 모드에서 <b>혼자 돌아다니게</b> 할 수 있다.<br>커서를 올려두면 비켜주고, 뒤 입력창에 글을 쓰면 <b>가만히 섰다가</b><br>글자가 닿을 참에 <b>뛰어서</b> 비킨다. 설정 창의 <b>펫</b> 탭에서 켠다.</sub></td>
+<td colspan="2" align="left"><sub>펫 모드에서 <b>혼자 돌아다니게</b> 할 수 있다.<br>커서를 올려두면 비켜주고, 뒤 입력창에 글을 쓰면 <b>가만히 섰다가</b><br>글자가 닿을 참에 <b>뛰어서</b> 비킨다(손쉬운 사용 권한 필요).<br>설정 창의 <b>펫</b> 탭에서 켠다.</sub></td>
 </tr>
 </table>
 

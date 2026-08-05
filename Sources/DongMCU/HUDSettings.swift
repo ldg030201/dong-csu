@@ -208,20 +208,28 @@ final class HUDSettings: ObservableObject {
 
     /// 뒤 입력창에 글을 쓰면 그 자리를 비켜줄지.
     ///
-    /// **기본으로 켜 둔다.** 손쉬운 사용 권한을 주면 글자가 닿는 자리까지 정확히
-    /// 따라가고, 안 주면 앞 창 밖으로 물러나는 거친 방식으로 내려앉는다.
-    /// 꺼 두면 권한을 묻지도 않는다.
+    /// **기본으로 켜 둔다.** 손쉬운 사용 권한이 있어야 돌아간다 — 글자가 어디까지
+    /// 왔는지 모르면 짐작으로 움직이게 되는데, 그건 비켜준 게 아니라 제멋대로 도는
+    /// 것으로 보인다. 꺼 두면 권한을 묻지도 않는다.
     @Published var petDodgesTyping: Bool {
         didSet { defaults.set(!petDodgesTyping, forKey: Keys.petDodgesTypingOff) }
     }
 
-    /// 손쉬운 사용 권한을 이미 한 번 물어봤는지.
+    /// 손쉬운 사용 권한을 이미 물어봤는지.
     ///
-    /// **다시는 묻지 않는다.** 권한은 코드 서명에 걸려 있어서 앱을 업데이트하면
-    /// 허용해 둔 게 풀릴 수 있는데, 그때마다 창을 띄우면 허락을 받아내려고 조르는
-    /// 앱이 된다. 풀린 건 메뉴와 설정 창에 남겨 두고, 누를지는 사용자가 정한다.
+    /// 한 번 묻고 나면 다시 묻지 않는다. 거절한 사람에게 계속 창을 띄우면 허락을
+    /// 받아내려고 조르는 앱이 된다. 풀린 건 메뉴와 설정 창에 남겨 둔다.
     @Published var didAskAccessibility: Bool {
         didSet { defaults.set(didAskAccessibility, forKey: Keys.didAskAccessibility) }
+    }
+
+    /// 예전에 권한이 붙어 있던 적이 있는지.
+    ///
+    /// 권한은 코드 서명에 걸려 있어서 앱을 업데이트하면 **쓰던 사람 것이 저절로
+    /// 풀린다.** 그건 거절한 것과 다르다 — 잘 쓰던 기능이 말없이 죽은 것이라
+    /// 그때는 한 번 더 물어본다. 거절한 사람은 이 값이 거짓이라 다시 묻지 않는다.
+    @Published var hadAccessibility: Bool {
+        didSet { defaults.set(hadAccessibility, forKey: Keys.hadAccessibility) }
     }
 
     static let minOpacity = 0.35
@@ -252,6 +260,7 @@ final class HUDSettings: ObservableObject {
         // 기본값을 켜짐으로 두려고 반대 의미로 저장한다.
         static let petDodgesTypingOff = "pet.dodgesTypingOff"
         static let didAskAccessibility = "pet.didAskAccessibility"
+        static let hadAccessibility = "pet.hadAccessibility"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -284,6 +293,7 @@ final class HUDSettings: ObservableObject {
         petDodgesCursor = defaults.bool(forKey: Keys.petDodgesCursor)
         petDodgesTyping = !defaults.bool(forKey: Keys.petDodgesTypingOff)
         didAskAccessibility = defaults.bool(forKey: Keys.didAskAccessibility)
+        hadAccessibility = defaults.bool(forKey: Keys.hadAccessibility)
     }
 }
 
