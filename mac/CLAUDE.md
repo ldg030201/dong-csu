@@ -63,7 +63,11 @@ dong-csu --render-icon out.png 1024               # 앱 아이콘
 dong-csu --render-owl out.png 96                  # 부엉이 애니메이션 전 프레임 (기분 + 걷기·달리기)
 dong-csu --render-owl-gif ../docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
 dong-csu --dump-owl ../shared/owl.json            # 윈도우판과 나눠 쓸 부엉이 데이터
+dong-csu --probe-login [on|off]                   # 로그인 항목 등록 상태 확인·변경
 ```
+
+`--probe-login` 은 **번들 기준**이라 터미널에서 불러도 앱과 같은 것을 본다. 확인하고
+나면 원래 상태로 되돌려 놓는다 — 안 그러면 테스트판이 로그인할 때마다 뜬다.
 
 `--render-owl`은 `OwlAnimation.all`을 한 장에 늘어놓는다. 자세를 고칠 때 앱을 띄우고
 몇 초씩 기다리지 말고 이걸로 본다. **걸음걸이는 기분이 아니라서 `OwlMood.allCases`에 없다**

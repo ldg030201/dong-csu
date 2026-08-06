@@ -36,6 +36,21 @@ if CommandLine.arguments.contains("--probe") {
     exit(0)
 }
 
+// 로그인 항목 등록 상태를 확인하거나 바꾼다: dong-csu --probe-login [on|off]
+//
+// 앱을 띄우고 설정 창을 눌러 보지 않고도 등록이 실제로 되는지 확인한다.
+// `SMAppService.mainApp` 은 **번들** 을 가리키므로 터미널에서 불러도 같은 것을 본다.
+if CommandLine.arguments.contains("--probe-login") {
+    if CommandLine.arguments.contains("on") {
+        print("register: \(LoginItem.setEnabled(true) ? "ok" : "failed")")
+    } else if CommandLine.arguments.contains("off") {
+        print("unregister: \(LoginItem.setEnabled(false) ? "ok" : "failed")")
+    }
+    print("enabled: \(LoginItem.isEnabled)")
+    print("needsSystemSettings: \(LoginItem.needsSystemSettings)")
+    exit(0)
+}
+
 // 설정 창을 PNG로 그려서 확인: dong-csu --render-settings out.png [light] [status|display|icon|account]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
    flagIndex + 1 < CommandLine.arguments.count {

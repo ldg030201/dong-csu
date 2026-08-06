@@ -186,6 +186,28 @@ final class HUDSettings: ObservableObject {
     /// 창 밖에 둔다. 다음 실행까지 기억할 값은 아니라 저장하지 않는다.
     @Published var settingsTab: SettingsTab = .status
 
+    /// 로그인할 때 저절로 뜰지.
+    ///
+    /// **UserDefaults에 저장하지 않는다.** 등록 상태는 시스템이 갖고 있고 사용자가 시스템
+    /// 설정에서 직접 끌 수 있어서, 여기 값은 그걸 비추어 보여 주는 것뿐이다. 따로 적어 두면
+    /// 그쪽에서 끈 뒤에도 켜진 것으로 보인다.
+    @Published var startsAtLogin: Bool = LoginItem.isEnabled {
+        didSet {
+            // 실제와 이미 같으면 아무것도 하지 않는다. 아래 되돌리기가 여기서 멈춘다.
+            guard startsAtLogin != LoginItem.isEnabled else { return }
+            if !LoginItem.setEnabled(startsAtLogin) {
+                // 켜졌다고 보이는데 안 뜨는 게 제일 나쁘다. 표시를 실제로 되돌린다.
+                startsAtLogin = LoginItem.isEnabled
+            }
+        }
+    }
+
+    /// 창을 열 때마다 실제 등록 상태로 다시 맞춘다.
+    /// 사용자가 시스템 설정에서 껐다 켰을 수 있다.
+    func refreshLoginItem() {
+        startsAtLogin = LoginItem.isEnabled
+    }
+
     /// HUD 왼쪽 아래에 이 앱의 CPU·메모리를 표시할지.
     @Published var showsProcessStats: Bool {
         didSet { defaults.set(showsProcessStats, forKey: Keys.showsProcessStats) }

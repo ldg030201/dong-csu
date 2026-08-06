@@ -43,6 +43,9 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.2.0", date: nil, notes: [
+            "로그인할 때 자동 시작 설정 추가 (표시 탭)",
+        ]),
         ChangelogEntry(version: "2.1.0", date: "2026-08-06", notes: [
             "부엉이 그리드·색·프레임표를 shared/owl.json 으로 내보내는 기능 추가",
             "우클릭·메뉴바 메뉴에서 설정 창과 겹치는 항목 제거 (새로고침·설정·종료만 남김)",

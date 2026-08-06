@@ -46,7 +46,11 @@ struct SettingsView: View {
     /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
     /// 높이는 가장 긴 탭(표시)이 스크롤 없이 들어가는 값이다.
     /// 탭에 항목을 더했으면 `--render-settings`로 재어 보고 여기를 함께 올린다.
-    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 500)
+    ///
+    /// 표시 탭은 평소 526이고, 로그인 항목을 시스템 설정에서 꺼 두면 안내 한 줄이
+    /// 더 붙는다. **그 상태까지 들어가는 값**이라 평소에는 아래가 조금 빈다 —
+    /// 드물게 뜨는 줄이 잘려서 버튼을 못 누르는 것보다 낫다.
+    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 548)
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
@@ -301,6 +305,21 @@ struct SettingsView: View {
                 Text("HUD는 드래그로 옮길 수 있고, 더블클릭하면 보기가 넘어간다.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+            }
+
+            Divider().padding(.vertical, 2)
+
+            Toggle("로그인할 때 자동 시작", isOn: $settings.startsAtLogin)
+
+            // 시스템 설정에서 꺼 버린 경우. 여기서 다시 켜지지 않으니 그쪽으로 보낸다.
+            if LoginItem.needsSystemSettings {
+                HStack(spacing: 6) {
+                    Text("시스템 설정에서 꺼 두셨습니다.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Button("로그인 항목 열기", action: LoginItem.openSystemSettings)
+                        .controlSize(.small)
+                }
             }
         }
     }
@@ -633,6 +652,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
+        // 시스템 설정에서 로그인 항목을 껐다 켰을 수 있다. 열 때마다 실제 상태로 맞춘다.
+        settings.refreshLoginItem()
+
         if window == nil {
             let version = AppInfo.displayVersion
             let view = SettingsView(
