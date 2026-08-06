@@ -42,6 +42,7 @@ enum Changelog {
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(version: "2.1.0", date: nil, notes: [
             "부엉이 그리드·색·프레임표를 shared/owl.json 으로 내보내는 기능 추가",
+            "우클릭·메뉴바 메뉴에서 설정 창과 겹치는 항목 제거 (새로고침·설정·종료만 남김)",
         ]),
         ChangelogEntry(version: "2.0.0", date: "2026-08-05", notes: [
             "앱 이름을 DongCSU로 변경 (윈도우판 대비, macOS를 뜻하던 m 제거)",
