@@ -122,6 +122,7 @@ dotnet run  --project src/DongCSU.App
 | | |
 | --- | --- |
 | [작업 규칙](CLAUDE.md) | 프로젝트 구성, 진단 통로, 배포 |
+| [이어받기](docs/handoff.md) | 윈도우 쪽에서 개발을 이어받을 때 |
 | [캐릭터](../docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](../docs/characters/owl.md) |
 | [나눠 쓰는 데이터](../shared/README.md) | 맥과 같은 그림을 그리는 방법 |
 
