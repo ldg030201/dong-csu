@@ -31,7 +31,14 @@ public sealed class UsageApi(HttpClient http, CredentialStore credentials, TimeP
     {
         var credential = credentials.Current();
         if (credential is null) return UsageResult.Fail(UsageError.NoCredentials());
-        if (credential.IsExpired(time.GetUtcNow())) return UsageResult.Fail(UsageError.TokenExpired());
+
+        // **파일에 적힌 만료 시각만 보고 포기하지 않는다.**
+        //
+        // Claude Code 는 토큰을 메모리에서 갱신하고 `.credentials.json` 을 곧바로 다시
+        // 쓰지 않는다. 그래서 Claude 가 멀쩡히 도는 중에도 파일은 만료로 보일 수 있다.
+        // 여기서 잘라 버리면 조회를 **한 번도 시도하지 않고** "토큰 만료"만 띄운다
+        // (1.1.0 에서 실제로 그랬다). 유효한지는 서버가 안다 — 걸어 보고 401 이면 그때 만료다.
+        var looksExpired = credential.IsExpired(time.GetUtcNow());
 
         using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.AccessToken);
@@ -63,7 +70,7 @@ public sealed class UsageApi(HttpClient http, CredentialStore credentials, TimeP
                 case 403:
                     // 서버가 거절했으면 들고 있던 토큰은 죽은 것이다. 다음엔 파일을 다시 읽는다.
                     credentials.Invalidate();
-                    return UsageResult.Fail(UsageError.TokenExpired());
+                    return UsageResult.Fail(UsageError.TokenExpired(looksExpired));
                 case 429:
                     return UsageResult.Fail(UsageError.RateLimited(RetryAfter(response)));
                 default:

@@ -668,3 +668,65 @@ public class AppVersionTests
         Assert.False(AppVersion.IsNewer(text, "1.0.0"));
     }
 }
+
+/// <summary>
+/// **파일에 적힌 만료 시각만 보고 조회를 포기하면 안 된다.**
+///
+/// Claude Code 는 토큰을 메모리에서 갱신하고 `.credentials.json` 을 곧바로 다시 쓰지
+/// 않는다. 그래서 Claude 가 멀쩡히 도는 중에도 파일은 만료로 보인다. 1.1.0 이 그 상태를
+/// "토큰 만료"로 단정하고 **API 를 한 번도 부르지 않았다.**
+/// </summary>
+public class ExpiredCredentialTests
+{
+    private static string Json(long expiresAtMs) => $$"""
+        { "claudeAiOauth": { "accessToken": "tok", "subscriptionType": "max", "expiresAt": {{expiresAtMs}} } }
+        """;
+
+    [Fact]
+    public void 파일이_만료로_보여도_자격_증명은_읽힌다()
+    {
+        var past = DateTimeOffset.UtcNow.AddHours(-1).ToUnixTimeMilliseconds();
+        var parsed = ClaudeCredentials.Parse(Json(past));
+
+        Assert.NotNull(parsed);
+        Assert.Equal("tok", parsed.AccessToken);
+        Assert.True(parsed.IsExpired(DateTimeOffset.UtcNow));
+    }
+
+    /// <summary>맥은 Double 로 읽는다. 이쪽만 정수를 고집하면 같은 파일에서 갈린다.</summary>
+    [Theory]
+    [InlineData("1786000000000")]
+    [InlineData("1786000000000.0")]
+    [InlineData("\"1786000000000\"")]
+    public void 만료_시각이_정수든_소수든_문자열이든_읽는다(string raw)
+    {
+        var json = $$"""{ "claudeAiOauth": { "accessToken": "tok", "expiresAt": {{raw}} } }""";
+        var parsed = ClaudeCredentials.Parse(json);
+
+        Assert.NotNull(parsed);
+        Assert.Equal(2026, parsed.ExpiresAt!.Value.Year);
+    }
+
+    [Theory]
+    [InlineData("null")]
+    [InlineData("\"곧\"")]
+    [InlineData("-1")]
+    public void 만료_시각이_이상하면_없는_것으로_본다(string raw)
+    {
+        var json = $$"""{ "claudeAiOauth": { "accessToken": "tok", "expiresAt": {{raw}} } }""";
+        var parsed = ClaudeCredentials.Parse(json);
+
+        Assert.NotNull(parsed);
+        Assert.Null(parsed.ExpiresAt);
+        // 만료 시각을 모르면 만료로 단정하지 않는다. 서버가 판단하게 둔다.
+        Assert.False(parsed.IsExpired(DateTimeOffset.UtcNow));
+    }
+
+    /// <summary>서버가 거절한 것과 파일만 지난 것을 문구로 구분한다.</summary>
+    [Fact]
+    public void 만료_문구가_원인을_가른다()
+    {
+        Assert.Contains("서버가 토큰을 거절", UsageError.TokenExpired().Message);
+        Assert.Contains("파일·서버 모두", UsageError.TokenExpired(fileAlsoSaidExpired: true).Message);
+    }
+}

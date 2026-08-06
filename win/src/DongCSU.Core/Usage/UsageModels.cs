@@ -41,8 +41,16 @@ public sealed record UsageError(UsageErrorKind Kind, string Message, TimeSpan? R
     public static UsageError NoCredentials() =>
         new(UsageErrorKind.NoCredentials, "Claude 로그인 정보 없음");
 
-    public static UsageError TokenExpired() =>
-        new(UsageErrorKind.TokenExpired, "토큰 만료 — Claude Code 재로그인 필요");
+    /// <param name="fileAlsoSaidExpired">
+    /// 자격 증명 파일에 적힌 만료 시각도 지나 있었는지. 서버가 거절한 것과 구분해
+    /// 적어 둔다 — 원인이 갈리기 때문이다. 파일만 지나 있고 서버는 받아 주는 경우가
+    /// 흔해서, 이 값이 참이어도 그것만으로 만료라고 단정하지 않는다.
+    /// </param>
+    public static UsageError TokenExpired(bool fileAlsoSaidExpired = false) =>
+        new(UsageErrorKind.TokenExpired,
+            fileAlsoSaidExpired
+                ? "토큰 만료 (파일·서버 모두) — Claude Code 재로그인 필요"
+                : "서버가 토큰을 거절함 — Claude Code 재로그인 필요");
 
     public static UsageError RateLimited(TimeSpan? retryAfter) =>
         new(UsageErrorKind.RateLimited, "요청 제한 (429)", retryAfter);

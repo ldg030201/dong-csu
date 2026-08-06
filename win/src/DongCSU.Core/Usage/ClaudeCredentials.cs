@@ -45,12 +45,29 @@ public sealed record ClaudeCredentials
             var token = tokenElement.GetString();
             if (string.IsNullOrEmpty(token)) return null;
 
+            // 밀리초다. 초로 읽으면 1970년대가 나와서 항상 만료로 판정된다.
+            // 정수로만 받으면 안 된다 — 맥 쪽은 Double 로 읽고 있어서, 소수점이 붙어
+            // 오면 이쪽만 터진다. 문자열로 오는 경우까지 함께 받아 준다.
             DateTimeOffset? expiresAt = null;
-            if (oauth.TryGetProperty("expiresAt", out var expires)
-                && expires.ValueKind == JsonValueKind.Number)
+            if (oauth.TryGetProperty("expiresAt", out var expires))
             {
-                // 밀리초다. 초로 읽으면 1970년대가 나와서 항상 만료로 판정된다.
-                expiresAt = DateTimeOffset.FromUnixTimeMilliseconds(expires.GetInt64());
+                double? milliseconds = expires.ValueKind switch
+                {
+                    JsonValueKind.Number when expires.TryGetDouble(out var number) => number,
+                    JsonValueKind.String when double.TryParse(
+                        expires.GetString(),
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out var text) => text,
+                    _ => null,
+                };
+
+                // FromUnixTimeMilliseconds 가 받는 범위 밖이면 던진다. 걸러 낸다.
+                const double maxMilliseconds = 2.5e14;   // 서기 9999년쯤
+                if (milliseconds is { } value && value > 0 && value < maxMilliseconds)
+                {
+                    expiresAt = DateTimeOffset.FromUnixTimeMilliseconds((long)value);
+                }
             }
 
             return new ClaudeCredentials
