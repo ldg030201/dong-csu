@@ -8,7 +8,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)
 ![Swift](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white)
-[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=mac-v*&color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases/latest)
+[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=mac-v*&color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Amac-v)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-3A72C4)
 ![License](https://img.shields.io/badge/license-MIT-3A72C4)
 

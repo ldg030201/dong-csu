@@ -7,6 +7,7 @@
 **Claude 사용량을 화면 위에 항상 띄워두는 Windows 앱**
 
 ![Windows](https://img.shields.io/badge/Windows-10%2B-0078D4?logo=windows&logoColor=white)
+[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=win-v*&color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
 ![License](https://img.shields.io/badge/license-MIT-3A72C4)
 
 </div>
@@ -17,8 +18,9 @@
 > **여기는 Windows 판입니다.** 맥을 쓰신다면 → [**macOS 판**](../mac/README.md)
 
 > [!WARNING]
-> **아직 배포 전입니다.** 기능은 다 만들었지만 릴리스를 올리지 않았습니다.
-> 아래 [진행 상황](#진행-상황)을 보세요.
+> **1.0.0 이 방금 나왔습니다.** 화면을 실제로 띄워 본 적이 없는 첫 배포라,
+> 눈에 보이는 문제가 있을 수 있습니다. 이상하면
+> [이슈](https://github.com/ldg030201/dong-csu/issues)로 알려주세요.
 
 ## 이런 앱
 
@@ -48,7 +50,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 창을 스스로 움직이는 부분이라 맥과 구현이 가장 많이 달라서, 나머지가 자리 잡은
 뒤에 따로 합니다. 마스코트 자체는 1.0.0 에도 HUD 가운데에 들어 있습니다.
 
-## 설치 (준비되면)
+## 설치
 
 ### WinGet
 
@@ -58,9 +60,12 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 winget install ldg030201.DongCSU
 ```
 
+> [!NOTE]
+> WinGet 등록은 아직입니다. 지금은 아래 "직접 받기"를 쓰세요.
+
 ### 직접 받기
 
-[릴리스](https://github.com/ldg030201/dong-csu/releases)에서 `DongCSU-Setup.exe` 를 받습니다.
+[최신 릴리스](https://github.com/ldg030201/dong-csu/releases/tag/win-v1.0.0)에서 **`DongCSU-win-Setup.exe`** 를 받습니다 (72MB).
 
 **관리자 권한을 묻지 않습니다.** 사용자 폴더에 깔리고, 새 버전이 나오면
 앱이 알아서 받아서 다시 뜹니다. 맥 판처럼 터미널을 열 필요가 없습니다.
