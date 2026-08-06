@@ -1,0 +1,52 @@
+name: lockdown
+
+# 저장소를 나만 고칠 수 있게 유지한다.
+#
+# 쓰기 권한은 원래 소유자에게만 있어서 남이 코드를 바꿀 수는 없다. 남은 구멍은
+# **누구나 포크해서 PR 을 열 수 있다**는 것인데, GitHub 은 개인 공개 저장소의 포크를
+# 막지 못한다. 그래서 두 겹으로 막는다.
+#
+#   1. 상호작용 제한 — 협업자가 아니면 PR·이슈·댓글을 못 연다.
+#      **최대 6개월짜리라 저절로 풀린다.** 그래서 매달 다시 건다.
+#   2. 그래도 열린 PR 은 바로 닫는다. 1번이 만료된 틈에 들어온 것을 잡는다.
+
+on:
+  schedule:
+    - cron: "0 3 1 * *"   # 매달 1일
+  pull_request_target:
+    types: [opened, reopened]
+  workflow_dispatch:
+
+jobs:
+  renew:
+    if: github.event_name != 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions:
+      administration: write
+    steps:
+      - name: 상호작용 제한 다시 걸기
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/interaction-limits" \
+            -f limit=collaborators_only -f expiry=six_months
+          gh api "repos/$GITHUB_REPOSITORY/interaction-limits"
+
+  close:
+    if: github.event_name == 'pull_request_target'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: 협업자가 아니면 닫는다
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if gh api "repos/$GITHUB_REPOSITORY/collaborators/$AUTHOR" --silent 2>/dev/null; then
+            echo "$AUTHOR 는 협업자다 — 그대로 둔다"
+            exit 0
+          fi
+          gh pr close "$NUMBER" --repo "$GITHUB_REPOSITORY" --comment \
+            "개인 프로젝트라 외부 변경을 받지 않습니다. 관심 가져 주셔서 고맙습니다."
