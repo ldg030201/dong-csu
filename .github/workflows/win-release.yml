@@ -73,8 +73,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          # 제목에 판을 적는다. GitHub 의 "Latest" 는 저장소에 하나뿐이라,
-          # 목록에서 맥 것과 윈도우 것을 눈으로 갈라 보려면 제목이 유일한 수단이다.
+          # 제목 형식을 바꾸지 마라. 저장소 뿌리 README 의 버전 배지가 제목으로 판을
+          # 가른다. GitHub 의 "Latest" 는 저장소에 하나뿐이라 이것 말고 방법이 없다.
           gh release create "$GITHUB_REF_NAME" --title "Windows ${{ steps.version.outputs.value }}" --generate-notes \
             || echo "릴리스가 이미 있다 — 파일만 올린다"
           gh release upload "$GITHUB_REF_NAME" releases/* --clobber

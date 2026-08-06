@@ -6,8 +6,8 @@
 
 **Claude 사용량을 화면 위에 항상 띄워두는 앱**
 
-![macOS](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)
-![Windows](https://img.shields.io/badge/Windows-10+-0078D4?logo=windows&logoColor=white)
+[![macOS](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=macOS*&display_name=release&label=%20&logo=apple&logoColor=white&labelColor=000000&color=3A72C4)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Amac-v)
+[![Windows](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%20&logo=windows&logoColor=white&labelColor=0078D4&color=3A72C4)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
 ![License](https://img.shields.io/badge/license-MIT-3A72C4)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-3A72C4)
 
@@ -30,7 +30,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 | 상주하는 곳 | 메뉴바 | 트레이 |
 | 설치 | Homebrew | WinGet · 설치 exe |
 | 업데이트 | 터미널에서 `brew upgrade` | 앱이 스스로 |
-| 지금 버전 | 2.1.0 | 1.0.0 |
+| 지금 버전 | ![](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=macOS*&display_name=release&label=%20&logo=apple&logoColor=white&labelColor=000000&color=3A72C4) | ![](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%20&logo=windows&logoColor=white&labelColor=0078D4&color=3A72C4) |
 | | **[설치하기 →](mac/README.md)** | **[설치하기 →](win/README.md)** |
 
 **어느 쪽이든 Claude Code에 로그인되어 있어야 합니다.** 이 앱은 Claude Code가 저장해 둔

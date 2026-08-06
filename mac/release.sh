@@ -147,6 +147,8 @@ echo "▸ formula 갱신"
 
 # ── 6. GitHub 릴리스 ───────────────────────────────────────────
 if command -v gh >/dev/null 2>&1; then
+  # 제목 형식을 바꾸지 마라. 저장소 뿌리 README 의 버전 배지가 제목으로 판을 가른다
+  # (GitHub 은 "Latest" 를 하나만 띄울 수 있어서, 두 판을 나란히 보여줄 방법이 이것뿐이다).
   if gh release create "$TAG" --title "macOS $VERSION" --generate-notes >/dev/null 2>&1; then
     echo "▸ GitHub 릴리스 생성"
   else
