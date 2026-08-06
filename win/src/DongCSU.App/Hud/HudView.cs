@@ -8,56 +8,142 @@ using DongCSU.Core.Usage;
 
 namespace DongCSU.App.Hud;
 
-/// <summary>어둡게 / 밝게 한 벌.</summary>
-public sealed record HudPalette(Color Backdrop, Color Primary, Color Secondary, Color Track)
+/// <summary>HUD 위에서 마우스를 받는 자리.</summary>
+public enum HudHit
 {
-    public static readonly HudPalette Dark = new(
-        Backdrop: Color.FromRgb(0x1C, 0x1C, 0x1E),
-        Primary: Color.FromRgb(0xF2, 0xF2, 0xF7),
-        Secondary: Color.FromRgb(0x9A, 0x9A, 0xA0),
-        Track: Color.FromArgb(0x3D, 0xFF, 0xFF, 0xFF));
+    None,
+    /// <summary>접기·펼치기.</summary>
+    Collapse,
+    Settings,
+    Refresh,
+    /// <summary>새 버전 표시. 누르면 버전 화면이 열린다.</summary>
+    UpdateBadge,
+}
 
-    public static readonly HudPalette Light = new(
-        Backdrop: Color.FromRgb(0xF7, 0xF7, 0xF9),
-        Primary: Color.FromRgb(0x1C, 0x1C, 0x1E),
-        Secondary: Color.FromRgb(0x6C, 0x6C, 0x70),
-        Track: Color.FromArgb(0x24, 0x00, 0x00, 0x00));
+/// <summary>
+/// 어둡게 / 밝게 한 벌.
+///
+/// **맥과 같은 방식이다** — 잉크색 하나를 정하고 알파만 바꿔 계층을 만든다. 색을 따로
+/// 여러 개 두면 두 판이 조금씩 어긋나고, 반투명 배경 위에서 계층이 뭉개진다.
+/// </summary>
+public sealed class HudPalette
+{
+    public static readonly HudPalette Dark = new(isDark: true);
+    public static readonly HudPalette Light = new(isDark: false);
+
+    private HudPalette(bool isDark) => IsDark = isDark;
+
+    public bool IsDark { get; }
+
+    private Color Ink => IsDark ? Color.FromRgb(0xFF, 0xFF, 0xFF) : Color.FromRgb(0x1A, 0x1A, 0x1A);
+
+    private Color Fade(double alpha) =>
+        Color.FromArgb((byte)Math.Round(Math.Clamp(alpha, 0, 1) * 255), Ink.R, Ink.G, Ink.B);
+
+    public Color Backdrop => IsDark ? Color.FromRgb(0x17, 0x17, 0x17) : Color.FromRgb(0xF7, 0xF7, 0xF7);
+    public Color Border => IsDark ? Color.FromArgb(0x1A, 0xFF, 0xFF, 0xFF) : Color.FromArgb(0x1A, 0, 0, 0);
+
+    public Color Primary => Fade(1);
+    public Color Secondary => Fade(IsDark ? 0.68 : 0.60);
+    public Color Tertiary => Fade(IsDark ? 0.62 : 0.55);
+    public Color Faint => Fade(IsDark ? 0.38 : 0.40);
+
+    /// <summary>값이 없을 때의 색점. 사용률 색과 헷갈리지 않게 무채색으로 둔다.</summary>
+    public Color MutedDot => Fade(0.28);
+
+    public Color RingTrack => Fade(IsDark ? 0.15 : 0.13);
+
+    public Color ControlIdle => Fade(0.45);
+    public Color ControlActive => Fade(0.95);
+    public Color ControlHoverFill => Fade(0.13);
+
+    /// <summary>밝은 배경에서 검은 그림자를 진하게 쓰면 지저분해진다.</summary>
+    public Color TextShadow => IsDark ? Color.FromArgb(0x8C, 0, 0, 0) : Color.FromArgb(0x1F, 0, 0, 0);
+
+    /// <summary>갱신 실패·재로그인 경고색. 밝은 배경에서는 더 어둡게 잡아야 읽힌다.</summary>
+    public Color Warning => IsDark ? Color.FromRgb(0xF2, 0xB8, 0x45) : Color.FromRgb(0xB8, 0x78, 0x0D);
+
+    /// <summary>새 버전 알림. 링 색(초록·노랑·빨강)과 겹치지 않는 파랑이다.</summary>
+    public Color UpdateBadge => IsDark ? Color.FromRgb(0x4A, 0x99, 0xFC) : Color.FromRgb(0x1C, 0x70, 0xE6);
 }
 
 /// <summary>
 /// HUD 를 통째로 그린다.
 ///
-/// 배율 1 기준 치수는 **맥판과 같다** — 펼치면 240×88, 접으면 88×88.
+/// 배율 1 기준 치수는 **맥판과 같다** — 펼치면 240×88, 접으면 108×88.
 /// 두 판이 나란히 놓였을 때 크기가 다르면 같은 앱으로 안 보인다.
+///
+/// **자식 컨트롤을 두지 않는다.** 창이 <c>WS_EX_NOACTIVATE</c> 라 포커스를 받지 않아서
+/// 진짜 Button 을 얹으면 클릭·호버가 제대로 안 온다. 대신 <see cref="HitTest"/> 로
+/// 직접 자리를 재고, 그린 자리와 재는 자리를 **같은 함수**에서 뽑는다 — 따로 두면
+/// 창 높이가 바뀌는 순간(자원 줄) 눌리지 않는 버튼이 생긴다.
 /// </summary>
 public sealed class HudView : FrameworkElement
 {
     public const double BaseExpandedWidth = 240;
     public const double BaseExpandedHeight = 88;
-    public const double BaseCollapsedSize = 88;
+    /// <summary>접은 모습: 링 + 버튼 세 칸이 세로로. 맥과 같은 108 이다.</summary>
+    public const double BaseCollapsedWidth = 108;
+    public const double BaseCollapsedHeight = 88;
+
     private const double BaseRingDiameter = 62;
-    private const double BaseRingThickness = 5;
+    private const double BaseOuterThickness = 6;
+    private const double BaseInnerThickness = 5;
+    private const double BaseRingGap = 7;
+    private const double BaseInset = 4;
+    private const double BaseButton = 20;
+    private const double BaseCollapsedTrailing = 6;
+    private const double BaseUpdateBadge = 18;
+
+    /// <summary>
+    /// Segoe MDL2 Assets 글리프. 윈도우 10 1809 부터 들어 있어 따로 챙길 것이 없다.
+    ///
+    /// **글자 그대로 적지 않고 코드로 적는다.** 사설 영역 문자라 편집기마다 다르게 보이고,
+    /// 인코딩이 한 번 어긋나면 조용히 빈칸이나 네모로 바뀐다.
+    /// </summary>
+    private const string GlyphChevronRight = "\uE76C";
+    private const string GlyphChevronLeft = "\uE76B";
+    private const string GlyphSettings = "\uE713";
+    private const string GlyphRefresh = "\uE72C";
 
     private static readonly OwlDocument Document = OwlDocument.Embedded;
-    private static readonly Typeface Face = new("Segoe UI");
-    private static readonly Typeface NumberFace = new(
+    private static readonly Typeface Regular = new("Segoe UI");
+    private static readonly Typeface Semibold = new(
         new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
+    private static readonly Typeface Bold = new(
+        new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.Bold, FontStretches.Normal);
+    private static readonly Typeface Icons = new("Segoe MDL2 Assets");
 
     private readonly Dictionary<string, Dictionary<string, Brush>> owlBrushes = [];
 
     public HudMode Mode { get; set; } = HudMode.Expanded;
+    public HudExpandSide ExpandSide { get; set; } = HudExpandSide.Right;
     public double Scale { get; set; } = 1;
-    public double BackdropOpacity { get; set; } = 0.72;
+    public double BackdropOpacity { get; set; } = AppSettings.DefaultBackdropOpacity;
     public bool IsDark { get; set; } = true;
     public string? VersionBadge { get; set; }
 
-    /// <summary>새 버전이 있으면 왼쪽 위에 점을 찍는다. 없으면 아무도 모른다.</summary>
+    /// <summary>새 버전이 있으면 버튼 반대편 모서리에 표시한다. 없으면 아무도 모른다.</summary>
     public bool HasUpdate { get; set; }
 
     public UsageSnapshot? Snapshot { get; set; }
     public bool IsDisconnected { get; set; }
+
+    /// <summary>마지막 성공값을 보여주는 중. 링과 숫자를 흐리게 한다.</summary>
+    public bool IsStale { get; set; }
+
+    public bool NeedsReauth { get; set; }
+    public bool IsRefreshing { get; set; }
+    public string? ErrorText { get; set; }
+
+    /// <summary>다음 조회 예정 시각. null 이면 조회가 멈춘 상태다.</summary>
+    public DateTimeOffset? NextPollAt { get; set; }
+
     public string[]? OwlGrid { get; set; }
     public string OwlPaletteName { get; set; } = "normal";
+
+    /// <summary>지금 마우스가 올라가 있는 자리. 창이 넣어 준다.</summary>
+    public HudHit Hover { get; set; } = HudHit.None;
 
     public HudView()
     {
@@ -70,10 +156,97 @@ public sealed class HudView : FrameworkElement
     }
 
     public Size DesiredHudSize => Mode == HudMode.Collapsed
-        ? new Size(BaseCollapsedSize * Scale, BaseCollapsedSize * Scale)
+        ? new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale)
         : new Size(BaseExpandedWidth * Scale, BaseExpandedHeight * Scale);
 
     private HudPalette Palette => IsDark ? HudPalette.Dark : HudPalette.Light;
+
+    private bool ToRight => ExpandSide == HudExpandSide.Right;
+
+    // ── 자리 재기 (그리는 쪽과 누르는 쪽이 같은 것을 본다) ──────────────
+
+    /// <summary>버튼 세 칸. 차례는 접기 · 설정 · 새로고침이다.</summary>
+    private Rect[] ButtonRects()
+    {
+        var size = DesiredHudSize;
+        var button = BaseButton * Scale;
+
+        if (Mode == HudMode.Collapsed)
+        {
+            var trailing = BaseCollapsedTrailing * Scale;
+            var x = ToRight ? size.Width - trailing - button : trailing;
+            var top = (size.Height - button * 3) / 2;
+            return
+            [
+                new Rect(x, top, button, button),
+                new Rect(x, top + button, button, button),
+                new Rect(x, top + button * 2, button, button),
+            ];
+        }
+
+        var inset = BaseInset * Scale;
+        var left = ToRight ? size.Width - inset - button * 3 : inset;
+        return
+        [
+            new Rect(left, inset, button, button),
+            new Rect(left + button, inset, button, button),
+            new Rect(left + button * 2, inset, button, button),
+        ];
+    }
+
+    /// <summary>새 버전 표시. 버튼 묶음 **반대편** 위 모서리다.</summary>
+    private Rect UpdateBadgeRect()
+    {
+        var size = DesiredHudSize;
+        var badge = BaseUpdateBadge * Scale;
+        var inset = BaseInset * Scale;
+        var x = ToRight ? inset : size.Width - inset - badge;
+        return new Rect(x, inset, badge, badge);
+    }
+
+    private Rect RingRect()
+    {
+        var size = DesiredHudSize;
+        var ring = BaseRingDiameter * Scale;
+        var rowHeight = Mode == HudMode.Collapsed ? size.Height : BaseExpandedHeight * Scale;
+        var top = (rowHeight - ring) / 2;
+
+        // 접힌 상태에서 왼쪽으로 펼치는 설정이면 버튼 열이 링 앞에 온다.
+        var leading = (Mode, ToRight) switch
+        {
+            (HudMode.Collapsed, true) => 12 * Scale,
+            (HudMode.Collapsed, false) =>
+                (BaseCollapsedTrailing + BaseButton + 8) * Scale,
+            (_, true) => 13 * Scale,
+            _ => size.Width - 13 * Scale - ring,
+        };
+        return new Rect(leading, top, ring, ring);
+    }
+
+    /// <summary>이 자리에 무엇이 있나. 창이 클릭·호버를 나눠 줄 때 쓴다.</summary>
+    public HudHit HitTest(Point point)
+    {
+        if (HasUpdate && UpdateBadgeRect().Contains(point)) return HudHit.UpdateBadge;
+
+        var buttons = ButtonRects();
+        if (buttons[0].Contains(point)) return HudHit.Collapse;
+        if (buttons[1].Contains(point)) return HudHit.Settings;
+        if (buttons[2].Contains(point)) return HudHit.Refresh;
+
+        return HudHit.None;
+    }
+
+    /// <summary>그 자리가 무엇인지 알려주는 문구. 작은 그림뿐이라 이게 없으면 물어볼 곳이 없다.</summary>
+    public string? TooltipFor(HudHit hit) => hit switch
+    {
+        HudHit.Collapse => Mode == HudMode.Collapsed ? "펼치기" : "접기",
+        HudHit.Settings => "설정",
+        HudHit.Refresh => ErrorText is { } error ? $"갱신 실패: {error} — 눌러서 다시 시도" : "새로고침",
+        HudHit.UpdateBadge => "새 버전이 나왔다 — 눌러서 확인",
+        _ => null,
+    };
+
+    // ── 그리기 ──────────────────────────────────────────────────────
 
     protected override void OnRender(DrawingContext context)
     {
@@ -81,44 +254,54 @@ public sealed class HudView : FrameworkElement
         var palette = Palette;
         var s = Scale;
 
-        // 배경. 모서리를 깎는다.
         var backdrop = new SolidColorBrush(palette.Backdrop)
         {
-            Opacity = Math.Clamp(BackdropOpacity, 0.05, 1),
+            Opacity = Math.Clamp(BackdropOpacity, AppSettings.MinBackdropOpacity, 1),
         };
         backdrop.Freeze();
+        var border = new Pen(Frozen(palette.Border), 1);
+        border.Freeze();
+
         var radius = (Mode == HudMode.Collapsed ? 26 : 20) * s;
-        context.DrawRoundedRectangle(backdrop, null, new Rect(0, 0, size.Width, size.Height), radius, radius);
+        context.DrawRoundedRectangle(
+            backdrop, border, new Rect(0.5, 0.5, size.Width - 1, size.Height - 1), radius, radius);
 
-        DrawRingAndOwl(context, size, palette, s);
+        // 마지막 성공값을 보여주는 중이면 링과 숫자를 흐리게 해 지금 값이 아님을 드러낸다.
+        var dim = IsStale;
+        if (dim) context.PushOpacity(0.45);
+        DrawRingAndOwl(context, palette, s);
+        if (Mode != HudMode.Collapsed) DrawMetrics(context, palette, s);
+        if (dim) context.Pop();
 
-        if (Mode == HudMode.Expanded) DrawText(context, size, palette, s);
-        if (VersionBadge is { } badge) DrawVersionBadge(context, badge, palette, s);
-        if (HasUpdate) DrawUpdateDot(context, s);
+        DrawCountdown(context, size, palette, s);
+        DrawCornerBadges(context, palette, s);
+        DrawButtons(context, palette, s);
     }
 
-    private void DrawRingAndOwl(DrawingContext context, Size size, HudPalette palette, double s)
+    private void DrawRingAndOwl(DrawingContext context, HudPalette palette, double s)
     {
-        var diameter = BaseRingDiameter * s;
-        var center = Mode == HudMode.Collapsed
-            ? new Point(size.Width / 2, size.Height / 2)
-            : new Point(14 * s + diameter / 2, size.Height / 2);
+        var frame = RingRect();
+        var center = new Point(frame.Left + frame.Width / 2, frame.Top + frame.Height / 2);
 
         RingRenderer.Draw(
             context,
             center,
-            diameter,
-            BaseRingThickness * s,
+            frame.Width,
+            BaseOuterThickness * s,
+            BaseInnerThickness * s,
+            BaseRingGap * s,
             Snapshot?.FiveHour?.Utilization,
             Snapshot?.SevenDay?.Utilization,
-            palette.Track,
+            palette.RingTrack,
             grayscale: IsDisconnected);
 
         if (OwlGrid is not { } grid) return;
 
-        // 부엉이는 안쪽 링에 닿지 않게. 안지름에서 조금 더 줄인다.
-        var inner = diameter - (BaseRingThickness * s + RingRenderer.Gap) * 4;
-        var cell = OwlRenderer.CellSize(inner * 0.92, Document.Grid.Lines);
+        // 맥과 같은 산식 — 안지름에서 안쪽 링 두께 두 겹과 여유 4 를 뺀다.
+        var inner = frame.Width - BaseOuterThickness * s * 2 - BaseRingGap * s;
+        var available = inner - BaseInnerThickness * s * 2 - 4 * s;
+
+        var cell = OwlRenderer.CellSize(available, Document.Grid.Lines);
         var owlSize = OwlRenderer.MeasuredSize(cell, Document.Grid);
         var origin = new Point(
             Math.Round(center.X - owlSize.Width / 2),
@@ -130,99 +313,267 @@ public sealed class HudView : FrameworkElement
         OwlRenderer.Draw(context, grid, brushes, origin, cell);
     }
 
-    private void DrawText(DrawingContext context, Size size, HudPalette palette, double s)
+    /// <summary>세션 · 주간 두 블록. 각 블록은 두 줄이고, 앞의 색점이 링과 짝을 지어 준다.</summary>
+    private void DrawMetrics(DrawingContext context, HudPalette palette, double s)
     {
-        var left = (14 + BaseRingDiameter + 12) * s;
-        var right = size.Width - 12 * s;
-        var primary = Frozen(palette.Primary);
-        var secondary = Frozen(palette.Secondary);
         var now = DateTimeOffset.Now;
+        var session = MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s);
+        var weekly = MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s);
 
-        if (Snapshot is not { } snapshot)
-        {
-            var waiting = Text(IsDisconnected ? "연결 끊김" : "불러오는 중…", 12 * s, Face, secondary);
-            context.DrawText(waiting, new Point(left, size.Height / 2 - waiting.Height / 2));
-            return;
-        }
+        var totalHeight = session.Height + 8 * s + weekly.Height;
+        var top = (BaseExpandedHeight * s - totalHeight) / 2;
 
-        var y = 12 * s;
+        var ring = RingRect();
+        var width = Math.Max(session.Width, weekly.Width);
+        // 왼쪽으로 펼치면 링이 오른쪽에 있으므로 블록을 그 앞에 붙인다.
+        var left = ToRight ? ring.Right + 13 * s : ring.Left - 13 * s - width;
 
-        // 플랜 이름. 없으면(API 사용자) 그 줄을 비우지 않고 위로 당긴다.
-        if (snapshot.PlanName is { } plan)
-        {
-            var planText = Text(plan, 11 * s, Face, secondary);
-            context.DrawText(planText, new Point(left, y));
-            y += planText.Height + 3 * s;
-        }
-
-        y += DrawRow(context, "세션", snapshot.FiveHour, left, right, y, s, primary, secondary, now);
-        y += 2 * s;
-        DrawRow(context, "주간", snapshot.SevenDay, left, right, y, s, primary, secondary, now);
-    }
-
-    private double DrawRow(
-        DrawingContext context,
-        string label,
-        UsageWindow? window,
-        double left,
-        double right,
-        double y,
-        double s,
-        Brush primary,
-        Brush secondary,
-        DateTimeOffset now)
-    {
-        var labelText = Text(label, 11 * s, Face, secondary);
-        context.DrawText(labelText, new Point(left, y + 2 * s));
-
-        var percent = window is { } value
-            ? $"{Math.Round(value.Utilization):F0}%"
-            : "–";
-        var percentText = Text(percent, 15 * s, NumberFace, primary);
-        context.DrawText(percentText, new Point(left + 32 * s, y));
-
-        // 남은 시간은 오른쪽 끝에 붙인다. 자리가 모자라면 그리지 않는다 —
-        // 잘린 글자가 보이는 것보다 없는 편이 낫다.
-        var remaining = Text(RemainingTime.Text(window?.ResetsAt, now), 10 * s, Face, secondary);
-        var remainingX = right - remaining.Width;
-        if (remainingX > left + 32 * s + percentText.Width + 6 * s)
-        {
-            context.DrawText(remaining, new Point(remainingX, y + 4 * s));
-        }
-
-        return percentText.Height;
-    }
-
-    /// <summary>테스트판인지 한눈에 알 수 있게 왼쪽 위에 붙인다.</summary>
-    private void DrawVersionBadge(DrawingContext context, string badge, HudPalette palette, double s)
-    {
-        var text = Text(badge, 9 * s, Face, Frozen(palette.Secondary));
-        context.DrawText(text, new Point((HasUpdate ? 16 : 8) * s, 5 * s));
+        DrawBlock(context, session, new Point(left, top), palette, s);
+        DrawBlock(context, weekly, new Point(left, top + session.Height + 8 * s), palette, s);
     }
 
     /// <summary>
-    /// 새 버전이 나왔다는 표시.
+    /// 한 블록을 재어 둔 것.
     ///
-    /// 이게 없으면 확인은 도는데 **결과를 아무 데도 안 알려줘서**, 설정 창을 열어 보기
-    /// 전까지 새 버전이 나온 걸 모른다. 맥판도 같은 자리에 파란 표시를 띄운다.
+    /// 재는 것과 그리는 것을 갈라야 한다 — 왼쪽으로 펼치는 설정에서는 두 블록 중
+    /// 넓은 쪽에 맞춰 오른쪽 정렬해야 하는데, 그러려면 그리기 전에 폭을 알아야 한다.
+    /// 색을 따로 들고 있는 이유는 <see cref="FormattedText"/> 에서 칠한 색을 도로
+    /// 꺼내올 방법이 없어서다(그림자를 깐 뒤 원래 색으로 되돌려야 한다).
     /// </summary>
-    private void DrawUpdateDot(DrawingContext context, double s)
-    {
-        var radius = 3 * s;
+    private readonly record struct Block(
+        FormattedText Title,
+        FormattedText Percent,
+        FormattedText Remaining,
+        Color TitleColor,
+        Color PercentColor,
+        Color RemainingColor,
+        Color Dot,
+        double Width,
+        double Height);
 
-        // **모서리가 깎여 있다는 것을 잊으면 안 된다.** 배경은 반지름 20(접으면 26)으로
-        // 깎여서, 왼쪽 위 (4, 9) 근처는 배경이 **아직 시작되지 않은 자리**다. 거기 찍으면
-        // 점만 허공에 떠서 창 밖에 잘못 찍힌 것처럼 보인다 — 1.1.1 에서 실제로 그랬다.
-        // (11, 11) 이면 두 반지름 모두에서 원이 통째로 안쪽에 들어온다.
-        var center = new Point(11 * s, 11 * s);
-        context.DrawEllipse(Frozen(Color.FromRgb(0x3A, 0x8E, 0xF0)), null, center, radius, radius);
+    private Block MeasureBlock(
+        string title, UsageWindow? window, DateTimeOffset now, HudPalette palette, double s)
+    {
+        var titleText = Text(title, 10 * s, Semibold, palette.Secondary);
+        var percentText = Text(
+            window is { } value ? $"{Math.Round(value.Utilization):F0}%" : "—",
+            14 * s, Bold, palette.Primary);
+        var remainingText = Text(
+            RemainingTime.Text(window?.ResetsAt, now), 9.5 * s, Regular, palette.Tertiary);
+
+        // 점 색이 곧 그 창의 링 색이다. 이게 바깥 링 = 세션, 안쪽 링 = 주간을 이어 준다.
+        var dot = window is { } filled
+            ? ToColor(UsageColor.For(filled.Utilization))
+            : palette.MutedDot;
+
+        var firstLine = 5 * s + 5 * s + titleText.Width + 5 * s + percentText.Width;
+        var firstHeight = Math.Max(titleText.Height, percentText.Height);
+
+        return new Block(
+            titleText, percentText, remainingText,
+            palette.Secondary, palette.Primary, palette.Tertiary, dot,
+            Width: Math.Max(firstLine, remainingText.Width),
+            Height: firstHeight + 1 * s + remainingText.Height);
     }
 
-    private FormattedText Text(string value, double size, Typeface face, Brush brush) =>
-        new(value, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, face,
-            Math.Max(1, size), brush, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+    private void DrawBlock(DrawingContext context, Block block, Point origin, HudPalette palette, double s)
+    {
+        var firstHeight = Math.Max(block.Title.Height, block.Percent.Height);
 
-    private static Brush Frozen(Color color)
+        var dotRadius = 2.5 * s;
+        var dotBrush = Frozen(block.Dot);
+        context.DrawEllipse(
+            dotBrush, null,
+            new Point(origin.X + dotRadius, origin.Y + firstHeight / 2),
+            dotRadius, dotRadius);
+
+        var titleX = origin.X + 5 * s + 5 * s;
+        var titleY = origin.Y + (firstHeight - block.Title.Height) / 2;
+        var percentX = titleX + block.Title.Width + 5 * s;
+        var percentY = origin.Y + (firstHeight - block.Percent.Height) / 2;
+        var remainingY = origin.Y + firstHeight + 1 * s;
+
+        // **그림자를 먼저 깐다.** WPF 의 DrawingContext 에는 글자 그림자가 없어서
+        // 한 픽셀 내린 어두운 사본을 밑에 깔아 대신한다. 흐림은 없지만, 반투명 배경
+        // 위에서 글자가 묻히는 것은 이것만으로도 크게 나아진다.
+        var shadow = Frozen(palette.TextShadow);
+        DrawShadowed(context, block.Title, new Point(titleX, titleY), block.TitleColor, shadow, s);
+        DrawShadowed(context, block.Percent, new Point(percentX, percentY), block.PercentColor, shadow, s);
+        DrawShadowed(context, block.Remaining, new Point(origin.X, remainingY), block.RemainingColor, shadow, s);
+    }
+
+    private static void DrawShadowed(
+        DrawingContext context, FormattedText text, Point at, Color color, Brush shadow, double s)
+    {
+        text.SetForegroundBrush(shadow);
+        context.DrawText(text, new Point(at.X, at.Y + Math.Max(0.5, s)));
+        text.SetForegroundBrush(Frozen(color));
+        context.DrawText(text, at);
+    }
+
+    /// <summary>
+    /// 아래 모서리. 평소에는 다음 조회까지 남은 시간, 값이 낡았으면 그 사실을 대신 알린다.
+    ///
+    /// 낡은 숫자를 지금 값으로 믿게 두는 것이 제일 나쁘다. 그래서 카운트다운보다
+    /// 경고가 이긴다.
+    /// </summary>
+    private void DrawCountdown(DrawingContext context, Size size, HudPalette palette, double s)
+    {
+        if (Mode == HudMode.Collapsed) return;
+
+        var now = DateTimeOffset.Now;
+        var right = size.Width - 10 * s;
+        var bottom = BaseExpandedHeight * s - 7 * s;
+
+        if (StaleLabel(now) is { } warning)
+        {
+            var text = Text(warning, 9.5 * s, Semibold, palette.Warning);
+            var x = ToRight ? right - text.Width : 10 * s;
+            context.DrawText(text, new Point(x, bottom - text.Height));
+            return;
+        }
+
+        var label = Text("조회", 8.5 * s, Semibold, palette.Faint);
+        var clockColor = palette.Tertiary;
+        if (IsRefreshing) clockColor = Color.FromArgb((byte)(clockColor.A * 0.55), clockColor.R, clockColor.G, clockColor.B);
+        var clock = Text(CountdownText(now), 9.5 * s, Regular, clockColor);
+
+        var width = label.Width + 4 * s + clock.Width;
+        var startX = ToRight ? right - width : 10 * s;
+        var lineHeight = Math.Max(label.Height, clock.Height);
+
+        context.DrawText(label, new Point(startX, bottom - lineHeight + (lineHeight - label.Height) / 2));
+        context.DrawText(clock, new Point(
+            startX + label.Width + 4 * s, bottom - lineHeight + (lineHeight - clock.Height) / 2));
+    }
+
+    private string? StaleLabel(DateTimeOffset now)
+    {
+        if (NeedsReauth) return "재로그인 필요";
+        if (!IsStale || Snapshot is not { } snapshot) return null;
+        return RemainingTime.AgeText(snapshot.FetchedAt, now);
+    }
+
+    private string CountdownText(DateTimeOffset now)
+    {
+        if (NextPollAt is not { } next) return "멈춤";
+        // 타이머에 여유를 두기 때문에 예정 시각이 지나도 잠시 뒤에 울린다.
+        // 그동안 0:00 으로 멈춘 것처럼 보이지 않게 한다.
+        return next <= now ? "곧" : RemainingTime.ClockText(next, now);
+    }
+
+    /// <summary>버튼 묶음 반대편 위 모서리 — 새 버전 표시와 버전 딱지.</summary>
+    private void DrawCornerBadges(DrawingContext context, HudPalette palette, double s)
+    {
+        // 접은 카드는 108 뿐이라 버전 딱지를 붙이면 링 위에 겹친다.
+        var badge = Mode == HudMode.Collapsed ? null : VersionBadge;
+        if (!HasUpdate && badge is null) return;
+
+        var rect = UpdateBadgeRect();
+        if (HasUpdate) DrawUpdateBadge(context, rect, palette, s);
+
+        if (badge is null) return;
+
+        var text = Text(badge, 9 * s, Semibold, palette.Faint);
+        // 표시가 없으면 그 자리부터, 있으면 그 옆에서 시작한다.
+        var x = ToRight
+            ? (HasUpdate ? rect.Right + 3 * s : rect.Left) + 5 * s
+            : (HasUpdate ? rect.Left - 3 * s : rect.Right) - 5 * s - text.Width;
+        var y = rect.Top + (rect.Height - text.Height) / 2;
+
+        // **그림자 없이는 읽히지 않는다.** 새 버전 표시가 붙으면 딱지가 그만큼 밀려서
+        // 링 위로 올라앉는데, 옅은 회색 글자가 링 트랙과 겹치면 그대로 묻힌다.
+        DrawShadowed(context, text, new Point(x, y), palette.Faint, Frozen(palette.TextShadow), s);
+    }
+
+    /// <summary>
+    /// 아래를 가리키는 화살표가 든 동그라미.
+    ///
+    /// 글꼴 글리프를 쓰지 않고 직접 그린다 — 배지가 18 밖에 안 되는데 글리프는 자간과
+    /// 기준선이 크기마다 달라져서, 배율을 바꾸면 동그라미 안에서 화살표가 떠다닌다.
+    /// </summary>
+    private static void DrawUpdateBadge(DrawingContext context, Rect rect, HudPalette palette, double s)
+    {
+        var center = new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
+
+        // **18 은 누르는 자리이지 그림 크기가 아니다.** 맥도 18짜리 프레임 안에 13짜리
+        // 글리프를 넣는다. 18을 꽉 채워 그리면 배경의 둥근 모서리(반지름 20) 바깥으로
+        // 삐져나가서, 점이 카드 밖 허공에 떠 있는 것처럼 보인다.
+        var radius = 6.5 * s;
+        context.DrawEllipse(Frozen(palette.UpdateBadge), null, center, radius, radius);
+
+        var white = Frozen(Colors.White);
+        var stem = 1.4 * s;
+        var head = 3.1 * s;
+        var top = center.Y - 3.4 * s;
+        var tip = center.Y + 3.4 * s;
+
+        context.DrawRectangle(white, null, new Rect(center.X - stem / 2, top, stem, tip - top - head));
+
+        var arrow = new StreamGeometry();
+        using (var ctx = arrow.Open())
+        {
+            ctx.BeginFigure(new Point(center.X, tip), isFilled: true, isClosed: true);
+            ctx.LineTo(new Point(center.X - head, tip - head), true, false);
+            ctx.LineTo(new Point(center.X + head, tip - head), true, false);
+        }
+        arrow.Freeze();
+        context.DrawGeometry(white, null, arrow);
+    }
+
+    private void DrawButtons(DrawingContext context, HudPalette palette, double s)
+    {
+        var rects = ButtonRects();
+
+        // 눌렀을 때 창이 움직일 방향을 가리킨다.
+        var chevron = (Mode == HudMode.Collapsed) == ToRight ? GlyphChevronRight : GlyphChevronLeft;
+
+        DrawButton(context, rects[0], chevron, HudHit.Collapse, palette.ControlIdle, palette, s);
+        DrawButton(context, rects[1], GlyphSettings, HudHit.Settings, palette.ControlIdle, palette, s);
+
+        // 갱신에 실패해 화면 숫자가 낡았으면 버튼 자체를 경고색으로 물들인다.
+        var refreshTint = ErrorText is null ? palette.ControlIdle : palette.Warning;
+        DrawButton(context, rects[2], GlyphRefresh, HudHit.Refresh, refreshTint, palette, s);
+    }
+
+    private void DrawButton(
+        DrawingContext context,
+        Rect rect,
+        string glyph,
+        HudHit target,
+        Color idle,
+        HudPalette palette,
+        double s)
+    {
+        var hovering = Hover == target;
+        if (hovering)
+        {
+            context.DrawEllipse(
+                Frozen(palette.ControlHoverFill), null,
+                new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2),
+                rect.Width / 2, rect.Height / 2);
+        }
+
+        var color = hovering && idle != palette.Warning ? palette.ControlActive : idle;
+        // 갱신 중에는 흐리게. 돌아가는 애니메이션은 유휴 상태에서 계속 도는 위험이 있어 쓰지 않는다.
+        if (target == HudHit.Refresh && IsRefreshing)
+        {
+            color = Color.FromArgb((byte)(color.A * 0.35), color.R, color.G, color.B);
+        }
+
+        var text = Text(glyph, 9.5 * s, Icons, color);
+        context.DrawText(text, new Point(
+            rect.Left + (rect.Width - text.Width) / 2,
+            rect.Top + (rect.Height - text.Height) / 2));
+    }
+
+    private FormattedText Text(string value, double size, Typeface face, Color color) =>
+        new(value, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, face,
+            Math.Max(1, size), Frozen(color), VisualTreeHelper.GetDpi(this).PixelsPerDip);
+
+    private static Color ToColor(Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
+
+    private static SolidColorBrush Frozen(Color color)
     {
         var brush = new SolidColorBrush(color);
         brush.Freeze();

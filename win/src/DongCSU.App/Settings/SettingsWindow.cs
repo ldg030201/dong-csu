@@ -177,10 +177,12 @@ public sealed class SettingsWindow : Window
 
         panel.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 8) });
 
+        // **자동 시작 상태를 우리 설정 파일에 적지 않는다.** 진짜 상태는 레지스트리에
+        // 있고 사용자가 작업 관리자에서 끌 수 있어서, 따로 적어 두면 껐는데도 켜진 것으로
+        // 보인다. 맥판과 같은 이유다.
         var startup = Check("로그인할 때 자동 시작", StartupService.IsEnabled, value =>
         {
             if (!StartupService.SetEnabled(value)) ShowTab();   // 실패하면 표시를 되돌린다
-            settings.StartsAtLogin = StartupService.IsEnabled;
             Apply();
         });
         panel.Children.Add(startup);

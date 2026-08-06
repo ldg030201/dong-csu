@@ -14,6 +14,7 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
 
     private readonly TimeProvider time = time ?? TimeProvider.System;
     private DateTimeOffset? backoffUntil;
+    private DateTimeOffset? lastAttemptAt;
     private int consecutiveRateLimits;
 
     public TimeSpan PollInterval { get; set; } = DefaultPollInterval;
@@ -50,6 +51,22 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
         return PollInterval;
     }
 
+    /// <summary>
+    /// 다음 조회 예정 시각. 아직 한 번도 안 걸었으면 null.
+    ///
+    /// **<see cref="NextPollDelay"/> 를 더해서 구하면 안 된다.** 물러나는 중에는 그 함수가
+    /// *남은* 시간을 주므로, 마지막 조회 시각에 더하면 이미 지난 시각이 나온다.
+    /// 화면이 이 값으로 카운트다운을 그린다.
+    /// </summary>
+    public DateTimeOffset? NextPollAt
+    {
+        get
+        {
+            if (backoffUntil is { } until && until > time.GetUtcNow()) return until;
+            return lastAttemptAt is { } at ? at + PollInterval : null;
+        }
+    }
+
     public async Task RefreshAsync(bool force = false, CancellationToken cancellationToken = default)
     {
         if (IsRefreshing) return;
@@ -73,6 +90,9 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     /// <summary>결과를 상태에 반영한다. 테스트가 네트워크 없이 이걸 직접 부른다.</summary>
     public void Apply(UsageResult result)
     {
+        // 성공이든 실패든 한 번 걸었다. 다음 조회 시각은 여기서부터 센다.
+        lastAttemptAt = time.GetUtcNow();
+
         if (result.Snapshot is { } snapshot)
         {
             Snapshot = snapshot;

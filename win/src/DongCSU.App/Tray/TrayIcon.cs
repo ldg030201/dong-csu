@@ -69,6 +69,19 @@ public sealed partial class TrayIcon : IDisposable
         icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) Activated?.Invoke(); };
     }
 
+    /// <summary>
+    /// 트레이 메뉴를 마우스 자리에 띄운다. **HUD 우클릭이 이걸 부른다.**
+    ///
+    /// 메뉴를 한 벌 더 만들지 않고 트레이 것을 그대로 쓴다 — 맥판이 두 메뉴를 같은
+    /// 함수로 만드는 것과 같은 이유다. 두 곳에 따로 두면 한쪽에만 항목을 더하게 된다.
+    /// (WPF <c>ContextMenu</c> 를 쓰지 않는 이유는 이 창이 <c>WS_EX_NOACTIVATE</c> 라
+    /// 포커스를 못 받아서, 바깥을 눌러도 메뉴가 안 닫히기 때문이다.)
+    /// </summary>
+    public void ShowMenuAtCursor()
+    {
+        icon.ContextMenuStrip?.Show(Control.MousePosition);
+    }
+
     public void UpdateSummary(string text, bool needsReauth)
     {
         // 트레이 툴팁은 127자를 넘으면 통째로 안 보인다. 잘라서 넣는다.

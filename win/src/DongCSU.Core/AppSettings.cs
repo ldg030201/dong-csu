@@ -43,15 +43,23 @@ public sealed class AppSettings
     public HudScale Scale { get; set; } = HudScale.Normal;
     public HudExpandSide ExpandSide { get; set; } = HudExpandSide.Right;
 
-    /// <summary>조회 주기(초). 너무 조이면 429 가 난다.</summary>
-    public int PollIntervalSeconds { get; set; } = 300;
+    /// <summary>조회 주기(초). 너무 조이면 429 가 난다. **맥과 같은 10분이다.**</summary>
+    public int PollIntervalSeconds { get; set; } = 600;
 
     public bool IsHudVisible { get; set; } = true;
     public bool ShowsVersionBadge { get; set; } = true;
     public bool ChecksForUpdates { get; set; } = true;
-    public bool StartsAtLogin { get; set; }
 
-    public double BackdropOpacity { get; set; } = 0.72;
+    /// <summary>
+    /// 배경 불투명도. **맥과 같은 0.92 다.**
+    ///
+    /// 값 자체는 그대로 두고 <see cref="Backdrop"/> 에서 잘라 쓴다. 파일을 손으로
+    /// 고쳐 0.05 같은 값을 넣으면 글자가 배경에 묻혀 아무것도 안 읽힌다.
+    /// </summary>
+    public double BackdropOpacity { get; set; } = DefaultBackdropOpacity;
+
+    public const double DefaultBackdropOpacity = 0.92;
+    public const double MinBackdropOpacity = 0.35;
 
     /// <summary>창 위치. 처음에는 없다 — 그때는 오른쪽 위에 붙인다.</summary>
     public double? WindowLeft { get; set; }
@@ -59,6 +67,10 @@ public sealed class AppSettings
 
     [JsonIgnore]
     public TimeSpan PollInterval => TimeSpan.FromSeconds(Math.Clamp(PollIntervalSeconds, 60, 1800));
+
+    /// <summary>실제로 그릴 때 쓸 불투명도. 글자가 읽히는 아래쪽에서 막는다.</summary>
+    [JsonIgnore]
+    public double Backdrop => Math.Clamp(BackdropOpacity, MinBackdropOpacity, 1.0);
 
     // ── 저장 ──────────────────────────────────────────────────────
 

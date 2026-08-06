@@ -9,6 +9,7 @@ using DongCSU.App.Tray;
 using DongCSU.Core;
 using DongCSU.Core.Owl;
 using DongCSU.Core.Usage;
+using Microsoft.Win32;
 using Velopack;
 
 namespace DongCSU.App;
@@ -107,7 +108,16 @@ public sealed class AppController : IDisposable
             settings.Save();
             ApplySettings();
         };
-        hud.ContextMenuRequested += () => OpenSettings();
+        // 우클릭은 트레이와 **같은 메뉴**를 띄운다. 설정 창이 튀어나오면 놀란다.
+        hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
+        hud.SettingsRequested += () => OpenSettings();
+        hud.RefreshRequested += () => _ = store.RefreshAsync(force: true);
+        hud.UpdatesRequested += () => OpenSettings("version");
+
+        // 윈도우 테마를 바꾸면 곧바로 따라간다. 안 그러면 HUD 만 옛 색으로 남는다.
+        SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
+        // 모니터를 빼면 기억해 둔 자리가 보이지 않는 곳이 된다.
+        SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
 
         ApplySettings();
         hud.RestorePosition();
@@ -135,8 +145,9 @@ public sealed class AppController : IDisposable
         if (hud is null) return;
 
         hud.View.Mode = settings.Mode;
+        hud.View.ExpandSide = settings.ExpandSide;
         hud.View.Scale = settings.Scale.Factor();
-        hud.View.BackdropOpacity = settings.BackdropOpacity;
+        hud.View.BackdropOpacity = settings.Backdrop;
         hud.View.IsDark = IsDarkTheme();
         hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.Version : null;
         hud.View.HasUpdate = updates.HasUpdate;
@@ -186,6 +197,11 @@ public sealed class AppController : IDisposable
 
         hud.View.Snapshot = store.Snapshot;
         hud.View.IsDisconnected = store.IsDisconnected;
+        hud.View.IsStale = store.IsStale;
+        hud.View.NeedsReauth = store.NeedsReauth;
+        hud.View.IsRefreshing = store.IsRefreshing;
+        hud.View.ErrorText = store.ErrorText;
+        hud.View.NextPollAt = store.NextPollAt;
         hud.View.OwlGrid = animator.CurrentGrid;
         hud.View.OwlPaletteName = animator.Animation.Palette;
         hud.View.HasUpdate = updates.HasUpdate;
@@ -219,6 +235,25 @@ public sealed class AppController : IDisposable
         frameTimer.Interval = delay;
         frameTimer.Start();
     }
+
+    /// <summary>
+    /// 시스템 테마가 바뀌었다.
+    ///
+    /// 레지스트리 값이 실제로 바뀐 뒤에 알림이 오지만, 곧바로 읽으면 옛 값이 잡히는
+    /// 경우가 있다. 한 박자 미뤄서 읽는다 — 맥판도 같은 이유로 미룬다.
+    /// </summary>
+    private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
+    {
+        if (e.Category != UserPreferenceCategory.General) return;
+        if (settings.Theme != HudTheme.System) return;
+
+        Dispatch(() => Application.Current?.Dispatcher.BeginInvoke(ApplySettings));
+    }
+
+    private void OnDisplaySettingsChanged(object? sender, EventArgs e) => Dispatch(() =>
+    {
+        if (hud?.ClampIntoScreen() == true) AppLog.Write("화면 구성이 바뀌어 HUD 를 안으로 옮겼다");
+    });
 
     private void ToggleHudVisible()
     {
@@ -277,6 +312,10 @@ public sealed class AppController : IDisposable
 
     public void Dispose()
     {
+        // 전역 이벤트라 끊지 않으면 앱이 끝난 뒤에도 이 객체가 잡혀 있는다.
+        SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
+        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+
         pollTimer.Stop();
         frameTimer.Stop();
         updateTimer.Stop();
