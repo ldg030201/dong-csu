@@ -596,3 +596,68 @@ internal sealed class FakeTime : TimeProvider
     public override DateTimeOffset GetUtcNow() => now;
     public void Advance(TimeSpan by) => now += by;
 }
+
+public class AppVersionTests
+{
+    [Theory]
+    [InlineData(1, 0, 0, 0, "1.0.0")]
+    [InlineData(2, 1, 0, 0, "2.1.0")]
+    [InlineData(1, 12, 3, 0, "1.12.3")]
+    public void 네_번째_자리가_없으면_세_자리로_보인다(int a, int b, int c, int d, string expected)
+    {
+        Assert.Equal(expected, AppVersion.Format(new Version(a, b, c, d)));
+    }
+
+    /// <summary>
+    /// 이걸 버리면 앱이 1.0.0.1 인데 자기를 1.0.0 이라고 말한다. 그러면 업데이트를
+    /// 마친 뒤에도 "새 버전 1.0.0.1 이 있다"가 영영 사라지지 않는다.
+    /// </summary>
+    [Theory]
+    [InlineData(1, 0, 0, 1, "1.0.0.1")]
+    [InlineData(1, 5, 2, 3, "1.5.2.3")]
+    public void 긴급_자리는_살려서_보여준다(int a, int b, int c, int d, string expected)
+    {
+        Assert.Equal(expected, AppVersion.Format(new Version(a, b, c, d)));
+    }
+
+    [Fact]
+    public void 버전이_없으면_0으로()
+    {
+        Assert.Equal("0.0.0", AppVersion.Format(null));
+        Assert.Equal("1.2.0", AppVersion.Format(new Version(1, 2)));
+    }
+
+    [Theory]
+    [InlineData("1.0.0.1", "1.0.0", true)]
+    [InlineData("1.0.1", "1.0.0.1", true)]
+    [InlineData("1.0.0", "1.0.0.1", false)]
+    [InlineData("1.0.0", "1.0.0", false)]
+    [InlineData("2.0.0", "1.9.9", true)]
+    public void 어느_쪽이_새_버전인지_안다(string candidate, string current, bool expected)
+    {
+        Assert.Equal(expected, AppVersion.IsNewer(candidate, current));
+    }
+
+    /// <summary>Velopack 은 `1.0.0+abc` 처럼 꼬리표를 붙여 돌려주기도 한다.</summary>
+    [Theory]
+    [InlineData("1.0.0.1", "1.0.0.1")]
+    [InlineData("v1.2.3", "1.2.3")]
+    [InlineData("1.2.3+build9", "1.2.3")]
+    [InlineData("1.2.3-beta", "1.2.3")]
+    public void 꼬리표가_붙어도_읽는다(string text, string expected)
+    {
+        Assert.True(AppVersion.TryParse(text, out var parsed));
+        Assert.Equal(expected, AppVersion.Format(parsed));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("최신")]
+    [InlineData(null)]
+    public void 읽을_수_없으면_false(string? text)
+    {
+        Assert.False(AppVersion.TryParse(text, out _));
+        Assert.False(AppVersion.IsNewer(text, "1.0.0"));
+    }
+}

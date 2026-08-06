@@ -283,13 +283,21 @@ public sealed class SettingsWindow : Window
             panel.Children.Add(Label($"새 버전 {updates.LatestVersion}"));
             var apply = new Button
             {
-                Content = "업데이트",
+                // 68MB 를 받는다. 눌렀는데 아무 일도 안 일어나는 것처럼 보이면 안 된다.
+                Content = updates.IsApplying ? "받는 중… (68MB)" : "업데이트",
+                IsEnabled = !updates.IsApplying,
                 Margin = new Thickness(0, 6, 0, 0),
                 HorizontalAlignment = HorizontalAlignment.Left,
                 Padding = new Thickness(14, 4, 14, 4),
             };
-            apply.Click += async (_, _) => await updates.ApplyAsync().ConfigureAwait(true);
+            apply.Click += async (_, _) =>
+            {
+                ShowTab();                                      // 먼저 "받는 중"으로 바꾼다
+                await updates.ApplyAsync().ConfigureAwait(true);
+                ShowTab();                                      // 실패했으면 이유가 뜬다
+            };
             panel.Children.Add(apply);
+            panel.Children.Add(Hint("받아서 깔고 나면 앱이 저절로 다시 뜹니다."));
         }
         else if (updates.LastChecked is not null)
         {
@@ -306,6 +314,8 @@ public sealed class SettingsWindow : Window
         };
         check.Click += async (_, _) => { await updates.CheckAsync().ConfigureAwait(true); ShowTab(); };
         panel.Children.Add(check);
+
+        if (updates.LastError is { } updateError) panel.Children.Add(Hint(updateError));
 
         panel.Children.Add(Check("하루에 한 번 새 버전 확인", settings.ChecksForUpdates,
             value => { settings.ChecksForUpdates = value; Apply(); }));

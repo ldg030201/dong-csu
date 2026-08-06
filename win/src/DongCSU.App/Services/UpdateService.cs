@@ -93,29 +93,56 @@ public sealed class UpdateService(HttpClient http)
         }
     }
 
-    /// <summary>받아서 깔고 다시 뜬다. 성공하면 이 프로세스는 끝난다.</summary>
+    /// <summary>
+    /// 받아서 깔고 다시 뜬다. 성공하면 이 프로세스는 끝난다.
+    ///
+    /// 실패해도 던지지 않는다. 대신 <see cref="LastError"/> 에 남긴다 —
+    /// 눌렀는데 아무 일도 안 일어나는 것처럼 보이는 게 제일 나쁘다.
+    /// </summary>
     public async Task<bool> ApplyAsync()
     {
-        if (!IsInstalled || manager is not { } updateManager) return false;
+        if (IsApplying) return false;
+        if (!IsInstalled || manager is not { } updateManager)
+        {
+            LastError = "설치본이 아니라 업데이트를 걸 수 없습니다.";
+            Changed?.Invoke();
+            return false;
+        }
 
+        IsApplying = true;
+        LastError = null;
+        Changed?.Invoke();
         try
         {
             var update = await updateManager.CheckForUpdatesAsync().ConfigureAwait(false);
-            if (update is null) return false;
+            if (update is null)
+            {
+                LastError = "받을 새 버전이 없습니다.";
+                return false;
+            }
 
             await updateManager.DownloadUpdatesAsync(update).ConfigureAwait(false);
             updateManager.ApplyUpdatesAndRestart(update);
             return true;
         }
-        catch (Exception error) when (error is HttpRequestException or IOException)
+        catch (Exception error)
         {
+            LastError = $"업데이트 실패: {error.Message}";
             return false;
+        }
+        finally
+        {
+            IsApplying = false;
+            Changed?.Invoke();
         }
     }
 
+    /// <summary>마지막 업데이트 시도가 왜 실패했는지. 성공했거나 아직 안 눌렀으면 null.</summary>
+    public string? LastError { get; private set; }
+
     /// <summary>지금 버전보다 새 것이 있나.</summary>
-    public bool HasUpdate => LatestVersion is { } latest
-        && Version.TryParse(latest, out var next)
-        && Version.TryParse(AppInfo.Version, out var current)
-        && next > current;
+    public bool HasUpdate => AppVersion.IsNewer(LatestVersion, AppInfo.Version);
+
+    /// <summary>업데이트를 받는 중인지. 68MB 라 한참 걸린다 — 화면이 이걸 보여줘야 한다.</summary>
+    public bool IsApplying { get; private set; }
 }
