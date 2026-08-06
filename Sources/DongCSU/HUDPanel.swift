@@ -131,22 +131,9 @@ final class HUDInteractionView: NSView {
     }
 }
 
-/// 이름을 가진 설정 값. 메뉴가 목록을 그릴 때 쓴다.
+/// 이름을 가진 설정 값. 설정 창이 목록을 그릴 때 쓴다.
 protocol TitledOption {
     var title: String { get }
-}
-
-/// 메뉴 항목이 셀렉터 대신 클로저를 실행하게 해주는 대상.
-/// 이게 없으면 항목마다 `@objc` 핸들러와 rawValue 왕복이 필요하다.
-@MainActor
-private final class MenuAction: NSObject {
-    private let run: () -> Void
-
-    init(_ run: @escaping () -> Void) {
-        self.run = run
-    }
-
-    @objc func fire() { run() }
 }
 
 /// 패널 생성 · 위치 기억 · 컨텍스트 메뉴를 담당한다.
@@ -382,44 +369,6 @@ final class HUDController {
             $0.refreshPassThroughRects()
             $0.rebuildRootView()
         }
-    }
-
-    // MARK: - 메뉴 만들기
-
-    /// 여러 값 중 하나를 고르는 서브메뉴.
-    private func choiceMenu<T: Equatable & TitledOption>(
-        _ title: String,
-        values: [T],
-        current: T,
-        apply: @escaping (T) -> Void
-    ) -> NSMenuItem {
-        let submenu = NSMenu()
-        for value in values {
-            submenu.addItem(choiceItem(value.title, value: value, current: current, apply: apply))
-        }
-        return submenuItem(title, submenu)
-    }
-
-    private func submenuItem(_ title: String, _ submenu: NSMenu) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
-        item.submenu = submenu
-        return item
-    }
-
-    /// 고르면 `apply`가 도는 항목. 지금 값이면 체크가 붙는다.
-    private func choiceItem<T: Equatable>(
-        _ title: String,
-        value: T,
-        current: T,
-        apply: @escaping (T) -> Void
-    ) -> NSMenuItem {
-        let item = NSMenuItem(title: title, action: #selector(MenuAction.fire), keyEquivalent: "")
-        let action = MenuAction { apply(value) }
-        item.target = action
-        // target은 약한 참조라 여기서 붙잡아 두지 않으면 누르는 순간 사라져 있다.
-        item.representedObject = action
-        item.state = current == value ? .on : .off
-        return item
     }
 
     /// 설정 하나가 바뀌면 무엇을 다시 맞출지 잇는다.
@@ -668,11 +617,31 @@ final class HUDController {
 
     /// HUD 우클릭 메뉴와 메뉴바 아이콘 메뉴가 같은 내용을 쓴다.
     /// NSMenuItem은 메뉴 하나에만 속할 수 있어서, 메뉴를 만들어 넘기는 대신 채워준다.
+    ///
+    /// **여기에 설정 항목을 늘리지 않는다.** 모드·크기·테마·아이콘은 전부 설정 창에
+    /// 있고, 메뉴에 같은 걸 한 벌 더 두면 두 곳을 함께 고쳐야 하는 데다 자주 누르는
+    /// 항목이 목록에 파묻힌다. 메뉴에는 **바로 누르는 것**만 남긴다.
     func populateMenu(_ menu: NSMenu) {
         let status = NSMenuItem(title: store.summaryText, action: nil, keyEquivalent: "")
         status.isEnabled = false
         menu.addItem(status)
         menu.addItem(.separator())
+
+        // 토큰이 만료됐을 때만 나온다. 그때는 이게 해야 할 유일한 일이라 맨 위에 굵게 둔다
+        // — 새로고침해 봐야 다시 실패한다.
+        if store.needsReauth {
+            let login = NSMenuItem(
+                title: "Claude Code 재로그인…",
+                action: #selector(handleLogin),
+                keyEquivalent: ""
+            )
+            login.target = self
+            login.attributedTitle = NSAttributedString(
+                string: login.title,
+                attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)]
+            )
+            menu.addItem(login)
+        }
 
         let refresh = NSMenuItem(title: "새로고침", action: #selector(handleRefresh), keyEquivalent: "r")
         refresh.target = self
@@ -685,82 +654,6 @@ final class HUDController {
         )
         settingsItem.target = self
         menu.addItem(settingsItem)
-
-        let login = NSMenuItem(
-            title: "Claude Code 재로그인…",
-            action: #selector(handleLogin),
-            keyEquivalent: ""
-        )
-        login.target = self
-        // 토큰이 만료된 상태면 이게 해야 할 일이라는 걸 눈에 띄게 한다.
-        if store.needsReauth {
-            login.attributedTitle = NSAttributedString(
-                string: login.title,
-                attributes: [.font: NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)]
-            )
-        }
-        menu.addItem(login)
-
-        let collapse = NSMenuItem(
-            title: mode == .collapsed ? "펼치기" : "접기",
-            action: #selector(handleToggleCollapse),
-            keyEquivalent: ""
-        )
-        collapse.target = self
-        collapse.isEnabled = panel.isVisible
-        menu.addItem(collapse)
-
-        let pet = NSMenuItem(title: "펫 모드", action: #selector(handleTogglePet), keyEquivalent: "")
-        pet.target = self
-        pet.state = mode == .pet ? .on : .off
-        pet.isEnabled = panel.isVisible
-        menu.addItem(pet)
-
-        let toggle = NSMenuItem(
-            title: panel.isVisible ? "HUD 숨기기" : "HUD 보이기",
-            action: #selector(handleToggleHUD),
-            keyEquivalent: ""
-        )
-        toggle.target = self
-        menu.addItem(toggle)
-
-        let reset = NSMenuItem(title: "위치 초기화", action: #selector(handleResetPosition), keyEquivalent: "")
-        reset.target = self
-        reset.isEnabled = panel.isVisible
-        menu.addItem(reset)
-
-        let iconMenu = NSMenu()
-        for group in IconStyleGroup.allCases {
-            iconMenu.addItem(NSMenuItem.sectionHeader(title: group.title))
-            for style in group.styles {
-                iconMenu.addItem(
-                    choiceItem(style.title, value: style, current: iconStyle) { [weak self] in
-                        self?.settings.iconStyle = $0
-                    }
-                )
-            }
-        }
-        menu.addItem(submenuItem("가운데 아이콘", iconMenu))
-
-        menu.addItem(
-            choiceMenu("크기", values: HUDScale.allCases, current: settings.scale) { [weak self] in
-                self?.settings.scale = $0
-            }
-        )
-
-        let versionItem = NSMenuItem(
-            title: "버전과 업데이트…",
-            action: #selector(openUpdates),
-            keyEquivalent: ""
-        )
-        versionItem.target = self
-        menu.addItem(versionItem)
-
-        menu.addItem(
-            choiceMenu("테마", values: HUDAppearance.allCases, current: appearance) { [weak self] in
-                self?.settings.appearance = $0
-            }
-        )
 
         menu.addItem(.separator())
         let quit = NSMenuItem(title: "\(AppInfo.name) 종료", action: #selector(handleQuit), keyEquivalent: "q")
@@ -788,12 +681,6 @@ final class HUDController {
             self?.store.refresh(force: true)
         }
     }
-    @objc private func handleResetPosition() { resetPosition() }
-
-    @objc private func handleToggleHUD() {
-        settings.isHUDVisible.toggle()
-    }
-
     /// 패널 외형·배경색·팔레트를 현재 설정에 맞춘다.
     private func applyAppearance() {
         panel.appearance = appearance.nsAppearance
