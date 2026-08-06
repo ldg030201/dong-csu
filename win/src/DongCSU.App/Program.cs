@@ -63,21 +63,24 @@ public sealed class AppController : IDisposable
             AppLog.Write($"자격 증명 후보: {candidate} · {(File.Exists(candidate) ? "있음" : "없음")}");
         }
 
-        var credentials = new CredentialStore(new FileCredentialSource());
+        var credentials = new CredentialStore(
+            new FileCredentialSource(), refreshedTokens: new RefreshedTokenStore());
         if (credentials.Current() is { } credential)
         {
             // 토큰 자체는 절대 남기지 않는다. 길이와 만료 시각만으로 충분히 갈린다.
             AppLog.Write(
                 $"자격 증명 읽기 성공 · 토큰 {credential.AccessToken.Length}자 · "
                 + $"플랜 {credential.SubscriptionType ?? "-"} · "
-                + $"만료 {credential.ExpiresAt?.ToString("u") ?? "없음"}"
-                + (credential.IsExpired(DateTimeOffset.UtcNow) ? " (파일 기준으로는 지남 — 그래도 조회는 해 본다)" : ""));
+                + $"만료 {credential.ExpiresAt?.ToString("u") ?? "없음"} · "
+                + $"갱신용 토큰 {(credential.RefreshToken is null ? "없음" : "있음")}"
+                + (credential.IsExpired(DateTimeOffset.UtcNow) ? " (지났음 — 갱신해서 조회한다)" : ""));
         }
         else
         {
             AppLog.Write("자격 증명 읽기 실패");
         }
-        store = new UsageStore(new UsageApi(http, credentials)) { PollInterval = settings.PollInterval };
+        var api = new UsageApi(http, credentials, refresher: new OAuthTokenRefresher(http));
+        store = new UsageStore(api) { PollInterval = settings.PollInterval };
         store.Changed += OnStoreChanged;
 
         updates = new UpdateService(http);

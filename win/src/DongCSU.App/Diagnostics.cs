@@ -123,17 +123,22 @@ public static partial class Diagnostics
     private static async Task<int> Probe()
     {
         using var http = UsageApi.CreateHttpClient();
-        var credentials = new CredentialStore(new FileCredentialSource());
+        var credentials = new CredentialStore(
+            new FileCredentialSource(), refreshedTokens: new RefreshedTokenStore());
 
-        if (credentials.Current() is null)
+        if (credentials.Current() is not { } credential)
         {
             Console.WriteLine("credentials: not found");
             foreach (var path in FileCredentialSource.DefaultPaths()) Console.WriteLine($"  looked at: {path}");
             return 1;
         }
         Console.WriteLine("credentials: found");
+        Console.WriteLine($"expires_at: {credential.ExpiresAt?.ToString("u") ?? "-"}"
+            + (credential.IsExpired(DateTimeOffset.UtcNow) ? " (expired — will refresh)" : ""));
+        Console.WriteLine($"refresh_token: {(credential.RefreshToken is null ? "missing" : "present")}");
 
-        var result = await new UsageApi(http, credentials).FetchAsync().ConfigureAwait(false);
+        var api = new UsageApi(http, credentials, refresher: new OAuthTokenRefresher(http));
+        var result = await api.FetchAsync().ConfigureAwait(false);
         if (result.Error is { } error)
         {
             Console.WriteLine($"error: {error.Kind} {error.Message}");

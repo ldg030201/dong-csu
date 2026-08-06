@@ -1,6 +1,13 @@
 {
   "entries": [
     {
+      "version": "1.1.2",
+      "date": null,
+      "notes": [
+        "만료된 토큰을 스스로 갱신하도록 변경 (Claude Code를 켜 두지 않아도 조회)"
+      ]
+    },
+    {
       "version": "1.1.1",
       "date": "2026-08-06",
       "notes": [

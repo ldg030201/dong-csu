@@ -11,7 +11,11 @@ namespace DongCSU.Core.Usage;
 /// **토큰은 Authorization 헤더로만 쓴다.** 디스크에 쓰거나 로그에 남기지 않는다.
 /// 접속하는 곳은 이 주소 하나뿐이다.
 /// </summary>
-public sealed class UsageApi(HttpClient http, CredentialStore credentials, TimeProvider? time = null)
+public sealed class UsageApi(
+    HttpClient http,
+    CredentialStore credentials,
+    TimeProvider? time = null,
+    ITokenRefresher? refresher = null)
 {
     public static readonly Uri Endpoint = new("https://api.anthropic.com/api/oauth/usage");
 
@@ -40,8 +44,56 @@ public sealed class UsageApi(HttpClient http, CredentialStore credentials, TimeP
         // (1.1.0 에서 실제로 그랬다). 유효한지는 서버가 안다 — 걸어 보고 401 이면 그때 만료다.
         var looksExpired = credential.IsExpired(time.GetUtcNow());
 
+        var attempt = await SendAsync(credential.AccessToken, cancellationToken).ConfigureAwait(false);
+        if (attempt.Error is { } failure) return UsageResult.Fail(failure);
+
+        // **서버가 거절하면 갱신해서 딱 한 번만 다시 건다.**
+        //
+        // 데스크톱 앱만 쓰는 사용자에게는 `.credentials.json` 을 갱신해 줄 사람이 없어서,
+        // 여기서 갱신하지 않으면 그 파일이 만료된 뒤로 사용량이 **다시는** 안 나온다.
+        if (attempt.Rejected)
+        {
+            var renewed = credential.RefreshToken is { } refreshToken && refresher is not null
+                ? await refresher.RefreshAsync(refreshToken, cancellationToken).ConfigureAwait(false)
+                : null;
+
+            if (renewed is null)
+            {
+                credentials.DiscardRefreshed();
+                credentials.Invalidate();
+                return UsageResult.Fail(UsageError.TokenExpired(looksExpired));
+            }
+
+            credentials.ApplyRefreshed(renewed);
+
+            attempt = await SendAsync(renewed.AccessToken, cancellationToken).ConfigureAwait(false);
+            if (attempt.Error is { } retryFailure) return UsageResult.Fail(retryFailure);
+
+            if (attempt.Rejected)
+            {
+                // 갓 갱신한 토큰까지 거절당했다. 재로그인 말고는 길이 없다.
+                // 지워 두지 않으면 죽은 토큰을 살아 있다고 믿고 영원히 헛조회한다.
+                credentials.DiscardRefreshed();
+                credentials.Invalidate();
+                return UsageResult.Fail(UsageError.TokenExpired(looksExpired));
+            }
+        }
+
+        return Parse(attempt.Body ?? "", credential.SubscriptionType, time.GetUtcNow());
+    }
+
+    /// <summary>한 번 걸어 본 결과. 셋 중 하나다 — 본문을 받았거나, 거절당했거나, 실패했다.</summary>
+    private readonly record struct Attempt(string? Body, bool Rejected, UsageError? Error)
+    {
+        public static Attempt Ok(string body) => new(body, false, null);
+        public static Attempt Denied() => new(null, true, null);
+        public static Attempt Failed(UsageError error) => new(null, false, error);
+    }
+
+    private async Task<Attempt> SendAsync(string accessToken, CancellationToken cancellationToken)
+    {
         using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", credential.AccessToken);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         request.Headers.TryAddWithoutValidation("anthropic-beta", "oauth-2025-04-20");
         request.Headers.TryAddWithoutValidation("User-Agent", "claude-code/2.1");
         request.Headers.CacheControl = new CacheControlHeaderValue { NoCache = true };
@@ -53,11 +105,11 @@ public sealed class UsageApi(HttpClient http, CredentialStore credentials, TimeP
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            return UsageResult.Fail(UsageError.Network("시간 초과"));
+            return Attempt.Failed(UsageError.Network("시간 초과"));
         }
         catch (HttpRequestException error)
         {
-            return UsageResult.Fail(UsageError.Network(error.Message));
+            return Attempt.Failed(UsageError.Network(error.Message));
         }
 
         using (response)
@@ -68,26 +120,22 @@ public sealed class UsageApi(HttpClient http, CredentialStore credentials, TimeP
                     break;
                 case 401:
                 case 403:
-                    // 서버가 거절했으면 들고 있던 토큰은 죽은 것이다. 다음엔 파일을 다시 읽는다.
-                    credentials.Invalidate();
-                    return UsageResult.Fail(UsageError.TokenExpired(looksExpired));
+                    return Attempt.Denied();
                 case 429:
-                    return UsageResult.Fail(UsageError.RateLimited(RetryAfter(response)));
+                    return Attempt.Failed(UsageError.RateLimited(RetryAfter(response)));
                 default:
-                    return UsageResult.Fail(UsageError.Http((int)response.StatusCode));
+                    return Attempt.Failed(UsageError.Http((int)response.StatusCode));
             }
 
-            string body;
             try
             {
-                body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                return Attempt.Ok(
+                    await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
             }
             catch (HttpRequestException error)
             {
-                return UsageResult.Fail(UsageError.Network(error.Message));
+                return Attempt.Failed(UsageError.Network(error.Message));
             }
-
-            return Parse(body, credential.SubscriptionType, time.GetUtcNow());
         }
     }
 

@@ -9,6 +9,15 @@ public sealed record ClaudeCredentials
     public string? SubscriptionType { get; init; }
     public DateTimeOffset? ExpiresAt { get; init; }
 
+    /// <summary>
+    /// 만료된 accessToken 을 되살릴 때 쓰는 것. 없을 수도 있다.
+    ///
+    /// **이게 있어야 Claude Code 없이도 계속 돈다.** 데스크톱 앱만 쓰는 사용자에게는
+    /// <c>.credentials.json</c> 을 갱신해 줄 사람이 아무도 없어서, 이것 없이는 파일이
+    /// 한 번 만료되면 사용량이 다시는 안 나온다.
+    /// </summary>
+    public string? RefreshToken { get; init; }
+
     public bool IsExpired(DateTimeOffset now) => ExpiresAt is { } at && at <= now;
 
     /// <summary>곧 만료될 것은 캐시에 두지 않는다. 쓰려는 순간 만료돼 있으면 헛조회가 된다.</summary>
@@ -77,6 +86,9 @@ public sealed record ClaudeCredentials
                     ? sub.GetString()
                     : null,
                 ExpiresAt = expiresAt,
+                RefreshToken = oauth.TryGetProperty("refreshToken", out var refresh)
+                    ? refresh.GetString()
+                    : null,
             };
         }
         catch (JsonException)
@@ -139,35 +151,114 @@ public sealed class FileCredentialSource(IEnumerable<string>? searchPaths = null
 }
 
 /// <summary>
-/// 읽어 둔 자격 증명을 들고 있는다.
+/// 지금 쓸 자격 증명을 들고 있는다.
 ///
-/// 파일 읽기가 비싸지는 않지만, 만료 전까지 값이 바뀌지 않으므로 폴링마다 디스크를
-/// 두드릴 이유가 없다. 서버가 401 을 주면 <see cref="Invalidate"/> 로 버린다.
+/// 두 곳에서 온다. **Claude Code 가 적어 둔 파일**(읽기만 한다)과, **우리가 갱신해서
+/// 따로 저장해 둔 토큰**이다. 갱신해 둔 것이 살아 있으면 그쪽이 이긴다 — 파일이 만료된
+/// 채로 남아 있는 것이 오히려 정상이다. 갱신해 줄 사람이 없어서 우리가 갱신한 것이다.
+///
+/// 파일 읽기가 비싸지는 않지만 폴링마다 디스크를 두드릴 이유는 없다.
+/// 서버가 401 을 주면 <see cref="Invalidate"/> 로 버린다.
 /// </summary>
-public sealed class CredentialStore(ICredentialSource source, TimeProvider? time = null)
+public sealed class CredentialStore(
+    ICredentialSource source,
+    TimeProvider? time = null,
+    RefreshedTokenStore? refreshedTokens = null)
 {
     private readonly TimeProvider time = time ?? TimeProvider.System;
-    private ClaudeCredentials? cached;
     private readonly Lock gate = new();
+    private ClaudeCredentials? cachedFile;
+    private RefreshedToken? refreshed;
+    private bool refreshedLoaded;
 
     public ClaudeCredentials? Current()
+    {
+        var file = FromFile();
+        var saved = Refreshed();
+
+        if (saved is { } token && token.IsUsableForAWhile(time.GetUtcNow()))
+        {
+            // 플랜 이름은 갱신 응답에 안 온다. 파일 쪽에서 가져다 붙인다.
+            return new ClaudeCredentials
+            {
+                AccessToken = token.AccessToken,
+                SubscriptionType = file?.SubscriptionType,
+                ExpiresAt = token.ExpiresAt,
+                RefreshToken = token.RefreshToken ?? file?.RefreshToken,
+            };
+        }
+
+        if (file is null) return null;
+
+        // 갱신해 둔 토큰이 만료됐더라도 **refreshToken 만은 그쪽이 더 새것이다**
+        // (서버가 회전시켰다면 파일의 것은 이미 못 쓴다).
+        return saved?.RefreshToken is { } newer ? file with { RefreshToken = newer } : file;
+    }
+
+    /// <summary>갱신해서 받은 것을 저장하고 곧바로 쓰기 시작한다.</summary>
+    public void ApplyRefreshed(RefreshedToken token)
+    {
+        refreshedTokens?.Write(token);
+        lock (gate)
+        {
+            refreshed = token;
+            refreshedLoaded = true;
+        }
+    }
+
+    /// <summary>들고 있던 것을 버린다. 다음에 다시 읽는다.</summary>
+    public void Invalidate()
+    {
+        lock (gate)
+        {
+            cachedFile = null;
+            refreshed = null;
+            refreshedLoaded = false;
+        }
+    }
+
+    /// <summary>
+    /// 갱신해 둔 토큰을 통째로 버린다.
+    ///
+    /// 갱신한 토큰까지 서버가 거절했을 때 부른다. 지워 두지 않으면 만료 시각만 보고
+    /// 살아 있다고 믿어서 **죽은 토큰으로 영원히 헛조회한다.**
+    /// </summary>
+    public void DiscardRefreshed()
+    {
+        refreshedTokens?.Clear();
+        lock (gate)
+        {
+            refreshed = null;
+            refreshedLoaded = true;
+        }
+    }
+
+    private ClaudeCredentials? FromFile()
     {
         var now = time.GetUtcNow();
         lock (gate)
         {
-            if (cached is { } value && !value.IsExpired(now) && value.IsUsableForAWhile(now))
+            if (cachedFile is { } value && !value.IsExpired(now) && value.IsUsableForAWhile(now))
             {
-                return cached;
+                return cachedFile;
             }
         }
 
         var fresh = source.Read();
-        lock (gate) { cached = fresh; }
+        lock (gate) { cachedFile = fresh; }
         return fresh;
     }
 
-    public void Invalidate()
+    private RefreshedToken? Refreshed()
     {
-        lock (gate) { cached = null; }
+        lock (gate)
+        {
+            if (!refreshedLoaded)
+            {
+                refreshed = refreshedTokens?.Read();
+                refreshedLoaded = true;
+            }
+            return refreshed;
+        }
     }
 }
