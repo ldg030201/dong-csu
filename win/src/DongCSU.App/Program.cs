@@ -48,6 +48,10 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer frameTimer = new();
     private readonly DispatcherTimer updateTimer = new();
 
+    /// <summary>2초면 눈으로 보기 충분하고, 표본 자체는 거의 공짜다.</summary>
+    private readonly DispatcherTimer statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
+    private readonly ProcessUsageSampler sampler = new(new CurrentProcessSource());
+
     private UsageStore store = null!;
     private UpdateService updates = null!;
     private HudWindow? hud;
@@ -129,6 +133,12 @@ public sealed class AppController : IDisposable
 
         pollTimer.Tick += async (_, _) => await store.RefreshAsync().ConfigureAwait(true);
         frameTimer.Tick += (_, _) => AdvanceFrame();
+        statsTimer.Tick += (_, _) =>
+        {
+            if (hud is null) return;
+            hud.View.Stats = sampler.Sample();
+            hud.View.InvalidateVisual();
+        };
 
         updateTimer.Interval = UpdateService.CheckInterval;
         updateTimer.Tick += async (_, _) =>
@@ -157,13 +167,41 @@ public sealed class AppController : IDisposable
         hud.View.VersionBadgeIsTest = AppInfo.IsTestBuild;
         hud.View.HasUpdate = updates.HasUpdate;
 
+        hud.View.ShowsProcessStats = settings.ShowsProcessStats;
+
         store.PollInterval = settings.PollInterval;
         pollTimer.Interval = store.NextPollDelay();
         pollTimer.Start();
 
         if (settings.IsHudVisible) hud.Show(); else hud.Hide();
 
+        SyncStatsTimer();
         RefreshHud();
+    }
+
+    /// <summary>
+    /// 자원 표본은 **보이고 · 펼쳐져 있고 · 켜 뒀을 때만** 뜬다.
+    ///
+    /// 셋 중 하나라도 아니면 아무도 그 숫자를 못 보는데, 그걸 2초마다 재고 다시
+    /// 그리는 것은 "이 앱이 얼마나 먹나"를 보여주겠다는 기능으로서 앞뒤가 안 맞는다.
+    /// </summary>
+    private void SyncStatsTimer()
+    {
+        var needed = settings.ShowsProcessStats
+            && settings.IsHudVisible
+            && settings.Mode != HudMode.Collapsed;
+
+        if (needed && !statsTimer.IsEnabled)
+        {
+            // 멈춰 둔 사이에 쌓인 CPU 시간이 한꺼번에 튀어 보이지 않게 처음부터 다시 센다.
+            sampler.Reset();
+            if (hud is not null) hud.View.Stats = sampler.Sample();
+            statsTimer.Start();
+        }
+        else if (!needed && statsTimer.IsEnabled)
+        {
+            statsTimer.Stop();
+        }
     }
 
     private bool IsDarkTheme() => settings.Theme switch
@@ -238,6 +276,9 @@ public sealed class AppController : IDisposable
     private void StartFrameTimer()
     {
         frameTimer.Stop();
+        // 움직이지 않게 해 뒀으면 프레임을 넘기지 않는다. 기분에 따른 색은 그대로다 —
+        // 자세만 멈출 뿐 지금 상태를 못 알리게 되는 것은 아니다.
+        if (!settings.AnimatesMascot) return;
         if (animator.CurrentDelay() is not { } delay) return;
 
         frameTimer.Interval = delay;
@@ -303,6 +344,7 @@ public sealed class AppController : IDisposable
         pollTimer.Stop();
         frameTimer.Stop();
         updateTimer.Stop();
+        statsTimer.Stop();
 
         settingsWindow?.Close();
         settingsWindow = null;
@@ -337,6 +379,7 @@ public sealed class AppController : IDisposable
         pollTimer.Stop();
         frameTimer.Stop();
         updateTimer.Stop();
+        statsTimer.Stop();
         tray?.Dispose();
         http.Dispose();
     }

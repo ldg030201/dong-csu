@@ -51,6 +51,21 @@ public sealed class AppSettings
     public bool ChecksForUpdates { get; set; } = true;
 
     /// <summary>
+    /// HUD 아래에 이 앱 자신의 CPU·메모리를 붙일지. **기본은 꺼짐이다.**
+    ///
+    /// 대부분은 궁금해하지 않고, 켜면 카드가 17만큼 길어진다. 항상 떠 있는 앱이
+    /// 얼마나 먹는지 확인하고 싶을 때만 켠다.
+    /// </summary>
+    public bool ShowsProcessStats { get; set; }
+
+    /// <summary>
+    /// 마스코트를 움직일지. 끄면 평소 자세로 멈추되 기분에 따른 색은 그대로다.
+    ///
+    /// 움직임이 거슬리거나 노트북에서 배터리를 아끼고 싶을 때 쓴다.
+    /// </summary>
+    public bool AnimatesMascot { get; set; } = true;
+
+    /// <summary>
     /// 배경 불투명도. **맥과 같은 0.92 다.**
     ///
     /// 값 자체는 그대로 두고 <see cref="Backdrop"/> 에서 잘라 쓴다. 파일을 손으로

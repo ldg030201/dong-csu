@@ -94,6 +94,9 @@ public sealed class HudView : FrameworkElement
     public const double BaseCollapsedWidth = 108;
     public const double BaseCollapsedHeight = 88;
 
+    /// <summary>자원 사용량 줄을 붙일 때 늘어나는 높이.</summary>
+    public const double BaseStatsRowHeight = 17;
+
     private const double BaseRingDiameter = 62;
     private const double BaseOuterThickness = 6;
     private const double BaseInnerThickness = 5;
@@ -150,6 +153,11 @@ public sealed class HudView : FrameworkElement
     /// <summary>다음 조회 예정 시각. null 이면 조회가 멈춘 상태다.</summary>
     public DateTimeOffset? NextPollAt { get; set; }
 
+    /// <summary>이 앱 자신의 CPU·메모리를 아래 줄에 붙일지. 접힌 모습에는 자리가 없다.</summary>
+    public bool ShowsProcessStats { get; set; }
+
+    public ProcessUsage? Stats { get; set; }
+
     public string[]? OwlGrid { get; set; }
     public string OwlPaletteName { get; set; } = "normal";
 
@@ -166,9 +174,14 @@ public sealed class HudView : FrameworkElement
         }
     }
 
+    /// <summary>접힌 카드에는 자원 줄을 붙일 자리가 없다.</summary>
+    private bool HasStatsRow => ShowsProcessStats && Mode != HudMode.Collapsed;
+
     public Size DesiredHudSize => Mode == HudMode.Collapsed
         ? new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale)
-        : new Size(BaseExpandedWidth * Scale, BaseExpandedHeight * Scale);
+        : new Size(
+            BaseExpandedWidth * Scale,
+            (BaseExpandedHeight + (HasStatsRow ? BaseStatsRowHeight : 0)) * Scale);
 
     private HudPalette Palette => IsDark ? HudPalette.Dark : HudPalette.Light;
 
@@ -284,6 +297,7 @@ public sealed class HudView : FrameworkElement
         if (Mode != HudMode.Collapsed) DrawMetrics(context, palette, s);
         if (dim) context.Pop();
 
+        DrawStatsRow(context, size, palette, s);
         DrawCountdown(context, size, palette, s);
         DrawCornerBadges(context, palette, s);
         DrawButtons(context, palette, s);
@@ -433,13 +447,18 @@ public sealed class HudView : FrameworkElement
         if (Mode == HudMode.Collapsed) return;
 
         var now = DateTimeOffset.Now;
-        var right = size.Width - 10 * s;
-        var bottom = BaseExpandedHeight * s - 7 * s;
+
+        // 자원 줄이 붙으면 카운트다운도 거기로 내려가 같은 높이에 놓인다.
+        var inset = HasStatsRow ? 13 * s : 10 * s;
+        var bottom = HasStatsRow
+            ? size.Height - 4 * s
+            : BaseExpandedHeight * s - 7 * s;
+        var right = size.Width - inset;
 
         if (StaleLabel(now) is { } warning)
         {
             var text = Text(warning, 9.5 * s, Semibold, palette.Warning);
-            var x = ToRight ? right - text.Width : 10 * s;
+            var x = ToRight ? right - text.Width : inset;
             context.DrawText(text, new Point(x, bottom - text.Height));
             return;
         }
@@ -450,12 +469,47 @@ public sealed class HudView : FrameworkElement
         var clock = Text(CountdownText(now), 9.5 * s, Regular, clockColor);
 
         var width = label.Width + 4 * s + clock.Width;
-        var startX = ToRight ? right - width : 10 * s;
+        var startX = ToRight ? right - width : inset;
         var lineHeight = Math.Max(label.Height, clock.Height);
 
         context.DrawText(label, new Point(startX, bottom - lineHeight + (lineHeight - label.Height) / 2));
         context.DrawText(clock, new Point(
             startX + label.Width + 4 * s, bottom - lineHeight + (lineHeight - clock.Height) / 2));
+    }
+
+    /// <summary>
+    /// 카드 맨 아래 — 이 앱 자신이 쓰는 CPU 와 메모리.
+    ///
+    /// 사용량 API 와는 아무 상관이 없다. **항상 떠 있는 앱이 컴퓨터를 얼마나 먹는지**를
+    /// 사용자가 직접 확인할 수 있어야 해서 둔다. 카운트다운 반대편에 놓는다.
+    /// </summary>
+    private void DrawStatsRow(DrawingContext context, Size size, HudPalette palette, double s)
+    {
+        if (!HasStatsRow) return;
+
+        var stats = Stats ?? new ProcessUsage(0, 0);
+        var inset = 13 * s;
+        var bottom = size.Height - 4 * s;
+
+        var parts = new (FormattedText Title, FormattedText Value)[]
+        {
+            (Text("CPU", 8 * s, Semibold, palette.Faint), Text(stats.CpuText, 9 * s, Regular, palette.Tertiary)),
+            (Text("MEM", 8 * s, Semibold, palette.Faint), Text(stats.MemoryText, 9 * s, Regular, palette.Tertiary)),
+        };
+
+        var width = 0.0;
+        foreach (var (title, value) in parts) width += title.Width + 3 * s + value.Width;
+        width += 6 * s;   // 두 묶음 사이
+
+        var x = ToRight ? inset : size.Width - inset - width;
+        foreach (var (title, value) in parts)
+        {
+            var lineHeight = Math.Max(title.Height, value.Height);
+            context.DrawText(title, new Point(x, bottom - lineHeight + (lineHeight - title.Height) / 2));
+            x += title.Width + 3 * s;
+            context.DrawText(value, new Point(x, bottom - lineHeight + (lineHeight - value.Height) / 2));
+            x += value.Width + 6 * s;
+        }
     }
 
     private string? StaleLabel(DateTimeOffset now)
