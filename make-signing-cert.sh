@@ -56,11 +56,11 @@ openssl req -x509 -newkey rsa:2048 -sha256 -days 3650 -nodes \
   2>/dev/null
 
 openssl pkcs12 -export -inkey "$WORK/key.pem" -in "$WORK/cert.pem" \
-  -out "$WORK/bundle.p12" -name "$SIGN_CERT_NAME" -passout pass:dongmcu
+  -out "$WORK/bundle.p12" -name "$SIGN_CERT_NAME" -passout pass:dongcsu
 
 # -T 로 codesign에 미리 접근을 열어 두지 않으면, 빌드할 때마다 키체인 암호를 묻는다.
 echo "키체인에 넣는 중… (암호를 물으면 로그인 암호를 넣어라)"
-security import "$WORK/bundle.p12" -k "$KEYCHAIN" -P dongmcu -T /usr/bin/codesign -A
+security import "$WORK/bundle.p12" -k "$KEYCHAIN" -P dongcsu -T /usr/bin/codesign -A
 
 # 자체 서명 루트라 그대로 두면 codesign이 신뢰 사슬을 못 만든다.
 # 이 인증서에 한해 **코드 서명 용도로만** 신뢰한다고 표시한다.
