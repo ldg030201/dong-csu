@@ -1,4 +1,4 @@
-# dong-mcu 작업 규칙
+# dong-csu 작업 규칙
 
 ## 버전
 
@@ -15,12 +15,12 @@
 자리가 두 자리가 됐다는 이유로 주 버전을 올리지 않는다.
 
 `./release.sh 1.0.0.1` 처럼 그대로 넘기면 된다. 버전은
-`Resources/Info.plist`와 `Sources/DongMCU/main.swift` 두 곳에 있고
+`Resources/Info.plist`와 `Sources/DongCSU/main.swift` 두 곳에 있고
 release.sh가 양쪽을 함께 올린 뒤 어긋나지 않았는지 확인한다.
 
 ## 변경 내역 (매번 적는다)
 
-**무언가를 만들거나 고칠 때마다 [`Sources/DongMCU/Changelog.swift`](Sources/DongMCU/Changelog.swift)
+**무언가를 만들거나 고칠 때마다 [`Sources/DongCSU/Changelog.swift`](Sources/DongCSU/Changelog.swift)
 맨 위 항목에 한 줄을 추가한다.** 빼먹지 않는다.
 
 설정 창의 **버전** 탭이 이 파일을 그대로 보여준다. 아직 안 나간 변경은 날짜가 `nil`인
@@ -57,18 +57,18 @@ source ./lib.sh && dump_changelog
 검증은 **test 변형으로만** 한다.
 
 ```bash
-VARIANT=test ./build.sh     # DongMCU-Test.app
+VARIANT=test ./build.sh     # DongCSU-Test.app
 ```
 
 `./build.sh`(정식 번들)는 배포할 때 release.sh가 알아서 부른다. 개발 중에 직접 만들면
 사용자가 brew로 설치해 쓰는 배포본이 바뀐 것처럼 보여서 혼란스럽다. 실수로 만들었으면
-`build/DongMCU.app`을 지운다.
+`build/DongCSU.app`을 지운다.
 
 **빌드했다고 화면에 반영되지 않는다.** 이미 떠 있는 앱은 옛 바이너리 그대로다.
 `dev.sh`(fswatch)가 돌고 있지 않다면 직접 다시 띄운다.
 
 ```bash
-pkill -f DongMCU-Test; open build/DongMCU-Test.app
+pkill -f DongCSU-Test; open build/DongCSU-Test.app
 ```
 
 ## 눈으로 확인하기
@@ -77,12 +77,12 @@ pkill -f DongMCU-Test; open build/DongMCU-Test.app
 이걸로 먼저 확인한다.
 
 ```bash
-dong-mcu --render out.png 34 61 owl ok large   # HUD (사용률·아이콘·상태·배율)
-dong-mcu --render-settings out.png changelog   # 설정 창의 특정 탭
-dong-mcu --render-menubar out.png 16           # 메뉴바 아이콘
-dong-mcu --render-icon out.png 1024            # 앱 아이콘
-dong-mcu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임 (기분 + 걷기·달리기)
-dong-mcu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
+dong-csu --render out.png 34 61 owl ok large   # HUD (사용률·아이콘·상태·배율)
+dong-csu --render-settings out.png changelog   # 설정 창의 특정 탭
+dong-csu --render-menubar out.png 16           # 메뉴바 아이콘
+dong-csu --render-icon out.png 1024            # 앱 아이콘
+dong-csu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임 (기분 + 걷기·달리기)
+dong-csu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
 ```
 
 `--render-owl`은 `OwlAnimation.all`을 한 장에 늘어놓는다. 자세를 고칠 때 앱을 띄우고
@@ -110,9 +110,15 @@ GIF가 실제 애니메이션과 어긋나면 안 된다. GIF는 손으로 만�
 
 ## 이름
 
-화면에 보이는 이름은 **DongMCU**, 번들 ID는 `com.ldg.dong-mcu`, 명령과 Homebrew tap은
-`dong-mcu`다. **번들 ID는 바꾸지 않는다** — UserDefaults 키가 달라져서 창 위치·아이콘·크기
-설정이 전부 초기화된다.
+화면에 보이는 이름은 **DongCSU**, 번들 ID는 `com.ldg.dong-csu`, 명령과 Homebrew tap은
+`dong-csu`다.
+
+**번들 ID를 바꾸면 UserDefaults 도메인이 통째로 갈린다** — 창 위치·아이콘·크기·펫 설정이
+전부 초기화된다. 함부로 바꾸지 않되, 꼭 바꿔야 하면 `HUDSettings.migrateLegacyDefaults`
+처럼 **옛 도메인에서 한 번 옮겨 오는 코드를 같이 넣는다.** 샌드박스가 아니라서 읽을 수 있다.
+
+`dong-mcu` → `dong-csu` 개명(v2.0.0) 때 그렇게 했다. `m`이 macOS를 뜻했는데 윈도우판을
+만들기로 하면서 틀린 글자가 됐고, 사용자가 적을 때 치우는 게 쌌다.
 
 ## 커밋
 

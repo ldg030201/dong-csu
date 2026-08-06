@@ -6,7 +6,7 @@
 #   ./dev.sh render   한 번 빌드하고 HUD를 PNG로 렌더 (앱 안 띄움)
 set -uo pipefail
 
-# 개발 중에는 테스트판(DongMCU-Test)을 띄운다. brew로 설치한 정식판과 섞이지 않는다.
+# 개발 중에는 테스트판(DongCSU-Test)을 띄운다. brew로 설치한 정식판과 섞이지 않는다.
 export VARIANT="${VARIANT:-test}"
 source "$(dirname "$0")/lib.sh"
 LOG="$ROOT/build/dev-build.log"

@@ -2,7 +2,7 @@ import AppKit
 
 /// 메뉴바 아이콘.
 ///
-/// 아이콘이 보이면 dong-mcu가 돌고 있다는 뜻이다. HUD를 숨겨도 여기로 다시 켜거나
+/// 아이콘이 보이면 dong-csu가 돌고 있다는 뜻이다. HUD를 숨겨도 여기로 다시 켜거나
 /// 종료할 수 있어서, Dock 아이콘 없는 앱의 유일한 고정 진입점 역할을 한다.
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# dong-mcu.app 번들을 만든다. Xcode 없이 Command Line Tools + SwiftPM만 사용.
+# dong-csu.app 번들을 만든다. Xcode 없이 Command Line Tools + SwiftPM만 사용.
 set -euo pipefail
 
 # 앱 이름·경로·빌드 호출은 lib.sh 한 곳에서 정한다.
 source "$(dirname "$0")/lib.sh"
 
 # 버전은 Info.plist와 main.swift 두 곳에 있다. 어긋난 채로 배포되면
-# `dong-mcu --version`이 태그와 다른 값을 뱉으므로 여기서 막는다.
+# `dong-csu --version`이 태그와 다른 값을 뱉으므로 여기서 막는다.
 PLIST_VERSION="$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$ROOT/Resources/Info.plist")"
-SOURCE_VERSION="$(sed -n 's/^let dongMCUVersion = "\(.*\)"$/\1/p' "$ROOT/Sources/DongMCU/main.swift")"
+SOURCE_VERSION="$(sed -n 's/^let dongCSUVersion = "\(.*\)"$/\1/p' "$ROOT/Sources/DongCSU/main.swift")"
 if [[ "$PLIST_VERSION" != "$SOURCE_VERSION" ]]; then
   echo "버전 불일치: Info.plist=$PLIST_VERSION, main.swift=$SOURCE_VERSION" >&2
   exit 1
@@ -19,7 +19,7 @@ BIN_DIR="$(swift_bin_dir)"
 
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/dong-mcu" "$APP/Contents/MacOS/$APP_NAME"
+cp "$BIN_DIR/dong-csu" "$APP/Contents/MacOS/$APP_NAME"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 
 for KEY_VALUE in \

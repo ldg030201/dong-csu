@@ -212,7 +212,32 @@ final class HUDSettings: ObservableObject {
 
     private let defaults: UserDefaults
 
+    /// 옛 이름(`dong-mcu`)에서 쓰던 설정을 **한 번만** 옮겨 온다.
+    ///
+    /// 이름을 바꾸면 번들 ID가 달라지고, 번들 ID가 달라지면 UserDefaults 도메인이
+    /// 통째로 갈린다. 그대로 두면 쓰던 사람의 창 위치·아이콘·크기·펫 설정이 전부
+    /// 초기화된다. 이 앱은 샌드박스가 아니라서 옛 도메인을 그냥 읽을 수 있다.
+    ///
+    /// 새 도메인에 이미 있는 키는 건드리지 않는다 — 옮기기 전에 사용자가 손댄 값을
+    /// 옛 값으로 되돌리면 안 된다.
+    private static func migrateLegacyDefaults(into defaults: UserDefaults) {
+        guard !defaults.bool(forKey: Keys.migratedFromLegacy) else { return }
+        defaults.set(true, forKey: Keys.migratedFromLegacy)
+
+        // 정식판은 정식판에서, 테스트판은 테스트판에서 가져온다.
+        guard let id = Bundle.main.bundleIdentifier, id.contains("dong-csu") else { return }
+        let legacy = id.replacingOccurrences(of: "dong-csu", with: "dong-mcu")
+        guard let stored = defaults.persistentDomain(forName: legacy) else { return }
+
+        for (key, value) in stored where defaults.object(forKey: key) == nil {
+            defaults.set(value, forKey: key)
+        }
+    }
+
     private enum Keys {
+        /// 옛 도메인에서 한 번 옮겨 왔는지. 두 번 옮기면 사용자가 그 사이에 바꾼 값이 밀린다.
+        static let migratedFromLegacy = "migratedFromDongMCU"
+
         static let appearance = "hud.appearance"
         static let iconStyle = "hud.iconStyle"
         static let mode = "hud.mode"
@@ -236,6 +261,8 @@ final class HUDSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+        // 앱 이름이 바뀌면 UserDefaults 도메인이 갈린다. 읽기 전에 옛 것을 옮겨 온다.
+        if defaults == .standard { Self.migrateLegacyDefaults(into: defaults) }
         appearance = HUDAppearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .default
         iconStyle = ClaudeIconStyle(rawValue: defaults.string(forKey: Keys.iconStyle) ?? "") ?? .default
         // 모드가 생기기 전에 접어 두고 쓰던 사람은 그대로 접힌 채로 시작한다.

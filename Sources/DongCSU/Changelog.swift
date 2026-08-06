@@ -22,10 +22,10 @@ struct ChangelogFeed: Codable {
 enum Changelog {
     /// 원격 내역 주소. 릴리스 API 대신 이 파일 하나로 최신 버전과 내역을 함께 받는다.
     static let feedURL = URL(
-        string: "https://raw.githubusercontent.com/ldg030201/dong-mcu/main/docs/changelog.json"
+        string: "https://raw.githubusercontent.com/ldg030201/dong-csu/main/docs/changelog.json"
     )!
 
-    /// 이 목록을 JSON으로 뽑는다. `dong-mcu --dump-changelog`가 쓴다.
+    /// 이 목록을 JSON으로 뽑는다. `dong-csu --dump-changelog`가 쓴다.
     ///
     /// `.sortedKeys`가 없으면 키 순서가 실행마다 달라져서, 같은 소스로 뽑아도
     /// 파일이 매번 바뀐 것처럼 보인다(CI의 일치 검사가 계속 실패한다).
@@ -40,6 +40,11 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.0.0", date: nil, notes: [
+            "앱 이름을 DongCSU로 변경 (윈도우판 대비, macOS를 뜻하던 m 제거)",
+            "Homebrew tap·명령·번들 ID를 dong-csu로 변경",
+            "옛 이름에서 쓰던 설정을 첫 실행 때 옮겨 오는 기능 추가",
+        ]),
         ChangelogEntry(version: "1.5.2", date: "2026-08-05", notes: [
             "앱 안의 업데이트가 Homebrew 확인 물음 앞에서 멈추던 문제 수정",
             "혼자 돌아다니기·커서 피하기 기본값을 켜짐으로 변경",

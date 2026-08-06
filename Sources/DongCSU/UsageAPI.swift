@@ -88,7 +88,7 @@ actor CredentialStore {
 /// Claude Code가 macOS 키체인에 저장한 OAuth 자격증명을 읽는다.
 ///
 /// `/usr/bin/security`를 쓰는 이유: Apple이 서명한 고정 바이너리라 키체인 ACL에
-/// "항상 허용"을 한 번 눌러두면 dong-mcu를 다시 빌드해도 접근 권한이 유지된다.
+/// "항상 허용"을 한 번 눌러두면 dong-csu를 다시 빌드해도 접근 권한이 유지된다.
 /// (직접 SecItemCopyMatching을 쓰면 재빌드마다 코드 서명이 바뀌어 매번 다시 물어본다.)
 enum ClaudeKeychain {
     private static let baseService = "Claude Code-credentials"

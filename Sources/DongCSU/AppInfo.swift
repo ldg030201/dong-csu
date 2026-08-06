@@ -6,11 +6,11 @@ import AppKit
 /// 화면에 이름을 쓸 때는 하드코딩하지 말고 여기서 가져온다.
 enum AppInfo {
     static var name: String {
-        Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "DongMCU"
+        Bundle.main.infoDictionary?["CFBundleName"] as? String ?? "DongCSU"
     }
 
     static var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? dongMCUVersion
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? dongCSUVersion
     }
 
     /// 테스트판은 메뉴바 아이콘 색을 달리해서 정식판과 구분한다.
@@ -25,7 +25,7 @@ enum AppInfo {
     /// 렌더 통로도 같은 값을 써야 미리보기가 실제와 어긋나지 않는다.
     static let testBuildTint = NSColor(srgbRed: 0.54, green: 0.34, blue: 0.85, alpha: 1)
 
-    /// "DongMCU 0.2.0" 처럼 이름과 버전을 붙인 표기.
+    /// "DongCSU 0.2.0" 처럼 이름과 버전을 붙인 표기.
     static var displayVersion: String {
         "\(name) \(version)"
     }

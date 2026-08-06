@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Resources/AppIcon.icns 를 다시 만든다.
-# 그림 자체는 Sources/DongMCU/AppIconArt.swift 에 있고, 앱이 스스로 PNG를 뽑는다.
+# 그림 자체는 Sources/DongCSU/AppIconArt.swift 에 있고, 앱이 스스로 PNG를 뽑는다.
 # 아이콘은 자주 바뀌지 않으므로 결과물(.icns)을 커밋해 두고 build.sh는 복사만 한다.
 set -euo pipefail
 
@@ -11,7 +11,7 @@ OUT="$ROOT/Resources/AppIcon.icns"
 
 swift_build
 # lib.sh 의 BIN(번들 안 실행 파일)과 다르다. 여기서는 번들을 만들지 않는다.
-ICON_BIN="$(swift_bin_dir)/dong-mcu"
+ICON_BIN="$(swift_bin_dir)/dong-csu"
 
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT

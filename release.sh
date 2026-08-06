@@ -29,7 +29,7 @@ TAG="v$VERSION"
 COMMITTED=0
 restore_version_files() {
   if [[ "$COMMITTED" == "0" ]]; then
-    git checkout -- Resources/Info.plist Sources/DongMCU/main.swift 2>/dev/null || true
+    git checkout -- Resources/Info.plist Sources/DongCSU/main.swift 2>/dev/null || true
     echo "→ 버전 변경을 되돌렸다." >&2
   fi
 }
@@ -68,8 +68,8 @@ echo "▸ $TAG 준비"
 
 # ── 2. 버전 올리고 빌드로 검증 ──────────────────────────────────
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
-sed -i '' "s/^let dongMCUVersion = \".*\"$/let dongMCUVersion = \"$VERSION\"/" \
-  Sources/DongMCU/main.swift
+sed -i '' "s/^let dongCSUVersion = \".*\"$/let dongCSUVersion = \"$VERSION\"/" \
+  Sources/DongCSU/main.swift
 
 ./build.sh >/dev/null
 BUILT="$("$BIN" --version | awk '{print $2}')"
@@ -84,7 +84,7 @@ fi
 echo "▸ 빌드 확인 ($BUILT)"
 
 # ── 3. 커밋 · 태그 · 푸시 ───────────────────────────────────────
-git add Resources/Info.plist Sources/DongMCU/main.swift docs/changelog.json
+git add Resources/Info.plist Sources/DongCSU/main.swift docs/changelog.json
 git commit -q -m "🔖 $TAG"
 COMMITTED=1
 git tag -a "$TAG" -m "$TAG"
@@ -117,8 +117,8 @@ fi
 echo "▸ sha256 ${SHA:0:16}…"
 
 # ── 5. formula 갱신 ────────────────────────────────────────────
-sed -i '' -E "s|^  url \".*\"$|  url \"$TARBALL\"|" Formula/dong-mcu.rb
-sed -i '' -E "s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" Formula/dong-mcu.rb
+sed -i '' -E "s|^  url \".*\"$|  url \"$TARBALL\"|" Formula/dong-csu.rb
+sed -i '' -E "s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" Formula/dong-csu.rb
 
 # 지난 버전의 bottle 블록을 지운다.
 #
@@ -130,11 +130,11 @@ awk '
   /^  bottle do$/ { skip = 1 }
   skip && /^  end$/ { skip = 0; next }
   !skip { print }
-' Formula/dong-mcu.rb > Formula/dong-mcu.rb.tmp
-mv Formula/dong-mcu.rb.tmp Formula/dong-mcu.rb
-ruby -c Formula/dong-mcu.rb >/dev/null
+' Formula/dong-csu.rb > Formula/dong-csu.rb.tmp
+mv Formula/dong-csu.rb.tmp Formula/dong-csu.rb
+ruby -c Formula/dong-csu.rb >/dev/null
 
-git add Formula/dong-mcu.rb
+git add Formula/dong-csu.rb
 git commit -q -m "📦 formula를 $TAG 로 갱신"
 git push -q origin main
 echo "▸ formula 갱신"
@@ -152,4 +152,4 @@ fi
 
 echo
 echo "완료: $TAG"
-echo "사용자 쪽 업데이트:  brew update && brew upgrade dong-mcu"
+echo "사용자 쪽 업데이트:  brew update && brew upgrade dong-csu"

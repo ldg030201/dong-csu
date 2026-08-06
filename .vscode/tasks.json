@@ -25,13 +25,13 @@
     {
       "label": "사용량 API 확인 (--probe)",
       "type": "shell",
-      "command": "swift build -c release && ./.build/release/dong-mcu --probe",
+      "command": "swift build -c release && ./.build/release/dong-csu --probe",
       "problemMatcher": []
     },
     {
       "label": "앱 종료",
       "type": "shell",
-      "command": "pkill -f 'dong-mcu.app/Contents/MacOS/dong-mcu' || true",
+      "command": "pkill -f 'dong-csu.app/Contents/MacOS/dong-csu' || true",
       "problemMatcher": []
     }
   ],

@@ -1,13 +1,13 @@
 import AppKit
 
-let dongMCUVersion = "1.5.2"
+let dongCSUVersion = "1.5.2"
 
 if CommandLine.arguments.contains("--version") {
-    print("dong-mcu \(AppInfo.version)")
+    print("dong-csu \(AppInfo.version)")
     exit(0)
 }
 
-// GUI 없이 사용량 조회만 확인하는 진단 모드: dong-mcu --probe
+// GUI 없이 사용량 조회만 확인하는 진단 모드: dong-csu --probe
 if CommandLine.arguments.contains("--probe") {
     let done = DispatchSemaphore(value: 0)
     // main.swift 최상위 코드는 @MainActor라서 Task {}로 띄우면
@@ -36,7 +36,7 @@ if CommandLine.arguments.contains("--probe") {
     exit(0)
 }
 
-// 설정 창을 PNG로 그려서 확인: dong-mcu --render-settings out.png [light] [status|display|icon|account]
+// 설정 창을 PNG로 그려서 확인: dong-csu --render-settings out.png [light] [status|display|icon|account]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
    flagIndex + 1 < CommandLine.arguments.count {
     let path = CommandLine.arguments[flagIndex + 1]
@@ -55,7 +55,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
     exit(ok ? 0 : 1)
 }
 
-// 변경 내역을 JSON으로 뽑는다: dong-mcu --dump-changelog [out.json]
+// 변경 내역을 JSON으로 뽑는다: dong-csu --dump-changelog [out.json]
 // 앱에 박혀 있는 내역을 원격에서도 볼 수 있게 파일로 내보낸다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--dump-changelog") {
     do {
@@ -74,7 +74,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--dump-changelog") {
     }
 }
 
-// 메뉴바 아이콘을 PNG로 뽑는다: dong-mcu --render-menubar out.png [높이] [test]
+// 메뉴바 아이콘을 PNG로 뽑는다: dong-csu --render-menubar out.png [높이] [test]
 // 한 칸이 1pt까지 작아지는 자리라 눈으로 확인할 통로가 필요하다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-menubar"),
    flagIndex + 1 < CommandLine.arguments.count {
@@ -89,7 +89,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-menubar"),
     exit(ok ? 0 : 1)
 }
 
-// 부엉이 애니메이션을 한 장에 펼친다: dong-mcu --render-owl out.png [칸높이]
+// 부엉이 애니메이션을 한 장에 펼친다: dong-csu --render-owl out.png [칸높이]
 // 움직이는 그림은 정지 화면 한 장으로는 확인할 수 없어서, 기분별 프레임을 전부 늘어놓는다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl"),
    flagIndex + 1 < CommandLine.arguments.count {
@@ -101,7 +101,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl"),
     exit(ok ? 0 : 1)
 }
 
-// 기분마다 움직이는 GIF를 만든다: dong-mcu --render-owl-gif <디렉터리> [칸높이]
+// 기분마다 움직이는 GIF를 만든다: dong-csu --render-owl-gif <디렉터리> [칸높이]
 // 문서에 넣을 그림이다. 자세를 고치면 다시 돌려서 갱신한다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
    flagIndex + 1 < CommandLine.arguments.count {
@@ -119,7 +119,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
     exit(0)
 }
 
-// 앱 아이콘을 PNG로 뽑는다: dong-mcu --render-icon out.png [한변]
+// 앱 아이콘을 PNG로 뽑는다: dong-csu --render-icon out.png [한변]
 // .icns는 이 PNG들을 iconutil로 묶어 만든다. make-icon.sh 참고.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-icon"),
    flagIndex + 1 < CommandLine.arguments.count {
@@ -131,7 +131,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-icon"),
     exit(ok ? 0 : 1)
 }
 
-// HUD를 PNG로 그려서 확인: dong-mcu --render out.png [세션%] [주간%] [appIcon|mark]
+// HUD를 PNG로 그려서 확인: dong-csu --render out.png [세션%] [주간%] [appIcon|mark]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
    flagIndex + 1 < CommandLine.arguments.count {
     let arguments = CommandLine.arguments

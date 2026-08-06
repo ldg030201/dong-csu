@@ -704,7 +704,7 @@ struct ProcessStatsRow: View {
             label("MEM", value: monitor.usage.footprintText)
             Spacer(minLength: 0)
         }
-        .help("dong-mcu 자신이 쓰는 CPU와 메모리")
+        .help("dong-csu 자신이 쓰는 CPU와 메모리")
     }
 
     private func label(_ title: String, value: String) -> some View {

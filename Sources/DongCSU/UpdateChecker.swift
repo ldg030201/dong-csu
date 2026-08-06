@@ -157,7 +157,7 @@ final class UpdateChecker: ObservableObject {
     private static func fetchFeed() async -> FetchOutcome {
         var request = URLRequest(url: Changelog.feedURL)
         request.timeoutInterval = 15
-        request.setValue("dong-mcu/\(dongMCUVersion)", forHTTPHeaderField: "User-Agent")
+        request.setValue("dong-csu/\(dongCSUVersion)", forHTTPHeaderField: "User-Agent")
         // 방금 올린 내역이 캐시에 가려지지 않게 한다.
         request.cachePolicy = .reloadIgnoringLocalCacheData
 
@@ -188,23 +188,23 @@ final class UpdateChecker: ObservableObject {
         // /bin/sh 로 두면 `read -n 1`(한 글자만 받기)이 없다. bash 는 macOS 에 늘 있다.
         let script = """
         #!/bin/bash
-        echo "DongMCU 업데이트"
+        echo "DongCSU 업데이트"
         echo
         # Homebrew 6부터 업그레이드 전에 y/n 을 묻는다(ask 모드가 기본).
         # 그대로 두면 이 창이 물음표 앞에서 멈춰 선 채로 끝난 것처럼 보인다.
         # 플래그(-y) 대신 환경변수를 쓴다 — 옛 Homebrew 는 모르는 변수를 그냥 무시하지만,
         # 모르는 플래그를 만나면 통째로 실패한다.
         export HOMEBREW_NO_ASK=1
-        brew update && brew upgrade dong-mcu || exit 1
+        brew update && brew upgrade dong-csu || exit 1
 
-        if [ -d /Applications/DongMCU.app ]; then
+        if [ -d /Applications/DongCSU.app ]; then
           echo
-          echo "/Applications 의 DongMCU를 새 버전으로 교체합니다."
-          pkill -f "/Applications/DongMCU.app/Contents/MacOS/DongMCU" 2>/dev/null
+          echo "/Applications 의 DongCSU를 새 버전으로 교체합니다."
+          pkill -f "/Applications/DongCSU.app/Contents/MacOS/DongCSU" 2>/dev/null
           sleep 1
-          rm -rf /Applications/DongMCU.app
-          cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ || exit 1
-          open /Applications/DongMCU.app
+          rm -rf /Applications/DongCSU.app
+          cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ || exit 1
+          open /Applications/DongCSU.app
         fi
 
         echo
@@ -233,7 +233,7 @@ final class UpdateChecker: ObservableObject {
         ) >/dev/null 2>&1 &
         exit 0
         """
-        return TerminalScript.run(script, fileName: "dong-mcu-upgrade.command")
+        return TerminalScript.run(script, fileName: "dong-csu-upgrade.command")
     }
 
 }

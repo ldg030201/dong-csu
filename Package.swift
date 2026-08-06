@@ -2,15 +2,15 @@
 import PackageDescription
 
 let package = Package(
-    name: "dong-mcu",
+    name: "dong-csu",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "dong-mcu", targets: ["DongMCU"])
+        .executable(name: "dong-csu", targets: ["DongCSU"])
     ],
     targets: [
         .executableTarget(
-            name: "DongMCU",
-            path: "Sources/DongMCU"
+            name: "DongCSU",
+            path: "Sources/DongCSU"
         )
     ]
 )

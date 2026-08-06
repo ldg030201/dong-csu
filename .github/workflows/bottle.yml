@@ -34,13 +34,13 @@ jobs:
         run: |
           # 러너에 미리 깔린 tap이 신뢰되지 않아 Homebrew가 매번 경고한다. 쓰지 않으니 뗀다.
           brew untap aws/tap 2>/dev/null || true
-          brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu
-          brew trust ldg030201/dong-mcu || true
+          brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu
+          brew trust ldg030201/dong-csu || true
 
       - name: bottle 빌드
         run: |
-          brew install --build-bottle ldg030201/dong-mcu/dong-mcu
-          brew bottle --json --no-rebuild ldg030201/dong-mcu/dong-mcu
+          brew install --build-bottle ldg030201/dong-csu/dong-csu
+          brew bottle --json --no-rebuild ldg030201/dong-csu/dong-csu
 
       - name: 결과 수집
         uses: actions/upload-artifact@v7
@@ -67,8 +67,8 @@ jobs:
         run: |
           # 러너에 미리 깔린 tap이 신뢰되지 않아 Homebrew가 매번 경고한다. 쓰지 않으니 뗀다.
           brew untap aws/tap 2>/dev/null || true
-          brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu
-          brew trust ldg030201/dong-mcu || true
+          brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu
+          brew trust ldg030201/dong-csu || true
 
       - name: bottle 내려받기
         uses: actions/download-artifact@v8
@@ -83,28 +83,28 @@ jobs:
           # 파일 이름의 -- 는 업로드 후 URL과 맞추기 위해 - 로 바꾼다.
           for f in *.bottle.tar.gz; do mv "$f" "${f/--/-}"; done
           brew bottle --merge --write --no-commit \
-            --root-url="https://github.com/ldg030201/dong-mcu/releases/download/$TAG" \
+            --root-url="https://github.com/ldg030201/dong-csu/releases/download/$TAG" \
             *.bottle.json
           cd ..
           # --write 는 tap 클론 쪽 formula를 고친다. 저장소로 되가져온다.
-          cp "$(brew --repository ldg030201/dong-mcu)/Formula/dong-mcu.rb" Formula/dong-mcu.rb
+          cp "$(brew --repository ldg030201/dong-csu)/Formula/dong-csu.rb" Formula/dong-csu.rb
 
           # --root-url 이 formula 에 기록되지 않는 경우가 있다. 없으면 직접 넣는다.
           # 이게 빠지면 Homebrew 가 공식 저장소(ghcr.io)에서 찾다가 404 로 실패한다.
           # awk로 줄을 하나 끼워 넣는다. macOS의 BSD sed는 치환문의 \n을 개행으로
           # 바꾸지 않아서, 예전에 리터럴 "\n"이 그대로 박혀 formula가 깨졌다(v1.4.0).
-          if ! grep -q 'root_url' Formula/dong-mcu.rb; then
-            ROOT_URL="https://github.com/ldg030201/dong-mcu/releases/download/$TAG"
+          if ! grep -q 'root_url' Formula/dong-csu.rb; then
+            ROOT_URL="https://github.com/ldg030201/dong-csu/releases/download/$TAG"
             awk -v url="$ROOT_URL" '
               { print }
               /^  bottle do$/ { print "    root_url \"" url "\"" }
-            ' Formula/dong-mcu.rb > Formula/dong-mcu.rb.tmp
-            mv Formula/dong-mcu.rb.tmp Formula/dong-mcu.rb
+            ' Formula/dong-csu.rb > Formula/dong-csu.rb.tmp
+            mv Formula/dong-csu.rb.tmp Formula/dong-csu.rb
           fi
 
           # 문법이 깨지면 아무도 설치할 수 없다. 올리기 전에 여기서 막는다.
-          ruby -c Formula/dong-mcu.rb
-          grep -A4 'bottle do' Formula/dong-mcu.rb
+          ruby -c Formula/dong-csu.rb
+          grep -A4 'bottle do' Formula/dong-csu.rb
 
       - name: 릴리스에 올리기
         env:
@@ -117,6 +117,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/dong-mcu.rb
+          git add Formula/dong-csu.rb
           git diff --cached --quiet || git commit -m "📦 bottle 추가"
           git push

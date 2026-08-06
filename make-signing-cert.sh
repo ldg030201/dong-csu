@@ -12,7 +12,7 @@
 #   소스를 빌드하므로 배포에는 영향이 없다.
 #
 # 지우고 싶으면:
-#   security delete-certificate -c "DongMCU Local Signing" ~/Library/Keychains/login.keychain-db
+#   security delete-certificate -c "DongCSU Local Signing" ~/Library/Keychains/login.keychain-db
 #   (지우면 build.sh가 다시 ad-hoc 서명으로 떨어진다)
 set -euo pipefail
 
@@ -72,4 +72,4 @@ allow_codesign
 echo
 echo "끝났다. 지금 서명 신원: $(sign_identity)"
 echo "이제 다시 빌드해도 손쉬운 사용 권한이 풀리지 않는다."
-echo "확인: dong-mcu --probe-accessibility"
+echo "확인: dong-csu --probe-accessibility"

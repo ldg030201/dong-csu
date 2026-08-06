@@ -24,7 +24,7 @@ extension ImageRenderer {
     }
 }
 
-/// `dong-mcu --render-owl out.png` — 부엉이 애니메이션을 한 장에 펼친다.
+/// `dong-csu --render-owl out.png` — 부엉이 애니메이션을 한 장에 펼친다.
 ///
 /// 기분마다 프레임이 가로로, 기분끼리는 세로로 늘어선다. 앱을 띄우고 몇 초씩
 /// 기다리지 않고도 어느 프레임에서 형태가 깨지는지 한눈에 볼 수 있다.
@@ -68,7 +68,7 @@ enum OwlSheetRenderer {
     }
 }
 
-/// `dong-mcu --render-owl-gif <디렉터리>` — 기분마다 움직이는 GIF를 한 장씩 만든다.
+/// `dong-csu --render-owl-gif <디렉터리>` — 기분마다 움직이는 GIF를 한 장씩 만든다.
 ///
 /// 문서에 넣을 그림이라 프레임 시간이 실제와 어긋나면 안 된다. 손으로 만들지 않고
 /// `OwlMood.frames`를 그대로 읽어서, 자세를 고치면 GIF도 같이 바뀌게 한다.
@@ -139,7 +139,7 @@ enum OwlGIFRenderer {
     }
 }
 
-/// `dong-mcu --render out.png` — HUD를 고정값으로 그려 PNG로 저장한다.
+/// `dong-csu --render out.png` — HUD를 고정값으로 그려 PNG로 저장한다.
 /// 앱을 띄우지 않고 레이아웃·색·아이콘을 확인하려고 둔 디버그 통로.
 @MainActor
 enum HUDPreviewRenderer {
@@ -248,7 +248,7 @@ enum HUDPreviewRenderer {
             fetchedAt: Date()
         )
         let view = SettingsView(
-            settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-mcu.preview") ?? .standard),
+            settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-csu.preview") ?? .standard),
             // 상태 탭이 조회 카운트다운을 그리므로 예정 시각까지 넣어야 실제와 같아진다.
             store: UsageStore(preview: snapshot, nextPoll: Date().addingTimeInterval(7 * 60 + 12)),
             updates: UpdateChecker(

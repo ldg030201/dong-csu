@@ -8,18 +8,18 @@
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# VARIANT=test 로 부르면 번들 ID가 다른 별개의 앱(DongMCU-Test)이 나온다.
+# VARIANT=test 로 부르면 번들 ID가 다른 별개의 앱(DongCSU-Test)이 나온다.
 # 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않아서 둘을 동시에 띄울 수 있다.
 #
 # 번들 이름은 화면에 보이는 이름이고, 번들 ID는 예전 그대로다.
 # ID를 바꾸면 UserDefaults 키가 달라져서 창 위치·아이콘·크기 설정이 초기화된다.
 VARIANT="${VARIANT:-release}"
 if [[ "$VARIANT" == "test" ]]; then
-  APP_NAME="DongMCU-Test"
-  BUNDLE_ID="com.ldg.dong-mcu-test"
+  APP_NAME="DongCSU-Test"
+  BUNDLE_ID="com.ldg.dong-csu-test"
 else
-  APP_NAME="DongMCU"
-  BUNDLE_ID="com.ldg.dong-mcu"
+  APP_NAME="DongCSU"
+  BUNDLE_ID="com.ldg.dong-csu"
 fi
 
 APP="$ROOT/build/$APP_NAME.app"
@@ -37,7 +37,7 @@ CONFIG="${CONFIG:-release}"
 #
 # 자체 서명 인증서가 있으면 그걸 쓰고, 없으면 예전처럼 ad-hoc으로 떨어진다.
 # 인증서는 `./make-signing-cert.sh` 로 한 번 만든다. 없어도 빌드는 된다.
-SIGN_CERT_NAME="${SIGN_CERT_NAME:-DongMCU Local Signing}"
+SIGN_CERT_NAME="${SIGN_CERT_NAME:-DongCSU Local Signing}"
 
 sign_identity() {
   if security find-identity -v -p codesigning 2>/dev/null | grep -qF "$SIGN_CERT_NAME"; then
@@ -64,5 +64,5 @@ swift_bin_dir() {
 # 반드시 먼저 빌드한다 — 옛 바이너리로 뽑으면 방금 추가한 항목이 빠진다.
 dump_changelog() {
   swift_build
-  "$(swift_bin_dir)/dong-mcu" --dump-changelog "$ROOT/docs/changelog.json"
+  "$(swift_bin_dir)/dong-csu" --dump-changelog "$ROOT/docs/changelog.json"
 }

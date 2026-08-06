@@ -38,7 +38,7 @@ jobs:
 
       - name: 렌더 통로 확인
         run: |
-          BIN=./build/DongMCU.app/Contents/MacOS/DongMCU
+          BIN=./build/DongCSU.app/Contents/MacOS/DongCSU
           "$BIN" --version
           "$BIN" --render /tmp/hud.png 34 61 owl ok
           "$BIN" --render-icon /tmp/icon.png 128
@@ -51,6 +51,6 @@ jobs:
 
       - name: 변경 내역 파일이 소스와 맞는지
         run: |
-          ./build/DongMCU.app/Contents/MacOS/DongMCU --dump-changelog /tmp/fresh.json
+          ./build/DongCSU.app/Contents/MacOS/DongCSU --dump-changelog /tmp/fresh.json
           diff -q /tmp/fresh.json docs/changelog.json \
             || { echo "docs/changelog.json 이 Changelog.swift 와 다르다 — source ./lib.sh && dump_changelog 로 다시 뽑아라"; exit 1; }

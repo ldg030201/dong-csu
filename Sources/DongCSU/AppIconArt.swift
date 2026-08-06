@@ -1,7 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// 앱 아이콘 그림. `dong-mcu --render-icon` 으로 PNG를 뽑아 .icns를 만든다.
+/// 앱 아이콘 그림. `dong-csu --render-icon` 으로 PNG를 뽑아 .icns를 만든다.
 ///
 /// macOS 아이콘 규격대로 캔버스의 82.4%만 본체로 쓰고 나머지는 여백으로 둔다.
 /// 여백이 없으면 Dock·Finder에서 다른 앱보다 커 보인다.

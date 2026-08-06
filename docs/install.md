@@ -5,7 +5,7 @@
 ## 한 줄 설치
 
 ```bash
-brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
 
 | 명령 | 하는 일 |
@@ -41,8 +41,8 @@ Launchpad와 Spotlight에 나타나지 않고 Finder에서 직접 열 수만 있
 ## 소스에서 빌드
 
 ```bash
-git clone https://github.com/ldg030201/dong-mcu.git
-cd dong-mcu && ./build.sh && open build/DongMCU.app
+git clone https://github.com/ldg030201/dong-csu.git
+cd dong-csu && ./build.sh && open build/DongCSU.app
 ```
 
 Xcode는 필요 없다. Command Line Tools(`xcode-select --install`)만 있으면 된다.
@@ -57,7 +57,7 @@ Xcode는 필요 없다. Command Line Tools(`xcode-select --install`)만 있으�
 새 것으로 바꾼 뒤 앱을 다시 띄운다. 직접 하려면:
 
 ```bash
-brew update && brew upgrade -y dong-mcu && rm -rf /Applications/DongMCU.app && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+brew update && brew upgrade -y dong-csu && rm -rf /Applications/DongCSU.app && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
 
 `brew update`가 빠지면 tap이 갱신되지 않아 옛 formula를 보고 `already installed and
@@ -65,18 +65,18 @@ up-to-date`라고 나온다.
 
 ## 로그인할 때 자동으로 켜기
 
-시스템 설정 → 일반 → 로그인 항목에서 `+`를 누르고 `/Applications/DongMCU.app`을 고른다.
+시스템 설정 → 일반 → 로그인 항목에서 `+`를 누르고 `/Applications/DongCSU.app`을 고른다.
 
 ## 제거
 
 ```bash
-rm -rf /Applications/DongMCU.app && brew uninstall dong-mcu && brew untap ldg030201/dong-mcu
+rm -rf /Applications/DongCSU.app && brew uninstall dong-csu && brew untap ldg030201/dong-csu
 ```
 
 설정(창 위치·아이콘·크기)은 남는다. 그것까지 지우려면:
 
 ```bash
-defaults delete com.ldg.dong-mcu
+defaults delete com.ldg.dong-csu
 ```
 
 흔적을 남김없이 지우고 다시 설치하려면 [문제 해결](troubleshooting.md)의 완전 제거를 쓴다.

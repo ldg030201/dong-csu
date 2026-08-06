@@ -3,15 +3,15 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>DongMCU</string>
+	<string>DongCSU</string>
 	<key>CFBundleExecutable</key>
-	<string>DongMCU</string>
+	<string>DongCSU</string>
 	<key>CFBundleIconFile</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.ldg.dong-mcu</string>
+	<string>com.ldg.dong-csu</string>
 	<key>CFBundleName</key>
-	<string>DongMCU</string>
+	<string>DongCSU</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

@@ -64,7 +64,7 @@ enum ClaudeCLI {
             echo
             "\(executable)" auth login
             """,
-            fileName: "dong-mcu-login.command"
+            fileName: "dong-csu-login.command"
         )
     }
 }

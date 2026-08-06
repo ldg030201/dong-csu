@@ -8,7 +8,7 @@ Claude 쪽 그림(Clawd, Claude 아이콘, 버스트 마크)은 출처가 달라
 > [!IMPORTANT]
 > **Claude 쪽 그림에는 애니메이션을 넣지 않는다.** 저작권이 Anthropic에 있어서
 > 우리가 새 자세를 만들어 붙일 그림이 아니다. 움직이는 건 여기 있는 캐릭터뿐이고,
-> 그 판정은 [`ClaudeIconStyle.isAnimated`](../../Sources/DongMCU/ClaudeIcon.swift)에 있다.
+> 그 판정은 [`ClaudeIconStyle.isAnimated`](../../Sources/DongCSU/ClaudeIcon.swift)에 있다.
 
 | | 캐릭터 | 상태 | 문서 |
 | --- | --- | --- | --- |
@@ -16,8 +16,8 @@ Claude 쪽 그림(Clawd, Claude 아이콘, 버스트 마크)은 출처가 달라
 
 ## 캐릭터를 하나 더 만들 때
 
-1. 그림을 `Sources/DongMCU/<이름>Mark.swift`에 문자열 그리드로 넣는다
-2. [`ClaudeIconStyle`](../../Sources/DongMCU/ClaudeIcon.swift)에 항목을 더하고 `group`을 `.character`로 둔다
+1. 그림을 `Sources/DongCSU/<이름>Mark.swift`에 문자열 그리드로 넣는다
+2. [`ClaudeIconStyle`](../../Sources/DongCSU/ClaudeIcon.swift)에 항목을 더하고 `group`을 `.character`로 둔다
 3. 움직일 거면 기분 목록과 프레임을 만들고 `isAnimated`에 한 줄 더한다
    ([부엉이 문서](owl.md#기분)의 구조를 그대로 따르면 된다)
 4. 이 폴더에 `<이름>.md`를 만들고 위 표에 한 줄 더한다

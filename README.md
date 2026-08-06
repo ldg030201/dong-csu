@@ -1,14 +1,14 @@
 <div align="center">
 
-<img src="docs/icon.png" width="112" alt="DongMCU">
+<img src="docs/icon.png" width="112" alt="DongCSU">
 
-# DongMCU
+# DongCSU
 
 **Claude 사용량을 화면 위에 항상 띄워두는 macOS 앱**
 
 ![macOS](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)
 ![Swift](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white)
-[![Release](https://img.shields.io/github/v/release/ldg030201/dong-mcu?color=3A72C4&label=release)](https://github.com/ldg030201/dong-mcu/releases/latest)
+[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases/latest)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-3A72C4)
 ![License](https://img.shields.io/badge/license-MIT-3A72C4)
 
@@ -17,6 +17,11 @@
 </div>
 
 ---
+
+> [!IMPORTANT]
+> **`dong-mcu` 를 쓰고 계셨다면** 자동으로 업데이트되지 않습니다.
+> 이름이 바뀌어서 한 번만 손으로 옮겨 주셔야 합니다 — [**옮기는 방법**](docs/migrate-from-dong-mcu.md)
+> (설정은 그대로 넘어옵니다).
 
 ## ✨ 이런 앱
 
@@ -71,7 +76,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 ## 📦 설치
 
 ```bash
-brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust ldg030201/dong-mcu && brew install dong-mcu && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
 
 ### 필요한 것
@@ -94,7 +99,7 @@ brew tap ldg030201/dong-mcu https://github.com/ldg030201/dong-mcu && brew trust 
 업데이트는 앱 안의 **업데이트** 버튼으로 하거나:
 
 ```bash
-brew update && brew upgrade -y dong-mcu && rm -rf /Applications/DongMCU.app && cp -R "$(brew --prefix dong-mcu)/DongMCU.app" /Applications/ && open /Applications/DongMCU.app
+brew update && brew upgrade -y dong-csu && rm -rf /Applications/DongCSU.app && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
 
 각 단계가 무엇을 하는지, 소스 빌드, 제거는 **[설치 안내](docs/install.md)** 참고.
@@ -150,6 +155,7 @@ brew update && brew upgrade -y dong-mcu && rm -rf /Applications/DongMCU.app && c
 | | |
 | --- | --- |
 | [설치 안내](docs/install.md) | 각 단계 설명, 소스 빌드, 업데이트, 제거 |
+| [dong-mcu 에서 옮기기](docs/migrate-from-dong-mcu.md) | 옛 이름을 쓰던 분을 위한 이전 안내 |
 | [문제 해결](docs/troubleshooting.md) | 설치가 꼬였을 때, 앱이 안 뜰 때 |
 | [사용량과 토큰](docs/privacy.md) | 어디서 무엇을 읽는지, 토큰 만료 |
 | [캐릭터](docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](docs/characters/owl.md) |
