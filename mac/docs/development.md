@@ -1,6 +1,9 @@
-# 개발
+# 개발 (macOS)
 
 [← README](../README.md) · 작업 규칙은 [CLAUDE.md](../../CLAUDE.md)
+
+**테스트판과 정식판을 나눠 놓고 개발하는 이유와 방식**은 두 판에 다 걸리는 이야기라
+[`docs/development.md`](../../docs/development.md) 에 있다. 여기에는 맥 전용 명령만 쓴다.
 
 ## 감시하며 개발
 

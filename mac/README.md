@@ -163,6 +163,7 @@ brew update && brew upgrade -y dong-csu && rm -rf /Applications/DongCSU.app && c
 | [사용량과 토큰](docs/privacy.md) | 어디서 무엇을 읽는지, 토큰 만료 |
 | [캐릭터](../docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](../docs/characters/owl.md) |
 | [개발](docs/development.md) | 빌드, 렌더 통로 |
+| [테스트판과 정식판](../docs/development.md) | 두 앱을 나눠 놓고 개발하는 방식 |
 | [작업 규칙](../CLAUDE.md) | 버전·변경 내역·커밋 규칙 |
 
 ## 📄 라이선스
