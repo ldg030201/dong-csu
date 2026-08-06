@@ -23,8 +23,11 @@ class DongCsu < Formula
     # Homebrew의 빌드 샌드박스 안에서는 SwiftPM이 매니페스트를 평가할 때 쓰는
     # 자체 샌드박스가 중첩되어 실패한다.
     ENV["SWIFT_BUILD_FLAGS"] = "--disable-sandbox"
-    system "./build.sh"
-    prefix.install "build/DongCSU.app"
+    # 저장소가 mac/ · win/ 으로 갈려 있다. 맥 앱은 mac/ 안에서 빌드한다.
+    cd "mac" do
+      system "./build.sh"
+      prefix.install "build/DongCSU.app"
+    end
     # 앱 이름은 DongCSU지만 명령 이름은 dong-csu 그대로 둔다.
     bin.install_symlink prefix/"DongCSU.app/Contents/MacOS/DongCSU" => "dong-csu"
   end

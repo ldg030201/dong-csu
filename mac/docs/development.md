@@ -1,6 +1,6 @@
 # 개발
 
-[← README](../README.md) · 작업 규칙은 [CLAUDE.md](../CLAUDE.md)
+[← README](../README.md) · 작업 규칙은 [CLAUDE.md](../../CLAUDE.md)
 
 ## 감시하며 개발
 
@@ -34,7 +34,7 @@ dong-csu --render-settings out.png version     # 설정 창의 특정 탭
 dong-csu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-csu --render-icon out.png 1024            # 앱 아이콘
 dong-csu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임 (기분 + 걸음걸이)
-dong-csu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
+dong-csu --render-owl-gif ../../docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
 dong-csu --dump-owl shared/owl.json            # 윈도우판과 나눠 쓸 부엉이 데이터
 ```
 
@@ -82,8 +82,8 @@ ad-hoc  → designated => cdhash H"266bfb…"                       ← 빌드�
 
 | | |
 | --- | --- |
-| [캐릭터 목록](characters/README.md) | 새 캐릭터를 만들 때 손볼 자리 |
-| [🦉 부엉이](characters/owl.md) | 기본 캐릭터. 기분 5가지 |
+| [캐릭터 목록](../../docs/characters/README.md) | 새 캐릭터를 만들 때 손볼 자리 |
+| [🦉 부엉이](../../docs/characters/owl.md) | 기본 캐릭터. 기분 5가지 |
 
 앱 아이콘 그림은 [`AppIconArt.swift`](../Sources/DongCSU/AppIconArt.swift)에 있다. 고쳤으면
 아래로 `.icns`를 다시 만든다. 결과물은 커밋해 두고 `build.sh`는 복사만 한다.
@@ -114,7 +114,7 @@ GitHub 릴리스도 만든다. main이 아니거나 작업 트리가 지저분�
 
 내보내기 전에 [`Changelog.swift`](../Sources/DongCSU/Changelog.swift)의 맨 위 항목에 버전과
 날짜를 채운다. 설정 창의 버전 탭이 그걸 그대로 보여준다.
-버전 자리 규칙과 변경 내역 문구 규칙은 [CLAUDE.md](../CLAUDE.md)에 있다.
+버전 자리 규칙과 변경 내역 문구 규칙은 [CLAUDE.md](../../CLAUDE.md)에 있다.
 
 ## 에디터
 

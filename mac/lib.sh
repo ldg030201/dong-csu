@@ -6,7 +6,10 @@
 #
 # 쓰는 쪽: source "$(dirname "$0")/lib.sh"
 
+# 맥 앱의 뿌리(<저장소>/mac). Swift 패키지와 맥 전용 문서가 여기 있다.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# 저장소 뿌리. 두 플랫폼이 나눠 쓰는 것(shared/, Formula/, 공통 문서)은 여기 있다.
+REPO_ROOT="$(cd "$ROOT/.." && pwd)"
 
 # VARIANT=test 로 부르면 번들 ID가 다른 별개의 앱(DongCSU-Test)이 나온다.
 # 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않아서 둘을 동시에 띄울 수 있다.
@@ -61,16 +64,22 @@ swift_bin_dir() {
 }
 
 # 윈도우판과 나눠 쓰는 부엉이 데이터를 소스에서 다시 뽑는다.
-# 변경 내역과 같은 이유로 반드시 먼저 빌드한다.
+# 저장소 뿌리의 shared/ 로 나간다 — 맥 것이 아니라 둘이 나눠 쓰는 파일이다.
 dump_owl() {
   swift_build
-  mkdir -p "$ROOT/shared"
-  "$(swift_bin_dir)/dong-csu" --dump-owl "$ROOT/shared/owl.json"
+  mkdir -p "$REPO_ROOT/shared"
+  "$(swift_bin_dir)/dong-csu" --dump-owl "$REPO_ROOT/shared/owl.json"
 }
 
 # 앱이 원격에서 받아보는 변경 내역을 Changelog.swift 에서 다시 뽑는다.
 # 반드시 먼저 빌드한다 — 옛 바이너리로 뽑으면 방금 추가한 항목이 빠진다.
+#
+# **같은 것을 두 곳에 쓴다.** 2.1.0부터는 mac/docs 를 보지만, 이미 나간 2.0.0 이하는
+# 저장소 뿌리의 docs/changelog.json 을 본다. 폴더를 옮긴 뒤에도 그쪽이 살아 있어야
+# 옛 앱이 "새 버전 나왔다"를 볼 수 있다. 다들 2.1.0 넘어가면 뿌리 쪽은 지운다.
 dump_changelog() {
   swift_build
   "$(swift_bin_dir)/dong-csu" --dump-changelog "$ROOT/docs/changelog.json"
+  mkdir -p "$REPO_ROOT/docs"
+  cp "$ROOT/docs/changelog.json" "$REPO_ROOT/docs/changelog.json"
 }

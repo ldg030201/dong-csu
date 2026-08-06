@@ -152,7 +152,7 @@ dong-csu의 마스코트. HUD 링 가운데, 메뉴바, 앱 아이콘이 **전�
 
 ### 스스로 움직이기
 
-[`PetMotionController`](../../Sources/DongCSU/PetMotion.swift)가 창을 옮기는 유일한
+[`PetMotionController`](../../mac/Sources/DongCSU/PetMotion.swift)가 창을 옮기는 유일한
 주인이다. 배회와 회피를 따로 두면 각자 잡은 목표가 매 틱 서로를 덮어써서 제자리에서
 떨린다. **회피가 항상 배회를 끊는다.**
 
@@ -190,7 +190,7 @@ dong-csu의 마스코트. HUD 링 가운데, 메뉴바, 앱 아이콘이 **전�
 
 ## 그리드
 
-[`OwlMark.swift`](../../Sources/DongCSU/OwlMark.swift)에 **15열 × 13행**으로 들어 있다.
+[`OwlMark.swift`](../../mac/Sources/DongCSU/OwlMark.swift)에 **15열 × 13행**으로 들어 있다.
 몸통은 가운데 11열만 쓰고 **좌우 2열은 날개를 펼 여백**이라 정지 상태에서는 비어 있다.
 그래서 링 안에 넣을 때는 세로를 기준으로 크기를 맞춘다.
 
@@ -206,7 +206,7 @@ dong-csu의 마스코트. HUD 링 가운데, 메뉴바, 앱 아이콘이 **전�
 
 ### 자세
 
-[`OwlPose`](../../Sources/DongCSU/OwlMark.swift)가 조합을 담는다.
+[`OwlPose`](../../mac/Sources/DongCSU/OwlMark.swift)가 조합을 담는다.
 
 | 값 | 범위 | 쓰임 |
 | --- | --- | --- |
@@ -247,7 +247,7 @@ dong-csu의 마스코트. HUD 링 가운데, 메뉴바, 앱 아이콘이 **전�
 
 ## 움직이는 방식
 
-[`OwlAnimator`](../../Sources/DongCSU/OwlAnimator.swift)가 기분에 맞는 프레임을 차례로 넘긴다.
+[`OwlAnimator`](../../mac/Sources/DongCSU/OwlAnimator.swift)가 기분에 맞는 프레임을 차례로 넘긴다.
 
 **프레임마다 일회용 타이머를 새로 건다.** `TimelineView(.animation)`처럼 화면 주사율에
 맞춰 도는 방식을 쓰면, 항상 위에 떠 있는 창이라 WindowServer가 쉬지 않고 합성한다.
@@ -312,5 +312,5 @@ HUD 크기 설정도 같은 이유로 `scaleEffect`가 아니라 치수에 배�
 확대 변환을 걸면 픽셀 그림이 흐려지지만, 배율을 곱해 다시 그리면 한 칸도 같이 커져서
 큰 크기에서 오히려 더 선명해진다.
 
-앱 아이콘 그림은 [`AppIconArt.swift`](../../Sources/DongCSU/AppIconArt.swift)에 있다.
+앱 아이콘 그림은 [`AppIconArt.swift`](../../mac/Sources/DongCSU/AppIconArt.swift)에 있다.
 고쳤으면 `./make-icon.sh`로 `.icns`를 다시 만든다.

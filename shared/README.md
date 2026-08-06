@@ -7,7 +7,7 @@
 
 | 파일 | 무엇 | 뽑는 법 |
 | --- | --- | --- |
-| `owl.json` | 부엉이 그리드·색·기분별 프레임표 | `source ./lib.sh && dump_owl` |
+| `owl.json` | 부엉이 그리드·색·기분별 프레임표 | `cd mac && source ./lib.sh && dump_owl` |
 
 ## 왜 이렇게 하나
 

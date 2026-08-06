@@ -21,8 +21,11 @@ struct ChangelogFeed: Codable {
 
 enum Changelog {
     /// 원격 내역 주소. 릴리스 API 대신 이 파일 하나로 최신 버전과 내역을 함께 받는다.
+    ///
+    /// 저장소를 `mac/` · `win/` 으로 가르면서 옮겼다. 2.0.0 이하는 아직 뿌리의
+    /// `docs/changelog.json` 을 보므로 `dump_changelog` 가 그쪽에도 같은 것을 쓴다.
     static let feedURL = URL(
-        string: "https://raw.githubusercontent.com/ldg030201/dong-csu/main/docs/changelog.json"
+        string: "https://raw.githubusercontent.com/ldg030201/dong-csu/main/mac/docs/changelog.json"
     )!
 
     /// 이 목록을 JSON으로 뽑는다. `dong-csu --dump-changelog`가 쓴다.

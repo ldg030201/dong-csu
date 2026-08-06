@@ -6,33 +6,58 @@
       "type": "shell",
       "command": "./dev.sh",
       "isBackground": true,
-      "problemMatcher": ["$swiftc"],
-      "presentation": { "reveal": "always", "panel": "dedicated" }
+      "problemMatcher": [
+        "$swiftc"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "options": {
+        "cwd": "${workspaceFolder}/mac"
+      }
     },
     {
       "label": "빌드 + 실행 (한 번)",
       "type": "shell",
       "command": "./dev.sh once",
-      "group": { "kind": "build", "isDefault": true },
-      "problemMatcher": ["$swiftc"]
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$swiftc"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/mac"
+      }
     },
     {
       "label": "HUD 렌더 (PNG)",
       "type": "shell",
       "command": "./dev.sh render ${input:sessionPercent} ${input:weeklyPercent} ${input:iconStyle}",
-      "problemMatcher": []
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}/mac"
+      }
     },
     {
       "label": "사용량 API 확인 (--probe)",
       "type": "shell",
       "command": "swift build -c release && ./.build/release/dong-csu --probe",
-      "problemMatcher": []
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}/mac"
+      }
     },
     {
       "label": "앱 종료",
       "type": "shell",
       "command": "pkill -f 'dong-csu.app/Contents/MacOS/dong-csu' || true",
-      "problemMatcher": []
+      "problemMatcher": [],
+      "options": {
+        "cwd": "${workspaceFolder}/mac"
+      }
     }
   ],
   "inputs": [
@@ -52,7 +77,11 @@
       "id": "iconStyle",
       "type": "pickString",
       "description": "가운데 아이콘",
-      "options": ["clawd", "appIcon", "mark"],
+      "options": [
+        "clawd",
+        "appIcon",
+        "mark"
+      ],
       "default": "clawd"
     }
   ]

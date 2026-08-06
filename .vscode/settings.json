@@ -1,5 +1,7 @@
 {
   "swift.buildArguments": ["-c", "release"],
+  // Swift 패키지는 mac/ 안에 있다.
+  "swift.disableAutoResolve": false,
   "swift.autoGenerateLaunchConfigurations": false,
   "files.exclude": {
     "**/.build": true,

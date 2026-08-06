@@ -8,15 +8,14 @@ on:
   push:
     branches: [main]
     paths:
-      - "Sources/**"
-      - "Package.swift"
-      - "build.sh"
+      - "mac/**"
+      - "shared/**"
       - ".github/workflows/build.yml"
   pull_request:
   workflow_dispatch:
 
 jobs:
-  build:
+  mac:
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +23,9 @@ jobs:
           - os: macos-14   # arm64 Sonoma
           - os: macos-15   # arm64 Sequoia
     runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: mac
     steps:
       - uses: actions/checkout@v7
 
@@ -49,14 +51,18 @@ jobs:
           test -s /tmp/menubar.png && test -s /tmp/owl.png
           test -s /tmp/changelog.json
 
+      # shared/ 는 저장소 뿌리에 있다. 맥 소스가 유일한 원본이고, 윈도우판이 이걸 읽는다.
       - name: 부엉이 데이터가 소스와 맞는지
         run: |
           ./build/DongCSU.app/Contents/MacOS/DongCSU --dump-owl /tmp/fresh-owl.json
-          diff -q /tmp/fresh-owl.json shared/owl.json \
-            || { echo "shared/owl.json 이 소스와 다르다 — source ./lib.sh && dump_owl 로 다시 뽑아라"; exit 1; }
+          diff -q /tmp/fresh-owl.json ../shared/owl.json \
+            || { echo "shared/owl.json 이 소스와 다르다 — cd mac && source ./lib.sh && dump_owl 로 다시 뽑아라"; exit 1; }
 
       - name: 변경 내역 파일이 소스와 맞는지
         run: |
           ./build/DongCSU.app/Contents/MacOS/DongCSU --dump-changelog /tmp/fresh.json
           diff -q /tmp/fresh.json docs/changelog.json \
-            || { echo "docs/changelog.json 이 Changelog.swift 와 다르다 — source ./lib.sh && dump_changelog 로 다시 뽑아라"; exit 1; }
+            || { echo "mac/docs/changelog.json 이 Changelog.swift 와 다르다 — cd mac && source ./lib.sh && dump_changelog 로 다시 뽑아라"; exit 1; }
+          # 2.0.0 이하가 아직 보는 뿌리 쪽 사본. 어긋나면 옛 앱이 옛 내역을 본다.
+          diff -q /tmp/fresh.json ../docs/changelog.json \
+            || { echo "docs/changelog.json(옛 앱용 사본)이 다르다 — dump_changelog 로 다시 뽑아라"; exit 1; }

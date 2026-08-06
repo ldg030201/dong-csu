@@ -84,7 +84,7 @@ fi
 echo "▸ 빌드 확인 ($BUILT)"
 
 # ── 3. 커밋 · 태그 · 푸시 ───────────────────────────────────────
-git add Resources/Info.plist Sources/DongCSU/main.swift docs/changelog.json
+git add Resources/Info.plist Sources/DongCSU/main.swift docs/changelog.json "$REPO_ROOT/docs/changelog.json"
 git commit -q -m "🔖 $TAG"
 COMMITTED=1
 git tag -a "$TAG" -m "$TAG"
@@ -121,8 +121,8 @@ fi
 echo "▸ sha256 ${SHA:0:16}…"
 
 # ── 5. formula 갱신 ────────────────────────────────────────────
-sed -i '' -E "s|^  url \".*\"$|  url \"$TARBALL\"|" Formula/dong-csu.rb
-sed -i '' -E "s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" Formula/dong-csu.rb
+sed -i '' -E "s|^  url \".*\"$|  url \"$TARBALL\"|" "$REPO_ROOT"/Formula/dong-csu.rb
+sed -i '' -E "s|^  sha256 \".*\"$|  sha256 \"$SHA\"|" "$REPO_ROOT"/Formula/dong-csu.rb
 
 # 지난 버전의 bottle 블록을 지운다.
 #
@@ -134,11 +134,11 @@ awk '
   /^  bottle do$/ { skip = 1 }
   skip && /^  end$/ { skip = 0; next }
   !skip { print }
-' Formula/dong-csu.rb > Formula/dong-csu.rb.tmp
-mv Formula/dong-csu.rb.tmp Formula/dong-csu.rb
-ruby -c Formula/dong-csu.rb >/dev/null
+' "$REPO_ROOT"/Formula/dong-csu.rb > "$REPO_ROOT"/Formula/dong-csu.rb.tmp
+mv "$REPO_ROOT"/Formula/dong-csu.rb.tmp "$REPO_ROOT"/Formula/dong-csu.rb
+ruby -c "$REPO_ROOT/Formula/dong-csu.rb" >/dev/null
 
-git add Formula/dong-csu.rb
+git add "$REPO_ROOT/Formula/dong-csu.rb"
 git commit -q -m "📦 formula를 $TAG 로 갱신"
 git push -q origin main
 echo "▸ formula 갱신"
