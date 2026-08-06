@@ -6,10 +6,14 @@
 
 **Claude 사용량을 화면 위에 항상 띄워두는 앱**
 
+![macOS](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-10+-0078D4?logo=windows&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-3A72C4)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-3A72C4)
 
 <img src="mac/docs/screenshot.png" width="620" alt="HUD">
+
+<sub>화면은 macOS 판입니다.</sub>
 
 </div>
 
@@ -20,28 +24,17 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 
 ## 어느 쪽을 쓰시나요
 
-<table>
-<tr>
-<td align="center" width="50%">
+| | 🍎 **[macOS](mac/README.md)** | 🪟 **[Windows](win/README.md)** |
+| --- | --- | --- |
+| **필요한 버전** | **macOS 14 (Sonoma) 이상** | **Windows 10 1809 이상** 또는 Windows 11 |
+| 상주하는 곳 | 메뉴바 | 트레이 |
+| 설치 | Homebrew | WinGet · 설치 exe |
+| 업데이트 | 터미널에서 `brew upgrade` | 앱이 스스로 |
+| 지금 버전 | 2.1.0 | 1.0.0 (만드는 중) |
+| | **[설치하기 →](mac/README.md)** | **[설치하기 →](win/README.md)** |
 
-### 🍎 [macOS](mac/README.md)
-
-메뉴바 · Homebrew · macOS 14+
-
-**[설치하기 →](mac/README.md)**
-
-</td>
-<td align="center" width="50%">
-
-### 🪟 [Windows](win/README.md)
-
-트레이 · WinGet · Windows 10+
-
-**[설치하기 →](win/README.md)**
-
-</td>
-</tr>
-</table>
+**어느 쪽이든 Claude Code에 로그인되어 있어야 합니다.** 이 앱은 Claude Code가 저장해 둔
+자격 증명을 읽어서 사용량을 조회합니다. 따로 로그인하지 않습니다.
 
 ## 저장소 구조
 
