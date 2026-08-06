@@ -1,8 +1,12 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/DongCSU.App/DongCSU.App.csproj" />
     <Project Path="src/DongCSU.Core/DongCSU.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/DongCSU.Core.Tests/DongCSU.Core.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/DongCSU.Tools/DongCSU.Tools.csproj" />
   </Folder>
 </Solution>

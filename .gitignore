@@ -7,3 +7,5 @@ build/
 # .NET (win/)
 bin/
 obj/
+publish/
+releases/

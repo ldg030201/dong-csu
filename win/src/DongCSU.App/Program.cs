@@ -1,0 +1,246 @@
+using System.IO;
+using System.Net.Http;
+using System.Windows;
+using System.Windows.Threading;
+using DongCSU.App.Hud;
+using DongCSU.App.Services;
+using DongCSU.App.Settings;
+using DongCSU.App.Tray;
+using DongCSU.Core;
+using DongCSU.Core.Owl;
+using DongCSU.Core.Usage;
+using Velopack;
+
+namespace DongCSU.App;
+
+public static class Program
+{
+    [STAThread]
+    public static int Main(string[] args)
+    {
+        // 진단 통로. 창을 띄우지 않고 확인만 한다 — 맥판의 --render/--dump 와 같은 자리다.
+        if (Diagnostics.TryRun(args, out var exitCode)) return exitCode;
+
+        // Velopack 은 설치·업데이트 때 자기 인자를 받아 처리하고 프로세스를 끝낸다.
+        // **다른 무엇보다 먼저 불러야 한다.** 창을 먼저 띄우면 설치 중에 창이 깜빡인다.
+        VelopackApp.Build().Run();
+
+        var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        var controller = new AppController();
+        application.Startup += (_, _) => controller.Start();
+        application.Exit += (_, _) => controller.Dispose();
+        return application.Run();
+    }
+}
+
+/// <summary>창 · 트레이 · 조회를 잇는 곳. 맥판의 <c>AppDelegate</c> 자리다.</summary>
+public sealed class AppController : IDisposable
+{
+    private readonly AppSettings settings = AppSettings.Load();
+    private readonly HttpClient http = UsageApi.CreateHttpClient();
+    private readonly OwlAnimator animator = new(OwlDocument.Embedded);
+    private readonly DispatcherTimer pollTimer = new();
+    private readonly DispatcherTimer frameTimer = new();
+    private readonly DispatcherTimer updateTimer = new();
+
+    private UsageStore store = null!;
+    private UpdateService updates = null!;
+    private HudWindow? hud;
+    private TrayIcon? tray;
+    private SettingsWindow? settingsWindow;
+
+    public void Start()
+    {
+        // 업데이트하면 앱 경로가 바뀐다. 옛 경로가 남아 있으면 로그인할 때 아무것도 안 뜬다.
+        StartupService.RepairIfEnabled();
+
+        var credentials = new CredentialStore(new FileCredentialSource());
+        store = new UsageStore(new UsageApi(http, credentials)) { PollInterval = settings.PollInterval };
+        store.Changed += OnStoreChanged;
+
+        updates = new UpdateService(http);
+        updates.Changed += () => Dispatch(RefreshHud);
+
+        tray = new TrayIcon();
+        tray.RefreshRequested += () => _ = store.RefreshAsync(force: true);
+        tray.SettingsRequested += () => OpenSettings();
+        tray.LoginRequested += () => OpenSettings("account");
+        tray.QuitRequested += Quit;
+        tray.Activated += ToggleHudVisible;
+
+        hud = new HudWindow(settings);
+        hud.ModeToggled += () =>
+        {
+            settings.Mode = settings.Mode == HudMode.Collapsed ? HudMode.Expanded : HudMode.Collapsed;
+            settings.Save();
+            ApplySettings();
+        };
+        hud.ContextMenuRequested += () => OpenSettings();
+
+        ApplySettings();
+        hud.RestorePosition();
+        if (settings.IsHudVisible) hud.Show();
+
+        pollTimer.Tick += async (_, _) => await store.RefreshAsync().ConfigureAwait(true);
+        frameTimer.Tick += (_, _) => AdvanceFrame();
+
+        updateTimer.Interval = UpdateService.CheckInterval;
+        updateTimer.Tick += async (_, _) =>
+        {
+            if (settings.ChecksForUpdates) await updates.CheckAsync().ConfigureAwait(true);
+        };
+        updateTimer.Start();
+
+        _ = store.RefreshAsync(force: true);
+        if (settings.ChecksForUpdates) _ = updates.CheckAsync();
+
+        StartFrameTimer();
+    }
+
+    /// <summary>설정이 바뀌면 창·타이머를 거기에 맞춘다.</summary>
+    private void ApplySettings()
+    {
+        if (hud is null) return;
+
+        hud.View.Mode = settings.Mode;
+        hud.View.Scale = settings.Scale.Factor();
+        hud.View.BackdropOpacity = settings.BackdropOpacity;
+        hud.View.IsDark = IsDarkTheme();
+        hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.Version : null;
+
+        store.PollInterval = settings.PollInterval;
+        pollTimer.Interval = store.NextPollDelay();
+        pollTimer.Start();
+
+        if (settings.IsHudVisible) hud.Show(); else hud.Hide();
+
+        RefreshHud();
+    }
+
+    private bool IsDarkTheme() => settings.Theme switch
+    {
+        HudTheme.Light => false,
+        HudTheme.Dark => true,
+        _ => SystemTheme.IsDark(),
+    };
+
+    private void OnStoreChanged() => Dispatch(() =>
+    {
+        // 다음 조회 시각은 결과에 따라 달라진다(429 를 맞으면 물러난다).
+        pollTimer.Interval = store.NextPollDelay();
+
+        var session = store.Snapshot?.FiveHour?.Utilization;
+        if (animator.SetMood(OwlMoodResolver.Resolve(OwlDocument.Embedded, session, store.IsDisconnected)))
+        {
+            StartFrameTimer();
+        }
+
+        RefreshHud();
+        tray?.UpdateSummary(store.SummaryText(), store.NeedsReauth);
+        settingsWindow?.Dispatcher.Invoke(() => { });
+    });
+
+    private void RefreshHud()
+    {
+        if (hud is null) return;
+
+        hud.View.Snapshot = store.Snapshot;
+        hud.View.IsDisconnected = store.IsDisconnected;
+        hud.View.OwlGrid = animator.CurrentGrid;
+        hud.View.OwlPaletteName = animator.Animation.Palette;
+        hud.Refresh();
+
+        tray?.UpdateOwl(animator.CurrentGrid, animator.CurrentPalette);
+    }
+
+    /// <summary>
+    /// 다음 프레임까지 타이머를 건다.
+    ///
+    /// **반복 타이머를 걸지 않는다.** 프레임마다 보여줄 시간이 다르고(눈 깜빡임은 0.05초,
+    /// 평소 자세는 2초) 흔들림도 붙어서, 한 박자로 돌리면 애니메이션이 어긋난다.
+    /// 프레임이 하나뿐인 기분(끊김)에서는 아예 걸지 않는다.
+    /// </summary>
+    private void StartFrameTimer()
+    {
+        frameTimer.Stop();
+        if (animator.CurrentDelay() is not { } delay) return;
+
+        frameTimer.Interval = delay;
+        frameTimer.Start();
+    }
+
+    private void AdvanceFrame()
+    {
+        frameTimer.Stop();
+        if (animator.Advance() is not { } delay) return;
+
+        RefreshHud();
+        frameTimer.Interval = delay;
+        frameTimer.Start();
+    }
+
+    private void ToggleHudVisible()
+    {
+        settings.IsHudVisible = !settings.IsHudVisible;
+        settings.Save();
+        ApplySettings();
+    }
+
+    private void OpenSettings(string? tab = null)
+    {
+        if (settingsWindow is null)
+        {
+            settingsWindow = new SettingsWindow(settings, store, updates, ApplySettings);
+            settingsWindow.Closed += (_, _) => settingsWindow = null;
+            settingsWindow.Show();
+        }
+        else
+        {
+            settingsWindow.Activate();
+        }
+
+        if (tab is not null) settingsWindow.SelectTab(tab);
+    }
+
+    private void Quit()
+    {
+        hud?.SavePosition();
+        settings.Save();
+        Application.Current.Shutdown();
+    }
+
+    private static void Dispatch(Action action)
+    {
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null || dispatcher.CheckAccess()) action();
+        else dispatcher.Invoke(action);
+    }
+
+    public void Dispose()
+    {
+        pollTimer.Stop();
+        frameTimer.Stop();
+        updateTimer.Stop();
+        tray?.Dispose();
+        http.Dispose();
+    }
+}
+
+/// <summary>윈도우가 어두운 테마인지. 레지스트리에 있다.</summary>
+public static class SystemTheme
+{
+    public static bool IsDark()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            // 0 이 어두움이다. 값이 없으면(옛 윈도우) 밝은 쪽으로 본다.
+            return key?.GetValue("AppsUseLightTheme") is int light && light == 0;
+        }
+        catch (Exception error) when (error is System.Security.SecurityException or IOException)
+        {
+            return false;
+        }
+    }
+}

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    파일을 뽑아내는 작은 도구. **어디서나 돈다** — WPF 앱은 윈도우에서만 빌드되는데
+    CI 는 그 앱이 만든 파일이 소스와 같은지 검사해야 하고, 맥에서 개발할 때도
+    변경 내역을 다시 뽑아야 한다. 화면이 없는 부분만 쓰므로 크로스 플랫폼이다.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AssemblyName>dongcsu-tools</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/DongCSU.Core/DongCSU.Core.csproj" />
+  </ItemGroup>
+
+</Project>
