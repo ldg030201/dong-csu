@@ -40,7 +40,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "2.0.0", date: nil, notes: [
+        ChangelogEntry(version: "2.0.0", date: "2026-08-05", notes: [
             "앱 이름을 DongCSU로 변경 (윈도우판 대비, macOS를 뜻하던 m 제거)",
             "Homebrew tap·명령·번들 ID를 dong-csu로 변경",
             "옛 이름에서 쓰던 설정을 첫 실행 때 옮겨 오는 기능 추가",

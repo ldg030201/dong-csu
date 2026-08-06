@@ -1,6 +1,7 @@
 {
   "entries" : [
     {
+      "date" : "2026-08-05",
       "notes" : [
         "앱 이름을 DongCSU로 변경 (윈도우판 대비, macOS를 뜻하던 m 제거)",
         "Homebrew tap·명령·번들 ID를 dong-csu로 변경",
