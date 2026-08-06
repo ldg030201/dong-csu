@@ -43,7 +43,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "2.1.1", date: nil, notes: [
+        ChangelogEntry(version: "2.1.1", date: "2026-08-06", notes: [
             "로그인할 때 자동 시작 설정 추가 (표시 탭)",
         ]),
         ChangelogEntry(version: "2.1.0", date: "2026-08-06", notes: [
