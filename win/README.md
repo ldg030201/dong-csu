@@ -81,7 +81,10 @@ winget install ldg030201.DongCSU
 
 - Windows 10 1809 이상 또는 Windows 11
 - **Claude Code에 로그인되어 있어야 합니다** — 이 앱은 Claude Code가 저장해 둔
-  자격 증명을 읽습니다. 따로 로그인하지 않습니다
+  자격 증명을 읽습니다. 따로 로그인하지 않습니다.
+  **터미널은 필요 없습니다** — Claude 앱 안에 Claude Code가 들어 있어서, 앱에서
+  한 번 로그인하면 `%USERPROFILE%\.claude\.credentials.json` 이 만들어집니다.
+  설정 창의 **계정** 탭이 그 파일을 찾았는지 알려줍니다
 - .NET 런타임은 따로 안 깔아도 됩니다 (앱에 들어 있습니다). 그래서 설치본이
   **150MB쯤** 됩니다 — 맥 판이 가벼운 건 macOS 에 Swift 런타임이 이미 있어서입니다
 

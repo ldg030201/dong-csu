@@ -1,3 +1,4 @@
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -185,28 +186,85 @@ public sealed class SettingsWindow : Window
     {
         var panel = Stack();
 
-        panel.Children.Add(Hint(store.NeedsReauth
-            ? "토큰이 만료됐습니다. Claude Code에 다시 로그인하면 조회가 재개됩니다."
-            : "사용량은 Claude Code가 저장해 둔 자격 증명으로 읽습니다. 토큰 수명이 8시간이라 종종 재로그인이 필요합니다."));
+        // 자격 증명 파일이 실제로 있는지부터 보여준다.
+        //
+        // **터미널을 안 쓰는 사람이 있다.** 그 사람한테 "claude auth login 을 치세요"만
+        // 내밀면 막다른 길이다. 무엇이 없는지, 어디를 봐야 하는지를 화면에서 알려준다.
+        var found = FileCredentialSource.DefaultPaths().FirstOrDefault(File.Exists);
 
-        panel.Children.Add(Hint($"읽는 곳: {string.Join("  ·  ", FileCredentialSource.DefaultPaths())}"));
+        panel.Children.Add(Label(found is null
+            ? "Claude Code 로그인 정보를 찾지 못했습니다."
+            : "Claude Code 로그인 정보를 찾았습니다."));
 
-        var login = new Button
+        panel.Children.Add(Hint(found ?? string.Join("\n", FileCredentialSource.DefaultPaths())));
+
+        if (found is null)
         {
-            Content = "Claude Code 재로그인 안내",
-            Margin = new Thickness(0, 12, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(14, 4, 14, 4),
-        };
-        login.Click += (_, _) => MessageBox.Show(
-            this,
-            "터미널에서 다음을 실행하세요:\n\n    claude auth login\n\n로그인이 끝나면 새로고침을 누르거나 잠시 기다리면 됩니다.",
-            "Claude Code 재로그인",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
-        panel.Children.Add(login);
+            panel.Children.Add(Hint(
+                "\nClaude 앱(또는 Claude Code)에서 한 번 로그인하면 이 파일이 만들어집니다.\n"
+                + "터미널은 필요 없습니다 — Claude 앱을 열고 Claude Code로 아무 대화나 시작해 보세요."));
+        }
+        else if (store.NeedsReauth)
+        {
+            panel.Children.Add(Hint(
+                "\n토큰이 만료됐습니다. Claude 앱에서 다시 로그인하면 조회가 재개됩니다.\n"
+                + "토큰 수명이 8시간이라 종종 필요합니다."));
+        }
+        else
+        {
+            panel.Children.Add(Hint(
+                "\n사용량은 이 파일에 담긴 토큰으로 읽습니다. 토큰은 Authorization 헤더로만 쓰이고\n"
+                + "어디에도 다시 쓰거나 남기지 않습니다."));
+        }
 
+        var buttons = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 14, 0, 0),
+        };
+
+        var openFolder = new Button
+        {
+            Content = "폴더 열기",
+            Padding = new Thickness(14, 4, 14, 4),
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        openFolder.Click += (_, _) => OpenClaudeFolder();
+        buttons.Children.Add(openFolder);
+
+        var recheck = new Button { Content = "다시 확인", Padding = new Thickness(14, 4, 14, 4) };
+        recheck.Click += async (_, _) =>
+        {
+            await store.RefreshAsync(force: true).ConfigureAwait(true);
+            ShowTab();
+        };
+        buttons.Children.Add(recheck);
+
+        panel.Children.Add(buttons);
         return panel;
+    }
+
+    /// <summary>탐색기로 Claude 설정 폴더를 연다. 없으면 만들지 않고 상위를 연다.</summary>
+    private static void OpenClaudeFolder()
+    {
+        var folder = Path.GetDirectoryName(FileCredentialSource.DefaultPaths().Last());
+        if (string.IsNullOrEmpty(folder)) return;
+
+        var target = Directory.Exists(folder)
+            ? folder
+            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = target,
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or IOException)
+        {
+        }
     }
 
     // ── 버전 ──────────────────────────────────────────────────────

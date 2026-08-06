@@ -35,6 +35,16 @@ public static class Changelog
     [
         new ChangelogEntry
         {
+            Version = "1.0.1",
+            Date = null,
+            Notes =
+            [
+                "계정 탭에서 로그인 정보를 찾았는지와 그 경로를 표시하도록 변경",
+                "계정 탭에 폴더 열기·다시 확인 버튼 추가",
+            ],
+        },
+        new ChangelogEntry
+        {
             Version = "1.0.0",
             Date = "2026-08-06",
             Notes =
