@@ -43,6 +43,9 @@ public sealed class AppSettings
     public HudScale Scale { get; set; } = HudScale.Normal;
     public HudExpandSide ExpandSide { get; set; } = HudExpandSide.Right;
 
+    /// <summary>링 한가운데에 그릴 그림. 부엉이 말고는 정지 그림이다.</summary>
+    public IconStyle IconStyle { get; set; } = IconStyle.Owl;
+
     /// <summary>조회 주기(초). 너무 조이면 429 가 난다. **맥과 같은 10분이다.**</summary>
     public int PollIntervalSeconds { get; set; } = 600;
 

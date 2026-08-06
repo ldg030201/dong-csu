@@ -161,6 +161,9 @@ public sealed class HudView : FrameworkElement
     public string[]? OwlGrid { get; set; }
     public string OwlPaletteName { get; set; } = "normal";
 
+    /// <summary>가운데에 무엇을 그릴지. 부엉이 말고는 전부 정지 그림이다.</summary>
+    public IconStyle IconStyle { get; set; } = IconStyle.Owl;
+
     /// <summary>지금 마우스가 올라가 있는 자리. 창이 넣어 준다.</summary>
     public HudHit Hover { get; set; } = HudHit.None;
 
@@ -320,22 +323,83 @@ public sealed class HudView : FrameworkElement
             palette.RingTrack,
             grayscale: IsDisconnected);
 
-        if (OwlGrid is not { } grid) return;
-
         // 맥과 같은 산식 — 안지름에서 안쪽 링 두께 두 겹과 여유 4 를 뺀다.
         var inner = frame.Width - BaseOuterThickness * s * 2 - BaseRingGap * s;
         var available = inner - BaseInnerThickness * s * 2 - 4 * s;
+        if (available <= 0) return;
+
+        switch (IconStyle)
+        {
+            case IconStyle.Owl:
+                DrawOwl(context, center, available);
+                break;
+
+            case IconStyle.Clawd:
+                // 11×8 이라 **폭을 기준으로** 맞춘다. 높이로 맞추면 옆으로 삐져나온다.
+                DrawClawdCentered(context, center, available);
+                break;
+
+            case IconStyle.AppIcon:
+                var box = Square(center, available);
+                // 그림이 없으면(뽑기 실패) 마크로 떨어진다 — 가운데가 비면 안 된다.
+                DrawSmooth(context, ctx =>
+                {
+                    if (!IconRenderer.DrawAppIcon(ctx, box)) IconRenderer.DrawMark(ctx, box);
+                });
+                break;
+
+            default:
+                DrawSmooth(context, ctx => IconRenderer.DrawMark(ctx, Square(center, available)));
+                break;
+        }
+    }
+
+    private void DrawOwl(DrawingContext context, Point center, double available)
+    {
+        if (OwlGrid is not { } grid) return;
 
         var cell = OwlRenderer.CellSize(available, Document.Grid.Lines);
-        var owlSize = OwlRenderer.MeasuredSize(cell, Document.Grid);
+        var size = OwlRenderer.MeasuredSize(cell, Document.Grid);
         var origin = new Point(
-            Math.Round(center.X - owlSize.Width / 2),
-            Math.Round(center.Y - owlSize.Height / 2));
+            Math.Round(center.X - size.Width / 2),
+            Math.Round(center.Y - size.Height / 2));
 
         var brushes = owlBrushes.TryGetValue(OwlPaletteName, out var found)
             ? found
             : owlBrushes["normal"];
         OwlRenderer.Draw(context, grid, brushes, origin, cell);
+    }
+
+    private void DrawClawdCentered(DrawingContext context, Point center, double available)
+    {
+        var width = available;
+        var height = width * ClawdMark.Lines / ClawdMark.Columns;
+        var bounds = new Rect(
+            Math.Round(center.X - width / 2), Math.Round(center.Y - height / 2), width, height);
+
+        var eye = Color.FromArgb((byte)(IsDark ? 0xE0 : 0xBF), 0, 0, 0);
+        IconRenderer.DrawClawd(context, bounds, eye);
+    }
+
+    private static Rect Square(Point center, double side) =>
+        new(center.X - side / 2, center.Y - side / 2, side, side);
+
+    /// <summary>
+    /// 이 안에서만 부드럽게 그린다.
+    ///
+    /// 뷰 전체에는 <see cref="EdgeMode.Aliased"/> 가 걸려 있다 — 픽셀 아트(부엉이·Clawd)를
+    /// 부드럽게 하면 뭉개지기 때문이다. 그런데 **벡터 마크와 비트맵 아이콘은 정반대로**
+    /// 안티에일리어싱이 있어야 한다. 한 방식으로 뭉뚱그리면 셋 중 둘이 망가지므로,
+    /// 이 둘만 설정을 뒤집은 묶음 안에서 그린다.
+    /// </summary>
+    private static void DrawSmooth(DrawingContext context, Action<DrawingContext> body)
+    {
+        var group = new DrawingGroup();
+        RenderOptions.SetEdgeMode(group, EdgeMode.Unspecified);
+        RenderOptions.SetBitmapScalingMode(group, BitmapScalingMode.HighQuality);
+        using (var ctx = group.Open()) body(ctx);
+        group.Freeze();
+        context.DrawDrawing(group);
     }
 
     /// <summary>세션 · 주간 두 블록. 각 블록은 두 줄이고, 앞의 색점이 링과 짝을 지어 준다.</summary>

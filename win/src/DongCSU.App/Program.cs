@@ -168,6 +168,7 @@ public sealed class AppController : IDisposable
         hud.View.HasUpdate = updates.HasUpdate;
 
         hud.View.ShowsProcessStats = settings.ShowsProcessStats;
+        hud.View.IconStyle = settings.IconStyle;
 
         store.PollInterval = settings.PollInterval;
         pollTimer.Interval = store.NextPollDelay();
@@ -279,6 +280,9 @@ public sealed class AppController : IDisposable
         // 움직이지 않게 해 뒀으면 프레임을 넘기지 않는다. 기분에 따른 색은 그대로다 —
         // 자세만 멈출 뿐 지금 상태를 못 알리게 되는 것은 아니다.
         if (!settings.AnimatesMascot) return;
+        // **정지 그림을 골라 뒀으면 아예 걸지 않는다.** 넘길 프레임이 없는데 타이머만
+        // 돌면 보이지도 않는 그림을 계속 다시 그린다.
+        if (!settings.IconStyle.IsAnimated()) return;
         if (animator.CurrentDelay() is not { } delay) return;
 
         frameTimer.Interval = delay;

@@ -55,4 +55,15 @@
     <None Update="Resources/DongCSU.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      가운데 아이콘으로 고를 수 있는 Claude 앱 아이콘.
+
+      **맥 번들에 들어가는 것과 같은 파일이다.** 사본을 두면 한쪽만 바뀌어 두 판이
+      다른 그림을 그린다. 두 판이 나눠 쓰게 됐으니 언젠가 shared/ 로 옮기는 편이
+      맞지만, mac/build.sh 가 Resources/ 에서 집어 가므로 그쪽을 함께 고칠 때 옮긴다.
+    -->
+    <EmbeddedResource Include="../../../mac/Resources/claude-icon.png" LogicalName="claude-icon.png" />
+  </ItemGroup>
+
 </Project>
