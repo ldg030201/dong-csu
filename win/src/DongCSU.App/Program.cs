@@ -81,6 +81,9 @@ public sealed class AppController : IDisposable
         store.Changed += OnStoreChanged;
 
         updates = new UpdateService(http);
+        // 갈아 끼우기 전에 트레이 아이콘과 창을 놓아 준다. 남아 있으면 프로세스가
+        // 깨끗이 안 끝나서 Velopack 이 파일을 못 바꾸고 물러난다.
+        updates.BeforeRestart = () => Dispatch(ReleaseForUpdate);
         updates.Changed += () => Dispatch(() =>
         {
             RefreshHud();
@@ -235,6 +238,24 @@ public sealed class AppController : IDisposable
         }
 
         if (tab is not null) settingsWindow.SelectTab(tab);
+    }
+
+    /// <summary>업데이트 직전 정리. 창을 닫고 트레이 아이콘을 내린다.</summary>
+    private void ReleaseForUpdate()
+    {
+        AppLog.Write("업데이트를 위해 창과 트레이를 정리한다");
+        pollTimer.Stop();
+        frameTimer.Stop();
+        updateTimer.Stop();
+
+        settingsWindow?.Close();
+        settingsWindow = null;
+        hud?.SavePosition();
+        hud?.Close();
+        hud = null;
+
+        tray?.Dispose();
+        tray = null;
     }
 
     private void Quit()

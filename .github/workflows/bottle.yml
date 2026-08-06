@@ -23,8 +23,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14   # arm64 Sonoma
-          - os: macos-15   # arm64 Sequoia
+          # bottle 은 **macOS 판마다 따로** 만들어야 하고, 자기 판에서만 쓰인다.
+          # 여기 없는 판을 쓰는 사람은 소스에서 빌드한다(30초쯤 걸릴 뿐 실패하지는 않는다).
+          - os: macos-15   # arm64 Sequoia (macOS 15)
+          - os: macos-26   # arm64 (macOS 26) — GitHub 의 최신 러너
     runs-on: ${{ matrix.os }}
     steps:
       - name: Homebrew 준비
@@ -53,7 +55,7 @@ jobs:
 
   publish:
     needs: build
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
         with:

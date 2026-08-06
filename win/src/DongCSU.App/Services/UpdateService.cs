@@ -123,7 +123,11 @@ public sealed class UpdateService(HttpClient http)
                 return false;
             }
 
+            AppLog.Write($"업데이트 받는 중: {update.TargetFullRelease.Version}");
             await updateManager.DownloadUpdatesAsync(update).ConfigureAwait(false);
+            AppLog.Write("업데이트 내려받기 끝 — 앱을 정리하고 갈아 끼운다");
+
+            BeforeRestart?.Invoke();
             updateManager.ApplyUpdatesAndRestart(update);
             return true;
         }
@@ -142,6 +146,16 @@ public sealed class UpdateService(HttpClient http)
 
     /// <summary>마지막 업데이트 시도가 왜 실패했는지. 성공했거나 아직 안 눌렀으면 null.</summary>
     public string? LastError { get; private set; }
+
+    /// <summary>
+    /// 파일을 갈아 끼우기 직전에 부른다. **트레이 아이콘과 창을 여기서 정리해야 한다.**
+    ///
+    /// Velopack 은 우리 프로세스가 끝나기를 기다렸다가 파일을 바꾼다. 트레이 아이콘
+    /// (Win32 창)이나 열린 창이 남아 있으면 프로세스가 깨끗이 안 끝나서, 기다리다
+    /// 지친 업데이터가 **아무것도 못 바꾸고 물러난다.** 앱만 꺼지고 버전은 그대로인
+    /// 상태가 그래서 생긴다.
+    /// </summary>
+    public Action? BeforeRestart { get; set; }
 
     /// <summary>지금 버전보다 새 것이 있나.</summary>
     public bool HasUpdate => AppVersion.IsNewer(LatestVersion, AppInfo.Version);

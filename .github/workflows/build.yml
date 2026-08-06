@@ -21,8 +21,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14   # arm64 Sonoma
+          # macos-14 는 GitHub 이 지원을 끊는 중이라 뺐다. 최소 지원은 formula 의
+          # `depends_on macos: :sonoma` 가 정하고, 여기는 "컴파일되는지"만 본다.
           - os: macos-15   # arm64 Sequoia
+          - os: macos-26   # arm64 — GitHub 의 최신 러너
     runs-on: ${{ matrix.os }}
     defaults:
       run:

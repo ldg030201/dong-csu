@@ -77,6 +77,10 @@ jobs:
           # 가른다. GitHub 의 "Latest" 는 저장소에 하나뿐이라 이것 말고 방법이 없다.
           gh release create "$GITHUB_REF_NAME" --title "Windows ${{ steps.version.outputs.value }}" --generate-notes \
             || echo "릴리스가 이미 있다 — 파일만 올린다"
+          # **Portable zip 은 올리지 않는다** — 68MB 인데 설치 exe 와 내용이 같다.
+          # 나머지는 빼면 안 된다: .nupkg 는 자체 업데이트가 **실제로 받아 가는 파일**이고,
+          # releases.win.json 은 앱이 새 버전을 찾는 목록이다. 지우면 업데이트가 죽는다.
+          rm -f releases/*-Portable.zip
           gh release upload "$GITHUB_REF_NAME" releases/* --clobber
 
       - name: 결과 수집
