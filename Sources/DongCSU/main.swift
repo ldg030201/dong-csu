@@ -74,6 +74,25 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--dump-changelog") {
     }
 }
 
+// 부엉이를 파일 하나로 뽑는다: dong-csu --dump-owl [out.json]
+// 윈도우판이 같은 그림을 그리도록 그리드·색·프레임표를 내보낸다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--dump-owl") {
+    do {
+        let data = try MainActor.assumeIsolated { try OwlExport.jsonData() }
+        if flagIndex + 1 < CommandLine.arguments.count {
+            let path = CommandLine.arguments[flagIndex + 1]
+            try data.write(to: URL(fileURLWithPath: path))
+            print("wrote: \(path)")
+        } else {
+            FileHandle.standardOutput.write(data)
+        }
+        exit(0)
+    } catch {
+        print("dump failed: \(error)")
+        exit(1)
+    }
+}
+
 // 메뉴바 아이콘을 PNG로 뽑는다: dong-csu --render-menubar out.png [높이] [test]
 // 한 칸이 1pt까지 작아지는 자리라 눈으로 확인할 통로가 필요하다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-menubar"),

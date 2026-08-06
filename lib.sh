@@ -60,6 +60,14 @@ swift_bin_dir() {
   swift_build --show-bin-path
 }
 
+# 윈도우판과 나눠 쓰는 부엉이 데이터를 소스에서 다시 뽑는다.
+# 변경 내역과 같은 이유로 반드시 먼저 빌드한다.
+dump_owl() {
+  swift_build
+  mkdir -p "$ROOT/shared"
+  "$(swift_bin_dir)/dong-csu" --dump-owl "$ROOT/shared/owl.json"
+}
+
 # 앱이 원격에서 받아보는 변경 내역을 Changelog.swift 에서 다시 뽑는다.
 # 반드시 먼저 빌드한다 — 옛 바이너리로 뽑으면 방금 추가한 항목이 빠진다.
 dump_changelog() {

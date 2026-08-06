@@ -49,6 +49,12 @@ jobs:
           test -s /tmp/menubar.png && test -s /tmp/owl.png
           test -s /tmp/changelog.json
 
+      - name: 부엉이 데이터가 소스와 맞는지
+        run: |
+          ./build/DongCSU.app/Contents/MacOS/DongCSU --dump-owl /tmp/fresh-owl.json
+          diff -q /tmp/fresh-owl.json shared/owl.json \
+            || { echo "shared/owl.json 이 소스와 다르다 — source ./lib.sh && dump_owl 로 다시 뽑아라"; exit 1; }
+
       - name: 변경 내역 파일이 소스와 맞는지
         run: |
           ./build/DongCSU.app/Contents/MacOS/DongCSU --dump-changelog /tmp/fresh.json
