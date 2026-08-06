@@ -69,7 +69,28 @@ python3 make-icon.py
 dotnet run --project tools/DongCSU.Tools -- --dump-changelog docs/changelog.json
 ```
 
-**맥과 번호를 맞추지 않는다.** 태그는 `win-v1.0.0` 처럼 붙인다.
+**맥과 번호를 맞추지 않는다.** 태그는 `win-v1.1.0` 처럼 붙인다.
+
+### 네 번째 자리를 쓸 수 없다
+
+공통 규칙에는 긴급 수정용 네 번째 자리가 있지만 **윈도우에서는 못 쓴다.** 설치본이
+NuGet 패키지 형식이고 거기 버전은 SemVer2 세 자리여야 한다.
+
+```
+--packVersion contains an invalid package version '1.0.0.1':
+it must be a 3-part SemVer2 compliant version string.
+```
+
+빠져나갈 길을 찾아봤지만 없다.
+
+| | 왜 안 되나 |
+| --- | --- |
+| `1.0.0+1` | SemVer 는 **빌드 꼬리표를 순서 비교에서 무시한다.** 1.0.0 과 같은 버전으로 봐서 업데이트가 안 걸린다 |
+| `1.0.1-hotfix.1` | 순서는 맞는데 `GithubSource(prerelease: false)` 가 걸러낸다. 켜면 진짜 프리릴리스까지 딸려온다 |
+| 화면 따로 · 패키지 따로 | 같은 걸 두 이름으로 부르게 된다 |
+
+**그래서 윈도우는 긴급 수정도 세 번째 자리로 올린다.** 어차피 판마다 번호를 따로
+세므로 맥과 갈려도 된다.
 
 ## 배포
 
