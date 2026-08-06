@@ -1,6 +1,12 @@
 {
   "entries" : [
     {
+      "notes" : [
+        "부엉이 그리드·색·프레임표를 shared/owl.json 으로 내보내는 기능 추가"
+      ],
+      "version" : "2.1.0"
+    },
+    {
       "date" : "2026-08-05",
       "notes" : [
         "앱 이름을 DongCSU로 변경 (윈도우판 대비, macOS를 뜻하던 m 제거)",
