@@ -51,7 +51,9 @@ jobs:
 
       - name: 설치본 만들기
         run: |
-          dotnet tool install -g vpk
+          # 라이브러리(DongCSU.App.csproj 의 Velopack)와 **같은 번호**여야 한다.
+          # 어긋나면 vpk 가 경고를 내고, 만든 설치본이 앱의 업데이트 코드와 안 맞을 수 있다.
+          dotnet tool install -g vpk --version 1.2.0
           vpk pack --packId DongCSU --packVersion ${{ steps.version.outputs.value }} `
             --packDir publish --mainExe DongCSU.exe `
             --packTitle DongCSU --packAuthors ldg030201 `

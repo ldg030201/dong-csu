@@ -36,7 +36,7 @@
 
   <ItemGroup>
     <!-- 자체 업데이트. 사용자 폴더에 깔리고 관리자 권한을 묻지 않는다. -->
-    <PackageReference Include="Velopack" Version="0.0.1298" />
+    <PackageReference Include="Velopack" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>
