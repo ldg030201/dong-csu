@@ -35,6 +35,7 @@ dong-csu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-csu --render-icon out.png 1024            # 앱 아이콘
 dong-csu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임 (기분 + 걸음걸이)
 dong-csu --render-owl-gif docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
+dong-csu --dump-owl shared/owl.json            # 윈도우판과 나눠 쓸 부엉이 데이터
 ```
 
 `--render`의 뒤쪽 인자는 순서와 무관하게 인식한다:
