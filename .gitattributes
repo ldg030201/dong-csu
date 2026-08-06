@@ -1,0 +1,14 @@
+# 릴리스 tarball 에서 뺄 것.
+#
+# Homebrew 는 태그 tarball 을 받아 **소스에서 빌드한다.** 그 tarball 에 README 스크린샷과
+# 캐릭터 GIF 가 들어가면 빌드에 쓰이지도 않는 이미지 870KB 를 매번 받게 된다
+# (전체 1.2MB 중 대부분이 이것이다).
+#
+# `export-ignore` 는 `git archive` 결과에만 걸린다. 저장소에는 그대로 남고 GitHub
+# 웹에서도 그대로 보인다. 적용되지 않더라도 tarball 이 커질 뿐 설치는 된다.
+#
+# **`mac/Resources/` 는 절대 빼지 않는다** — claude-icon.png 와 AppIcon.icns 는
+# build.sh 가 번들에 넣는 것이라, 빠지면 앱에서 가운데 아이콘이 사라진다.
+
+/mac/docs/*.png             export-ignore
+/docs/characters/owl/*.gif  export-ignore
