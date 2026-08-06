@@ -25,6 +25,9 @@ public sealed class SettingsWindow : Window
     private readonly UpdateService updates;
     private readonly Action onChanged;
 
+    /// <summary>HUD 를 기본 자리로 되돌린다. 창을 들고 있는 쪽만 할 수 있는 일이다.</summary>
+    private readonly Action onResetPosition;
+
     private readonly Border root = new();
 
     /// <summary>
@@ -52,12 +55,18 @@ public sealed class SettingsWindow : Window
 
     private SettingsPalette Palette => SettingsPalette.For(IsDarkTheme());
 
-    public SettingsWindow(AppSettings settings, UsageStore store, UpdateService updates, Action onChanged)
+    public SettingsWindow(
+        AppSettings settings,
+        UsageStore store,
+        UpdateService updates,
+        Action onChanged,
+        Action onResetPosition)
     {
         this.settings = settings;
         this.store = store;
         this.updates = updates;
         this.onChanged = onChanged;
+        this.onResetPosition = onResetPosition;
 
         Title = $"{AppInfo.Name} 설정";
         Width = 720;
@@ -425,17 +434,13 @@ public sealed class SettingsWindow : Window
             }))));
 
         panel.Children.Add(Ui.ButtonRow(
-            Ui.Button(palette, "위치 초기화", () =>
-            {
-                settings.WindowLeft = null;
-                settings.WindowTop = null;
-                ApplyAndRedraw();
-            }, enabled: visible),
+            Ui.Button(palette, "위치 초기화", onResetPosition, enabled: visible),
             Ui.Button(palette, "모든 설정 초기화", ResetEverything, Ui.ButtonKind.Danger)));
 
         panel.Children.Add(Ui.Hint(palette,
             "HUD는 드래그로 옮길 수 있고, 더블클릭하면 접었다 펴집니다. "
-            + "화면 밖으로 보냈으면 위치 초기화를 누르세요."));
+            + "화면 밖으로 보냈거나 모니터를 빼서 안 보이면 위치 초기화를 누르세요 — "
+            + "주 모니터 오른쪽 위로 돌아옵니다."));
 
         return panel;
     }
@@ -478,6 +483,8 @@ public sealed class SettingsWindow : Window
         AppLog.Write("설정을 모두 초기화했다");
 
         Apply();
+        // 자리도 되돌린다. 값만 지우면 창은 옮겨 둔 자리에 그대로 남는다.
+        onResetPosition();
         Rebuild();
     }
 

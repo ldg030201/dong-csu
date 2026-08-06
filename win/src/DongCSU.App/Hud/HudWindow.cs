@@ -88,24 +88,54 @@ public sealed class HudWindow : Window
         else if (!needed && tick.IsEnabled) tick.Stop();
     }
 
-    /// <summary>기억해 둔 자리로. 처음이면 오른쪽 위에 붙인다.</summary>
+    /// <summary>기억해 둔 자리로. 처음이면 기본 자리에 붙인다.</summary>
     public void RestorePosition()
     {
-        var area = SystemParameters.WorkArea;
         var size = view.DesiredHudSize;
-
-        var left = settings.WindowLeft ?? area.Right - size.Width - 24;
-        var top = settings.WindowTop ?? area.Top + 24;
+        var left = settings.WindowLeft ?? DefaultPosition(size).X;
+        var top = settings.WindowTop ?? DefaultPosition(size).Y;
 
         // 모니터를 뺐다 꽂으면 기억해 둔 자리가 화면 밖일 수 있다. 그러면 안 보인다.
         if (!IsOnAnyScreen(left, top, size))
         {
-            left = area.Right - size.Width - 24;
-            top = area.Top + 24;
+            var fallback = DefaultPosition(size);
+            left = fallback.X;
+            top = fallback.Y;
         }
 
         Left = left;
         Top = top;
+    }
+
+    /// <summary>
+    /// 기본 자리 — **주 모니터 오른쪽 위.**
+    ///
+    /// <c>SystemParameters.WorkArea</c> 는 주 모니터의 작업 영역이고 단위가 DIP 라
+    /// <see cref="Window.Left"/> 와 그대로 견줄 수 있다. 작업 표시줄을 피해서 잡히므로
+    /// 표시줄을 위나 옆에 두는 사람에게도 맞다.
+    /// </summary>
+    private static Point DefaultPosition(Size size)
+    {
+        var area = SystemParameters.WorkArea;
+        return new Point(area.Right - size.Width - 24, area.Top + 24);
+    }
+
+    /// <summary>
+    /// 주 모니터 오른쪽 위로 되돌린다.
+    ///
+    /// **기억해 둔 자리를 지우는 것만으로는 창이 안 움직인다** — 그 값은 뜰 때 한 번만
+    /// 읽히기 때문이다. 지우고, 옮기고, 새 자리를 다시 적어 둔다. 창을 화면 밖으로
+    /// 보내 버렸을 때 앱 안에서 되돌릴 유일한 길이라 재시작을 요구해서는 안 된다.
+    /// </summary>
+    public void ResetPosition()
+    {
+        var target = DefaultPosition(view.DesiredHudSize);
+        Left = target.X;
+        Top = target.Y;
+
+        // 숨겨 둔 채로 눌렀어도 다음에 켰을 때 그 자리에 있어야 한다.
+        SavePosition();
+        AppLog.Write($"HUD 위치를 기본 자리로 되돌렸다 ({target.X:F0}, {target.Y:F0})");
     }
 
     /// <summary>

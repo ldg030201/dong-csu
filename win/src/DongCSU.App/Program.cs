@@ -318,6 +318,9 @@ public sealed class AppController : IDisposable
         if (hud?.ClampIntoScreen() == true) AppLog.Write("화면 구성이 바뀌어 HUD 를 안으로 옮겼다");
     });
 
+    /// <summary>HUD 를 주 모니터 오른쪽 위로. 설정 창의 "위치 초기화" 가 부른다.</summary>
+    private void ResetHudPosition() => hud?.ResetPosition();
+
     private void ToggleHudVisible()
     {
         settings.IsHudVisible = !settings.IsHudVisible;
@@ -329,7 +332,7 @@ public sealed class AppController : IDisposable
     {
         if (settingsWindow is null)
         {
-            settingsWindow = new SettingsWindow(settings, store, updates, ApplySettings);
+            settingsWindow = new SettingsWindow(settings, store, updates, ApplySettings, ResetHudPosition);
             settingsWindow.Closed += (_, _) => settingsWindow = null;
             settingsWindow.Show();
         }

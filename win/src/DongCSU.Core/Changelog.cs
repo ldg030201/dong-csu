@@ -35,6 +35,15 @@ public static class Changelog
     [
         new ChangelogEntry
         {
+            Version = "2.0.1",
+            Date = null,
+            Notes =
+            [
+                "위치 초기화를 눌러도 HUD가 그대로이던 문제 수정 (주 모니터 오른쪽 위로 이동)",
+            ],
+        },
+        new ChangelogEntry
+        {
             Version = "2.0.0",
             Date = "2026-08-07",
             Notes =
