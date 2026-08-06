@@ -269,6 +269,27 @@ enum OwlMark {
         "....###..###...",
     ]
 
+    /// 이름 → 레이어. 파일로 내보낼 때와 문서를 쓸 때 이 목록을 돈다.
+    /// **새 레이어를 만들면 여기에도 한 줄 더한다** — 빠뜨리면 윈도우판이 그 파츠를 모른다.
+    static let layers: [String: [String]] = [
+        "body": body,
+        "bodyHanging": bodyHanging,
+        "wingsFolded": wingsFolded,
+        "wingsDroop": wingsDroop,
+        "wingsSpread": wingsSpread,
+        "wingsLift": wingsLift,
+        "belly": belly,
+        "eyesOpen": eyesOpen,
+        "eyesHalf": eyesHalf,
+        "eyesClosed": eyesClosed,
+        "eyesDizzy": eyesDizzy,
+        "beak": beak,
+        "feetStand": feetStand,
+        "feetStepA": feetStepA,
+        "feetStepB": feetStepB,
+        "feetDangle": feetDangle,
+    ]
+
     /// 레이어를 밀어서 옮긴다. `dy`는 양수가 아래쪽이고, 캔버스 밖으로 나간 칸은 버린다.
     static func shifted(_ layer: [String], dx: Int = 0, dy: Int = 0) -> [String] {
         guard dx != 0 || dy != 0 else { return layer }
@@ -290,50 +311,103 @@ enum OwlMark {
 
 // MARK: - 색
 
+/// 부엉이 색 하나.
+///
+/// SwiftUI `Color`를 그대로 들고 있으면 **값을 되읽을 수 없다.** 그리는 데는
+/// 문제가 없지만, 같은 색을 윈도우판에 넘기려고 파일로 내보낼 때 꺼낼 방법이 없다.
+/// 원본 성분을 들고 있다가 그릴 때만 `Color`로 만든다.
+struct OwlColor: Equatable {
+    var red: Double
+    var green: Double
+    var blue: Double
+
+    init(_ red: Double, _ green: Double, _ blue: Double) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+    }
+
+    /// `0x3A72C4` 처럼 쓴 값.
+    init(hex: UInt32) {
+        self.init(
+            Double((hex >> 16) & 0xFF) / 255,
+            Double((hex >> 8) & 0xFF) / 255,
+            Double(hex & 0xFF) / 255
+        )
+    }
+
+    /// 회색 한 단계.
+    init(white: Double) {
+        self.init(white, white, white)
+    }
+
+    /// AppKit 색에서 성분을 꺼낸다. 테스트판 물들이기가 이 길로 온다.
+    init?(_ nsColor: NSColor) {
+        guard let srgb = nsColor.usingColorSpace(.sRGB) else { return nil }
+        self.init(
+            Double(srgb.redComponent),
+            Double(srgb.greenComponent),
+            Double(srgb.blueComponent)
+        )
+    }
+
+    var color: Color { Color(red: red, green: green, blue: blue) }
+    var nsColor: NSColor { NSColor(color) }
+
+    /// 내보낼 때 쓰는 표기. 화면에는 8비트로 그려지므로 여기서 잘라도 차이가 없다.
+    var hex: String {
+        func byte(_ value: Double) -> Int { Int((value * 255).rounded()) }
+        return String(format: "#%02X%02X%02X", byte(red), byte(green), byte(blue))
+    }
+}
+
 /// 부엉이 한 마리의 색 한 벌.
 ///
 /// 색을 상수로 박아 두면 회색으로 물러앉히거나 테스트판을 구분할 방법이 없다.
 /// 그림(그리드)과 색을 갈라 두어서, 같은 자세를 팔레트만 바꿔 다시 그린다.
 struct OwlPalette: Equatable {
-    var body: Color
-    var wing: Color
-    var belly: Color
-    var face: Color
-    var pupil: Color
-    var beak: Color
+    var body: OwlColor
+    var wing: OwlColor
+    var belly: OwlColor
+    var face: OwlColor
+    var pupil: OwlColor
+    var beak: OwlColor
 
     /// 날개는 몸통보다 어둡되, 다크 배경 위에서도 실루엣이 남을 만큼은 밝아야 한다.
     static let normal = OwlPalette(
-        body: Color(red: 0x3A / 255, green: 0x72 / 255, blue: 0xC4 / 255),
-        wing: Color(red: 0x27 / 255, green: 0x54 / 255, blue: 0x8F / 255),
-        belly: Color(red: 0x9F / 255, green: 0xC4 / 255, blue: 0xEE / 255),
-        face: Color(red: 0xFF / 255, green: 0xF3 / 255, blue: 0xE0 / 255),
-        pupil: Color(red: 0x0E / 255, green: 0x1B / 255, blue: 0x2E / 255),
-        beak: Color(red: 0xF6 / 255, green: 0xA6 / 255, blue: 0x23 / 255)
+        body: OwlColor(hex: 0x3A72C4),
+        wing: OwlColor(hex: 0x27548F),
+        belly: OwlColor(hex: 0x9FC4EE),
+        face: OwlColor(hex: 0xFFF3E0),
+        pupil: OwlColor(hex: 0x0E1B2E),
+        beak: OwlColor(hex: 0xF6A623)
     )
 
     /// 조회가 안 되는 동안. 채도를 빼서 화면 뒤로 물러나 보이게 한다.
     /// 얼굴과 부리는 형태가 남을 만큼의 밝기 차이를 유지한다 — 아예 한 덩어리로
     /// 뭉개면 무슨 그림인지 알 수 없어서, 앱이 고장난 것처럼 읽힌다.
     static let offline = OwlPalette(
-        body: Color(white: 0.40),
-        wing: Color(white: 0.26),
-        belly: Color(white: 0.60),
-        face: Color(white: 0.84),
-        pupil: Color(white: 0.12),
-        beak: Color(white: 0.68)
+        body: OwlColor(white: 0.40),
+        wing: OwlColor(white: 0.26),
+        belly: OwlColor(white: 0.60),
+        face: OwlColor(white: 0.84),
+        pupil: OwlColor(white: 0.12),
+        beak: OwlColor(white: 0.68)
     )
 
     /// 몸통과 날개만 다른 색으로. 눈·부리는 그대로 두어 얼굴이 남는다.
     /// 단색으로 칠해 버리면 눈까지 사라져서 무슨 그림인지 알 수 없다.
     static func tinted(body tint: NSColor) -> OwlPalette {
         var palette = normal
-        palette.body = Color(nsColor: tint)
-        palette.wing = Color(nsColor: tint.shadow(withLevel: 0.3) ?? tint)
+        if let body = OwlColor(tint) { palette.body = body }
+        if let shadow = tint.shadow(withLevel: 0.3), let wing = OwlColor(shadow) {
+            palette.wing = wing
+        }
         return palette
     }
 
-    func color(for character: Character) -> Color? {
+    /// 그리드 글자 → 색. 없는 글자는 빈 칸이다.
+    func value(for character: Character) -> OwlColor? {
         switch character {
         case "#": return body
         case "d": return wing
@@ -345,9 +419,13 @@ struct OwlPalette: Equatable {
         }
     }
 
+    func color(for character: Character) -> Color? {
+        value(for: character)?.color
+    }
+
     /// AppKit으로 그릴 때(메뉴바 등) 쓰는 같은 색.
     func nsColor(for character: Character) -> NSColor? {
-        color(for: character).map(NSColor.init)
+        value(for: character)?.nsColor
     }
 }
 
@@ -463,6 +541,26 @@ struct OwlPose: Equatable {
         ]
     }
 
+    /// 레이어를 한 장으로 눌러 칸마다 최종 글자 하나만 남긴 그리드.
+    ///
+    /// 뒤 레이어가 앞을 덮으므로 결과는 겹쳐 그린 것과 같고, 가려질 칸은 그리지 않는다.
+    /// **그리는 쪽과 파일로 내보내는 쪽이 이 하나를 같이 쓴다** — 둘이 따로 합성하면
+    /// 윈도우판에 넘긴 그림이 화면과 달라질 수 있다.
+    var grid: [[Character]] {
+        var output = [[Character]](
+            repeating: [Character](repeating: ".", count: OwlMark.columns),
+            count: OwlMark.lines
+        )
+        for layer in layers {
+            for (y, row) in layer.enumerated() {
+                for (x, character) in row.enumerated() where character != "." {
+                    output[y][x] = character
+                }
+            }
+        }
+        return output
+    }
+
     /// 목을 잡혀 매달린 채 끌려가는 자세.
     ///
     /// 몸은 지금 `lean`에 있고, 얼굴은 **한 박자 전** 자리에, 다리는 **두 박자 전**
@@ -518,19 +616,7 @@ struct OwlMarkView: View {
                 )
             }
 
-            // 레이어를 먼저 한 장으로 눌러서 칸마다 최종 글자 하나만 남긴다.
-            // 뒤 레이어가 앞을 덮으므로 결과는 그대로이고, 가려질 칸을 그리지 않는다.
-            var grid = [[Character]](
-                repeating: [Character](repeating: ".", count: OwlMark.columns),
-                count: OwlMark.lines
-            )
-            for layer in pose.layers {
-                for (y, row) in layer.enumerated() {
-                    for (x, character) in row.enumerated() where character != "." {
-                        grid[y][x] = character
-                    }
-                }
-            }
+            let grid = pose.grid
 
             // 같은 색 칸을 하나의 Path로 모아 색마다 한 번씩만 칠한다.
             // 칸마다 Path를 만들어 fill을 부르면 한 프레임에 200번이 되는데,

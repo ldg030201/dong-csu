@@ -3,7 +3,8 @@ import SwiftUI
 /// 사용률에 따라 연속적으로 변하는 게이지 색.
 /// 초록 → 라임 → 노랑 → 주황 → 빨강 구간을 선형 보간한다.
 enum UsageColor {
-    private static let stops: [(threshold: Double, rgb: (Double, Double, Double))] = [
+    /// 구간 경계와 그 색. 파일로 내보낼 때도 이 목록을 그대로 쓴다.
+    static let stops: [(threshold: Double, rgb: (Double, Double, Double))] = [
         (0, (0.34, 0.80, 0.52)),
         (40, (0.60, 0.81, 0.35)),
         (60, (0.95, 0.75, 0.26)),
