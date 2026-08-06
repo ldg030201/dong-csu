@@ -120,5 +120,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Formula/dong-csu.rb
-          git diff --cached --quiet || git commit -m "📦 bottle 추가"
-          git push
+          git diff --cached --quiet && { echo "바뀐 게 없다"; exit 0; }
+          git commit -m "📦 bottle 추가"
+
+          # 이 작업이 도는 1~2분 사이에 main 이 움직였을 수 있다. 그때 그냥 밀면
+          # 거부당하고, **bottle 은 릴리스에 올라갔는데 formula 는 그걸 모르는**
+          # 상태로 남는다(설치가 계속 소스 빌드로 떨어진다). 따라잡고 다시 민다.
+          for attempt in 1 2 3; do
+            if git push; then exit 0; fi
+            echo "main 이 앞서 있다 — 따라잡고 다시 시도 ($attempt/3)"
+            git pull --rebase origin main
+          done
+          echo "formula 를 밀지 못했다" >&2
+          exit 1
