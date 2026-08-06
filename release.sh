@@ -94,6 +94,10 @@ echo "▸ 태그 푸시"
 # ── 4. tarball 해시 ────────────────────────────────────────────
 REPO_URL="$(git remote get-url origin)"
 REPO_URL="${REPO_URL%.git}"
+# SSH 주소(git@github.com:소유자/저장소)는 curl 에 그대로 넣을 수 없다 —
+# `:` 뒤를 포트로 읽는다. `gh repo rename` 이 remote 를 SSH 로 바꿔 놓기도 해서
+# 여기서 HTTPS 로 맞춘다.
+REPO_URL="${REPO_URL/git@github.com:/https://github.com/}"
 TARBALL="$REPO_URL/archive/refs/tags/$TAG.tar.gz"
 
 TMP="$(mktemp -d)"
