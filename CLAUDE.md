@@ -6,7 +6,7 @@
 | | |
 | --- | --- |
 | [`mac/CLAUDE.md`](mac/CLAUDE.md) | 빌드 · 렌더 통로 · 서명 · 번들 ID |
-| `win/CLAUDE.md` | (윈도우 앱을 만들 때 함께 만든다) |
+| [`win/CLAUDE.md`](win/CLAUDE.md) | 프로젝트 구성 · 진단 통로 · 배포 · 그릴 때 걸리는 것 |
 
 ## 저장소 구조
 
