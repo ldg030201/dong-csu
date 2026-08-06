@@ -35,6 +35,11 @@ public sealed class UpdateService(HttpClient http)
     {
         get
         {
+            // **테스트판은 절대 업데이트하지 않는다.** 윈도우는 맥과 달리 조용히 받아
+            // 갈아 끼우고 다시 뜨기 때문에, 막지 않으면 개발 빌드가 어느 날 정식판으로
+            // 바뀌어 버리고 무엇을 검증하던 중이었는지 알 수 없게 된다.
+            if (AppInfo.IsTestBuild) return false;
+
             try
             {
                 manager ??= new UpdateManager(new GithubSource(ReleaseFeed, null, prerelease: false));

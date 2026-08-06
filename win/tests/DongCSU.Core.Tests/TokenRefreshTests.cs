@@ -220,6 +220,30 @@ public class CredentialStoreRefreshTests
         Assert.Null(tokens.Read());
     }
 
+    /// <summary>
+    /// 두 판(정식·테스트)이 같이 떠 있는 상황이다. 우리가 쓰던 토큰이 죽었더라도,
+    /// 그 사이 다른 쪽이 새로 갱신해 뒀으면 그것까지 지우면 안 된다.
+    /// </summary>
+    [Fact]
+    public void 다른_쪽이_새로_갱신해_뒀으면_지우지_않는다()
+    {
+        using var temporary = new TemporaryFile();
+        var tokens = new RefreshedTokenStore(temporary.Path);
+        var store = new CredentialStore(
+            new FixedSource(ExpiredFile), new FixedTime(Now), tokens);
+
+        store.ApplyRefreshed(new RefreshedToken { AccessToken = "mine", ExpiresAt = Now.AddHours(8) });
+
+        // 다른 프로세스가 그 사이에 새로 갱신해서 파일을 바꿔 놓았다.
+        tokens.Write(new RefreshedToken { AccessToken = "theirs", ExpiresAt = Now.AddHours(8) });
+
+        store.DiscardRefreshed();
+
+        Assert.Equal("theirs", tokens.Read()?.AccessToken);
+        // 다음 조회는 그 새 토큰으로 걸어야 한다.
+        Assert.Equal("theirs", store.Current()!.AccessToken);
+    }
+
     [Fact]
     public void 갱신한_것을_저장한다()
     {

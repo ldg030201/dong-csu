@@ -80,11 +80,8 @@ public sealed class AppSettings
         Converters = { new JsonStringEnumConverter() },
     };
 
-    /// <summary><c>%APPDATA%\DongCSU\settings.json</c>.</summary>
-    public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "DongCSU",
-        "settings.json");
+    /// <summary><c>%APPDATA%\DongCSU\settings.json</c>. 테스트판은 폴더가 다르다.</summary>
+    public static string DefaultPath => AppPaths.File("settings.json");
 
     /// <summary>읽는다. 없거나 깨졌으면 기본값 — 던지지 않는다.</summary>
     public static AppSettings Load(string? path = null)

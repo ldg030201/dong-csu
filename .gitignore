@@ -9,3 +9,6 @@ bin/
 obj/
 publish/
 releases/
+
+# 테스트판 산출물
+win/build/

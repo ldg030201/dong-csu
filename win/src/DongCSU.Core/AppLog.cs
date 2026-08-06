@@ -19,10 +19,7 @@ public static class AppLog
     private static readonly Lock Gate = new();
     private static string? path;
 
-    public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "DongCSU",
-        "log.txt");
+    public static string DefaultPath => AppPaths.File("log.txt");
 
     /// <summary>기록을 시작한다. 부르지 않으면 아무것도 남기지 않는다.</summary>
     public static void Start(string? logPath = null)

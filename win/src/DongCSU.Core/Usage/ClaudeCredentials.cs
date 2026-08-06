@@ -218,18 +218,32 @@ public sealed class CredentialStore(
     }
 
     /// <summary>
-    /// 갱신해 둔 토큰을 통째로 버린다.
+    /// 갱신해 둔 토큰을 버린다.
     ///
     /// 갱신한 토큰까지 서버가 거절했을 때 부른다. 지워 두지 않으면 만료 시각만 보고
     /// 살아 있다고 믿어서 **죽은 토큰으로 영원히 헛조회한다.**
+    ///
+    /// 다만 **파일까지 지우는 것은 우리가 쓰던 그 토큰이 아직 거기 있을 때만** 이다.
+    /// 두 판(정식·테스트)이 같이 떠 있으면 그 사이에 다른 쪽이 새로 갱신해 뒀을 수
+    /// 있는데, 그것까지 지우면 멀쩡한 토큰을 버리고 둘 다 재로그인으로 떨어진다.
     /// </summary>
     public void DiscardRefreshed()
     {
-        refreshedTokens?.Clear();
+        RefreshedToken? dead;
+        lock (gate) { dead = refreshed; }
+
+        if (dead is not null
+            && refreshedTokens?.Read() is { } stored
+            && stored.AccessToken == dead.AccessToken)
+        {
+            refreshedTokens.Clear();
+        }
+
         lock (gate)
         {
             refreshed = null;
-            refreshedLoaded = true;
+            // 다음에 파일을 다시 읽는다 — 다른 쪽이 새로 적어 뒀으면 그것을 쓴다.
+            refreshedLoaded = false;
         }
     }
 

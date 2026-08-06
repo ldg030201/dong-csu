@@ -45,7 +45,8 @@ public sealed partial class TrayIcon : IDisposable
         var settings = new ToolStripMenuItem("설정…");
         settings.Click += (_, _) => SettingsRequested?.Invoke();
 
-        var quit = new ToolStripMenuItem("DongCSU 종료");
+        // 두 판을 같이 띄우면 트레이에 아이콘이 둘이 된다. 어느 쪽을 끄는지 이름으로 갈린다.
+        var quit = new ToolStripMenuItem($"{AppInfo.Name} 종료");
         quit.Click += (_, _) => QuitRequested?.Invoke();
 
         var menu = new ContextMenuStrip();
@@ -61,7 +62,7 @@ public sealed partial class TrayIcon : IDisposable
 
         icon = new NotifyIcon
         {
-            Text = "DongCSU",
+            Text = AppInfo.Name,
             Visible = true,
             ContextMenuStrip = menu,
             Icon = SystemIcons.Application,

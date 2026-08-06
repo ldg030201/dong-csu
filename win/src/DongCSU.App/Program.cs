@@ -19,6 +19,10 @@ public static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        // **무엇이든 읽기 전에 폴더부터 정한다.** 테스트판은 설정·기록·토큰이 통째로
+        // 갈려야 하는데, 늦게 정하면 앞서 읽은 것이 정식판 폴더에서 온 것이 된다.
+        AppPaths.UseFolder(AppInfo.Name);
+
         // 진단 통로. 창을 띄우지 않고 확인만 한다 — 맥판의 --render/--dump 와 같은 자리다.
         if (Diagnostics.TryRun(args, out var exitCode)) return exitCode;
 
@@ -149,7 +153,8 @@ public sealed class AppController : IDisposable
         hud.View.Scale = settings.Scale.Factor();
         hud.View.BackdropOpacity = settings.Backdrop;
         hud.View.IsDark = IsDarkTheme();
-        hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.Version : null;
+        hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.BadgeText : null;
+        hud.View.VersionBadgeIsTest = AppInfo.IsTestBuild;
         hud.View.HasUpdate = updates.HasUpdate;
 
         store.PollInterval = settings.PollInterval;
@@ -203,11 +208,24 @@ public sealed class AppController : IDisposable
         hud.View.ErrorText = store.ErrorText;
         hud.View.NextPollAt = store.NextPollAt;
         hud.View.OwlGrid = animator.CurrentGrid;
-        hud.View.OwlPaletteName = animator.Animation.Palette;
+        hud.View.OwlPaletteName = MascotPalette();
         hud.View.HasUpdate = updates.HasUpdate;
         hud.Refresh();
 
-        tray?.UpdateOwl(animator.CurrentGrid, animator.CurrentPalette);
+        tray?.UpdateOwl(animator.CurrentGrid, OwlDocument.Embedded.Palettes[MascotPalette()]);
+    }
+
+    /// <summary>
+    /// 마스코트를 어떤 색으로 칠할지.
+    ///
+    /// 테스트판은 보라로 칠해 두 판을 나란히 띄웠을 때 한눈에 갈린다. 다만 **끊김
+    /// (회색)이 테스트 표시보다 세다** — 회색은 지금 값이 아니라는 뜻이라, 그것을
+    /// 보라로 덮으면 낡은 숫자를 지금 값으로 믿게 된다.
+    /// </summary>
+    private string MascotPalette()
+    {
+        var name = animator.Animation.Palette;
+        return AppInfo.IsTestBuild && name == "normal" ? "test" : name;
     }
 
     /// <summary>

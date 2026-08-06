@@ -5,6 +5,33 @@
 
 **모든 명령은 `win/` 안에서 돌린다.**
 
+## 테스트판과 정식판
+
+```powershell
+./build.ps1              # 정식판   src/DongCSU.App/bin/Release/.../DongCSU.exe
+./build.ps1 -Test        # 테스트판 build/test/DongCSU-Test.exe
+./build.ps1 -Test -Run   # 만들고 바로 띄운다
+```
+
+**개발은 테스트판으로 하고, 정식판은 받아서 업데이트가 되는지 확인한다.** 맥의
+`VARIANT=test ./build.sh` 와 같은 자리다.
+
+갈리는 값은 **어셈블리 이름 하나뿐**이고 나머지는 전부 거기서 파생된다.
+
+| | 정식판 | 테스트판 |
+| --- | --- | --- |
+| 실행 파일 | `DongCSU.exe` | `DongCSU-Test.exe` |
+| 설정·기록 | `%APPDATA%\DongCSU\` | `%APPDATA%\DongCSU-Test\` |
+| 자동 시작 등록 이름 | `DongCSU` | `DongCSU-Test` |
+| 자체 업데이트 | 함 | **안 함** (`AppInfo.IsTestBuild`) |
+| 마스코트 · 버전 딱지 | 평소 색 | **보라** · `2.0.0 test` |
+
+**갱신한 토큰(`token.json`)만은 함께 쓴다.** 서버가 갱신할 때마다 리프레시 토큰을
+회전시켜서, 판마다 따로 두면 두 판이 서로의 토큰을 죽이고 둘 다 재로그인으로 떨어진다.
+자격 증명은 앱의 상태가 아니라 사용자의 것이다 — 맥도 두 판이 같은 키체인 항목을 읽는다.
+
+지금 이 실행이 어느 쪽 파일을 보는지는 `DongCSU.exe --where` 로 찍어 본다.
+
 ## 윈도우에서 작업한다면 — 먼저 읽어라
 
 이 앱은 **맥에서 눈으로 한 번도 못 보고 만들어졌다.** WPF 가 맥에서 컴파일되지 않아서,
@@ -94,6 +121,7 @@ dotnet run --project tools/DongCSU.Tools -- --print-owl      idle    # 글자로
 
 # 윈도우에서 (앱)
 DongCSU.exe --version
+DongCSU.exe --where          # 어느 판인지, 설정·기록·토큰이 어느 폴더인지
 DongCSU.exe --probe          # 자격 증명이 읽히는지, 사용량이 오는지
 DongCSU.exe --probe-owl idle
 DongCSU.exe --log            # 기록 파일 내용

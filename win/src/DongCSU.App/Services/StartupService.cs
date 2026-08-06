@@ -16,7 +16,14 @@ namespace DongCSU.App.Services;
 public static class StartupService
 {
     private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    private const string ValueName = "DongCSU";
+
+    /// <summary>
+    /// 등록 이름. **테스트판과 갈라야 한다.**
+    ///
+    /// 같은 이름을 쓰면 테스트판을 한 번 띄우는 것만으로 정식판의 자동 시작 등록이
+    /// 테스트판 경로로 덮어써져서, 다음 로그인 때 사용자가 쓰던 앱 대신 개발 빌드가 뜬다.
+    /// </summary>
+    private static string ValueName => AppInfo.Name;
 
     public static bool IsEnabled
     {

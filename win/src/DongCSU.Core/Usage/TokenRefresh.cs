@@ -171,11 +171,14 @@ public sealed class RefreshedTokenStore(string? path = null)
 
     private readonly string path = path ?? DefaultPath;
 
-    /// <summary><c>%APPDATA%\DongCSU\token.json</c>.</summary>
-    public static string DefaultPath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "DongCSU",
-        "token.json");
+    /// <summary>
+    /// <c>%APPDATA%\DongCSU\token.json</c>.
+    ///
+    /// **테스트판도 같은 파일을 쓴다.** 갱신할 때마다 리프레시 토큰이 회전하므로,
+    /// 판마다 따로 두면 두 판이 서로의 토큰을 죽인다. 자세한 이유는
+    /// <see cref="AppPaths.SharedFile"/> 에 적어 뒀다.
+    /// </summary>
+    public static string DefaultPath => AppPaths.SharedFile("token.json");
 
     public RefreshedToken? Read()
     {

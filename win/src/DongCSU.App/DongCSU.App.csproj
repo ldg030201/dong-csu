@@ -19,7 +19,19 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- LibraryImport 가 만들어 내는 코드가 unsafe 다. 우리가 직접 쓰지는 않는다. -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <AssemblyName>DongCSU</AssemblyName>
+    <!--
+      테스트판과 정식판.
+
+      **갈리는 값은 어셈블리 이름 하나뿐이다.** 나머지는 전부 거기서 파생된다 —
+      설정·기록·토큰 폴더(AppPaths), 자동 시작 등록 이름(StartupService), 트레이 문구,
+      버전 딱지 색, 업데이트 차단. 맥이 번들 ID 하나로 가르는 것과 같은 구조다.
+
+          ./build.ps1          정식판  DongCSU.exe
+          ./build.ps1 -Test    테스트판 DongCSU-Test.exe
+    -->
+    <Variant Condition="'$(Variant)' == ''">release</Variant>
+    <AssemblyName Condition="'$(Variant)' == 'test'">DongCSU-Test</AssemblyName>
+    <AssemblyName Condition="'$(Variant)' != 'test'">DongCSU</AssemblyName>
     <RootNamespace>DongCSU.App</RootNamespace>
     <ApplicationIcon>Resources/DongCSU.ico</ApplicationIcon>
     <!-- 런타임을 따로 깔지 않아도 되게 앱에 넣는다. -->
@@ -27,7 +39,7 @@
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>false</PublishSingleFile>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
-    <Version>1.1.2</Version>
+    <Version>2.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

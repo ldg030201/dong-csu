@@ -24,7 +24,19 @@ public static partial class Diagnostics
         switch (args[0])
         {
             case "--version":
-                Console.WriteLine($"dong-csu {AppInfo.Version}");
+                // 정식판의 출력 형식은 건드리지 않는다 — CI 와 문서가 이 줄을 본다.
+                // 테스트판만 꼬리표를 단다.
+                Console.WriteLine($"dong-csu {AppInfo.Version}{(AppInfo.IsTestBuild ? " (test)" : "")}");
+                return true;
+
+            case "--where":
+                // 두 판을 같이 띄워 놓고 "지금 이건 어느 쪽 설정을 보나"를 확인하는 자리.
+                Console.WriteLine($"name:     {AppInfo.Name}");
+                Console.WriteLine($"test:     {AppInfo.IsTestBuild}");
+                Console.WriteLine($"data:     {AppPaths.Root}");
+                Console.WriteLine($"settings: {AppSettings.DefaultPath}");
+                Console.WriteLine($"log:      {AppLog.DefaultPath}");
+                Console.WriteLine($"token:    {RefreshedTokenStore.DefaultPath}");
                 return true;
 
             case "--dump-changelog":

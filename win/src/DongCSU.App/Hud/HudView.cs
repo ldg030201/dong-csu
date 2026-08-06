@@ -65,6 +65,14 @@ public sealed class HudPalette
 
     /// <summary>새 버전 알림. 링 색(초록·노랑·빨강)과 겹치지 않는 파랑이다.</summary>
     public Color UpdateBadge => IsDark ? Color.FromRgb(0x4A, 0x99, 0xFC) : Color.FromRgb(0x1C, 0x70, 0xE6);
+
+    /// <summary>
+    /// 테스트판 버전 딱지. 마스코트의 테스트 팔레트와 같은 보라 계열이다.
+    ///
+    /// 곁눈으로도 걸려야 한다 — 두 판을 나란히 띄워 놓고 비교하는 중에 어느 쪽을
+    /// 보고 있는지 헷갈리면 검증이 통째로 무의미해진다.
+    /// </summary>
+    public Color TestBadge => IsDark ? Color.FromRgb(0xBD, 0x99, 0xFC) : Color.FromRgb(0x66, 0x38, 0xB8);
 }
 
 /// <summary>
@@ -122,6 +130,9 @@ public sealed class HudView : FrameworkElement
     public double BackdropOpacity { get; set; } = AppSettings.DefaultBackdropOpacity;
     public bool IsDark { get; set; } = true;
     public string? VersionBadge { get; set; }
+
+    /// <summary>그 딱지를 테스트판 색으로 그릴지. 렌더 통로가 실제 빌드와 무관하게 넘길 수 있게 받는다.</summary>
+    public bool VersionBadgeIsTest { get; set; }
 
     /// <summary>새 버전이 있으면 버튼 반대편 모서리에 표시한다. 없으면 아무도 모른다.</summary>
     public bool HasUpdate { get; set; }
@@ -474,16 +485,28 @@ public sealed class HudView : FrameworkElement
 
         if (badge is null) return;
 
-        var text = Text(badge, 9 * s, Semibold, palette.Faint);
+        var color = VersionBadgeIsTest ? palette.TestBadge : palette.Faint;
+        var text = Text(badge, 9 * s, Semibold, color);
+
         // 표시가 없으면 그 자리부터, 있으면 그 옆에서 시작한다.
         var x = ToRight
             ? (HasUpdate ? rect.Right + 3 * s : rect.Left) + 5 * s
             : (HasUpdate ? rect.Left - 3 * s : rect.Right) - 5 * s - text.Width;
         var y = rect.Top + (rect.Height - text.Height) / 2;
 
+        // 테스트판은 알약 배경을 깔아 곁눈으로도 걸리게 한다.
+        if (VersionBadgeIsTest)
+        {
+            var pill = new Rect(
+                x - 5 * s, y - 1 * s, text.Width + 10 * s, text.Height + 2 * s);
+            var radius = pill.Height / 2;
+            context.DrawRoundedRectangle(
+                Frozen(Color.FromArgb(0x2E, color.R, color.G, color.B)), null, pill, radius, radius);
+        }
+
         // **그림자 없이는 읽히지 않는다.** 새 버전 표시가 붙으면 딱지가 그만큼 밀려서
         // 링 위로 올라앉는데, 옅은 회색 글자가 링 트랙과 겹치면 그대로 묻힌다.
-        DrawShadowed(context, text, new Point(x, y), palette.Faint, Frozen(palette.TextShadow), s);
+        DrawShadowed(context, text, new Point(x, y), color, Frozen(palette.TextShadow), s);
     }
 
     /// <summary>
