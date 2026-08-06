@@ -63,10 +63,12 @@ public sealed class UpdateService(HttpClient http)
             }
 
             LastChecked = DateTimeOffset.Now;
+            AppLog.Write($"업데이트 확인: 설치본={IsInstalled} 최신={LatestVersion ?? "-"} 지금={AppInfo.Version}");
         }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
         {
             // 확인 실패는 정상적인 일이다(비행기 모드, 회사 프록시). 다음 주기에 다시 한다.
+            AppLog.Write($"업데이트 확인 실패: {error.Message}");
         }
         finally
         {
@@ -128,6 +130,7 @@ public sealed class UpdateService(HttpClient http)
         catch (Exception error)
         {
             LastError = $"업데이트 실패: {error.Message}";
+            AppLog.Write($"업데이트 적용 실패: {error}");
             return false;
         }
         finally

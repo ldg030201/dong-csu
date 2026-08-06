@@ -6,12 +6,18 @@ namespace DongCSU.Core.Tests;
 
 public class CredentialTests
 {
+    /// <summary>
+    /// **만료 시각을 아주 먼 미래로 둔다.** 처음에는 몇 달 뒤 시각을 적어 뒀는데,
+    /// 그 시각이 지나자 캐시 테스트가 저절로 깨졌다 — 만료된 자격 증명은 캐시에
+    /// 담기지 않기 때문이다. 벽시계에 기대는 픽스처는 언젠가 반드시 터진다.
+    /// 4102444800000 = 2100-01-01.
+    /// </summary>
     private const string Sample = """
         {
           "claudeAiOauth": {
             "accessToken": "sk-ant-oat01-example",
             "subscriptionType": "max",
-            "expiresAt": 1786000000000
+            "expiresAt": 4102444800000
           }
         }
         """;
@@ -24,7 +30,7 @@ public class CredentialTests
         Assert.NotNull(parsed);
         Assert.Equal("sk-ant-oat01-example", parsed.AccessToken);
         Assert.Equal("max", parsed.SubscriptionType);
-        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(1786000000000), parsed.ExpiresAt);
+        Assert.Equal(DateTimeOffset.FromUnixTimeMilliseconds(4102444800000), parsed.ExpiresAt);
     }
 
     /// <summary>expiresAt 은 **밀리초**다. 초로 읽으면 1970년대가 나와 늘 만료로 판정된다.</summary>
@@ -32,7 +38,7 @@ public class CredentialTests
     public void 만료_시각을_밀리초로_읽는다()
     {
         var parsed = ClaudeCredentials.Parse(Sample)!;
-        Assert.True(parsed.ExpiresAt!.Value.Year is > 2020 and < 2100);
+        Assert.True(parsed.ExpiresAt!.Value.Year > 2020, "초로 읽으면 1970년대가 나온다");
     }
 
     [Theory]
@@ -99,7 +105,8 @@ public class CredentialTests
     public void 캐시는_한_번만_읽고_버리면_다시_읽는다()
     {
         var source = new CountingSource(Sample);
-        var store = new CredentialStore(source);
+        // 벽시계를 쓰지 않는다. 픽스처가 만료되면 캐시가 통째로 안 도는 것처럼 보인다.
+        var store = new CredentialStore(source, new FakeTime());
 
         store.Current();
         store.Current();

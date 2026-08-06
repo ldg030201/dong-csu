@@ -11,13 +11,15 @@ namespace DongCSU.App;
 /// 맥판의 <c>--render</c> · <c>--dump-changelog</c> 와 같은 자리다. **CI 가 이걸 부른다** —
 /// 화면을 볼 수 없는 곳에서 앱이 멀쩡한지 알아내는 유일한 방법이다.
 /// </summary>
-public static class Diagnostics
+public static partial class Diagnostics
 {
     /// <summary>진단 인자를 처리했으면 true. 그러면 창을 띄우지 않고 끝낸다.</summary>
     public static bool TryRun(string[] args, out int exitCode)
     {
         exitCode = 0;
         if (args.Length == 0) return false;
+
+        AttachToConsole();
 
         switch (args[0])
         {
@@ -43,9 +45,61 @@ public static class Diagnostics
                 PrintOwl(args.ElementAtOrDefault(1) ?? "idle");
                 return true;
 
+            case "--log":
+                // 로그 파일을 그대로 찍는다. 사용자가 파일을 찾아 헤매지 않게.
+                Console.WriteLine(AppLog.DefaultPath);
+                Console.WriteLine(File.Exists(AppLog.DefaultPath)
+                    ? File.ReadAllText(AppLog.DefaultPath)
+                    : "(아직 기록이 없다)");
+                return true;
+
             default:
                 return false;
         }
+    }
+
+    /// <summary>
+    /// 부모 터미널에 붙는다.
+    ///
+    /// **이 앱은 `WinExe` 라 콘솔이 없다.** 그냥 `Console.WriteLine` 을 하면 PowerShell
+    /// 에서 실행해도 **아무것도 안 찍힌다.** 진단 통로를 만들어 놓고 정작 못 보는 일이
+    /// 실제로 있었다(1.1.0). 붙은 뒤에는 표준 출력을 다시 열어 줘야 한다 —
+    /// .NET 이 이미 빈 스트림을 잡아 놨기 때문이다.
+    /// </summary>
+    private static void AttachToConsole()
+    {
+        // 터미널에서 부른 게 아니면(더블클릭 등) 창을 하나 띄운다. 안 그러면 볼 수가 없다.
+        if (!NativeConsole.AttachConsole(NativeConsole.AttachParentProcess)
+            && !NativeConsole.AllocConsole())
+        {
+            return;
+        }
+
+        try
+        {
+            var output = new StreamWriter(Console.OpenStandardOutput()) { AutoFlush = true };
+            Console.SetOut(output);
+            Console.SetError(output);
+        }
+        catch (IOException)
+        {
+        }
+    }
+
+    private static partial class NativeConsole
+    {
+        /// <summary>부모 프로세스의 콘솔에 붙는다(-1).</summary>
+        public const uint AttachParentProcess = 0xFFFFFFFF;
+
+        [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(
+            System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static partial bool AttachConsole(uint processId);
+
+        [System.Runtime.InteropServices.LibraryImport("kernel32.dll", SetLastError = true)]
+        [return: System.Runtime.InteropServices.MarshalAs(
+            System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static partial bool AllocConsole();
     }
 
     private static void Write(string? path, string content)

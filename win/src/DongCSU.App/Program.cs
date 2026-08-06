@@ -51,10 +51,20 @@ public sealed class AppController : IDisposable
 
     public void Start()
     {
+        AppLog.Start();
+        AppLog.Write($"시작 {AppInfo.Version} · 경로 {Environment.ProcessPath}");
+
         // 업데이트하면 앱 경로가 바뀐다. 옛 경로가 남아 있으면 로그인할 때 아무것도 안 뜬다.
         StartupService.RepairIfEnabled();
 
+        // 자격 증명을 어디서 찾았는지 남긴다. "사용량이 안 나온다"의 대부분이 여기서 갈린다.
+        foreach (var candidate in FileCredentialSource.DefaultPaths())
+        {
+            AppLog.Write($"자격 증명 후보: {candidate} · {(File.Exists(candidate) ? "있음" : "없음")}");
+        }
+
         var credentials = new CredentialStore(new FileCredentialSource());
+        AppLog.Write(credentials.Current() is null ? "자격 증명 읽기 실패" : "자격 증명 읽기 성공");
         store = new UsageStore(new UsageApi(http, credentials)) { PollInterval = settings.PollInterval };
         store.Changed += OnStoreChanged;
 
@@ -131,6 +141,13 @@ public sealed class AppController : IDisposable
 
     private void OnStoreChanged() => Dispatch(() =>
     {
+        if (!store.IsRefreshing)
+        {
+            AppLog.Write(store.ErrorText is { } failure
+                ? $"조회 실패: {failure}"
+                : $"조회 성공: {store.SummaryText()}");
+        }
+
         // 다음 조회 시각은 결과에 따라 달라진다(429 를 맞으면 물러난다).
         pollTimer.Interval = store.NextPollDelay();
 

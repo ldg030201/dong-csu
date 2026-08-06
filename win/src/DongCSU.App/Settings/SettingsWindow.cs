@@ -240,6 +240,15 @@ public sealed class SettingsWindow : Window
         openFolder.Click += (_, _) => OpenClaudeFolder();
         buttons.Children.Add(openFolder);
 
+        var openLog = new Button
+        {
+            Content = "기록 열기",
+            Padding = new Thickness(14, 4, 14, 4),
+            Margin = new Thickness(0, 0, 8, 0),
+        };
+        openLog.Click += (_, _) => OpenPath(AppLog.DefaultPath);
+        buttons.Children.Add(openLog);
+
         var recheck = new Button { Content = "다시 확인", Padding = new Thickness(14, 4, 14, 4) };
         recheck.Click += async (_, _) =>
         {
@@ -258,9 +267,19 @@ public sealed class SettingsWindow : Window
         var folder = Path.GetDirectoryName(FileCredentialSource.DefaultPaths().Last());
         if (string.IsNullOrEmpty(folder)) return;
 
-        var target = Directory.Exists(folder)
+        OpenPath(Directory.Exists(folder)
             ? folder
-            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            : Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
+    }
+
+    /// <summary>탐색기나 기본 프로그램으로 연다. 없는 경로면 상위 폴더를 연다.</summary>
+    private static void OpenPath(string target)
+    {
+        if (!File.Exists(target) && !Directory.Exists(target))
+        {
+            target = Path.GetDirectoryName(target) ?? target;
+            if (!Directory.Exists(target)) return;
+        }
 
         try
         {
