@@ -51,6 +51,9 @@ public sealed class HudView : FrameworkElement
     public bool IsDark { get; set; } = true;
     public string? VersionBadge { get; set; }
 
+    /// <summary>새 버전이 있으면 왼쪽 위에 점을 찍는다. 없으면 아무도 모른다.</summary>
+    public bool HasUpdate { get; set; }
+
     public UsageSnapshot? Snapshot { get; set; }
     public bool IsDisconnected { get; set; }
     public string[]? OwlGrid { get; set; }
@@ -91,6 +94,7 @@ public sealed class HudView : FrameworkElement
 
         if (Mode == HudMode.Expanded) DrawText(context, size, palette, s);
         if (VersionBadge is { } badge) DrawVersionBadge(context, badge, palette, s);
+        if (HasUpdate) DrawUpdateDot(context, s);
     }
 
     private void DrawRingAndOwl(DrawingContext context, Size size, HudPalette palette, double s)
@@ -193,7 +197,22 @@ public sealed class HudView : FrameworkElement
     private void DrawVersionBadge(DrawingContext context, string badge, HudPalette palette, double s)
     {
         var text = Text(badge, 9 * s, Face, Frozen(palette.Secondary));
-        context.DrawText(text, new Point(8 * s, 5 * s));
+        context.DrawText(text, new Point((HasUpdate ? 16 : 8) * s, 5 * s));
+    }
+
+    /// <summary>
+    /// 새 버전이 나왔다는 표시.
+    ///
+    /// 이게 없으면 확인은 도는데 **결과를 아무 데도 안 알려줘서**, 설정 창을 열어 보기
+    /// 전까지 새 버전이 나온 걸 모른다. 맥판도 같은 자리에 파란 표시를 띄운다.
+    /// </summary>
+    private void DrawUpdateDot(DrawingContext context, double s)
+    {
+        var radius = 3 * s;
+        // 버전 글자가 있으면 그 왼쪽에, 없으면 모서리에 붙인다.
+        var x = VersionBadge is null ? 8 * s + radius : 8 * s - radius - 2 * s;
+        var brush = Frozen(Color.FromRgb(0x3A, 0x8E, 0xF0));
+        context.DrawEllipse(brush, null, new Point(Math.Max(radius + s, x), 9 * s), radius, radius);
     }
 
     private FormattedText Text(string value, double size, Typeface face, Brush brush) =>

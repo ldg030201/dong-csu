@@ -69,6 +69,14 @@ public sealed class SettingsWindow : Window
         ShowTab();
     }
 
+    /// <summary>
+    /// 지금 탭을 다시 그린다.
+    ///
+    /// 사용량이 새로 들어오거나 업데이트 확인이 끝났을 때 부른다. 이게 없으면
+    /// **창을 열어 둔 채로는 숫자가 영영 안 바뀐다** — 탭을 눌러야만 갱신된다.
+    /// </summary>
+    public void Refresh() => ShowTab();
+
     /// <summary>탭을 하나 열어 둔 채로 띄운다. 트레이에서 "버전"으로 바로 갈 때 쓴다.</summary>
     public void SelectTab(string key)
     {

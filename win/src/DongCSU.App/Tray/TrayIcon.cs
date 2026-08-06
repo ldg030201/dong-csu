@@ -19,6 +19,7 @@ public sealed partial class TrayIcon : IDisposable
     private readonly ToolStripMenuItem summaryItem;
     private readonly ToolStripMenuItem reloginItem;
     private Icon? currentIcon;
+    private string? lastGridKey;
 
     public event Action? RefreshRequested;
     public event Action? SettingsRequested;
@@ -76,9 +77,18 @@ public sealed partial class TrayIcon : IDisposable
         reloginItem.Visible = needsReauth;
     }
 
-    /// <summary>부엉이를 트레이 아이콘 크기로 그려서 올린다.</summary>
+    /// <summary>
+    /// 부엉이를 트레이 아이콘 크기로 그려서 올린다.
+    ///
+    /// **그림이 그대로면 아무것도 하지 않는다.** 눈 깜빡임은 0.05초짜리라, 프레임마다
+    /// Bitmap 과 Icon 을 새로 만들면 초당 스무 번씩 GDI 핸들을 만들었다 버리게 된다.
+    /// </summary>
     public void UpdateOwl(string[] grid, IReadOnlyDictionary<string, string> palette, int size = 32)
     {
+        var key = string.Join("\n", grid) + "|" + string.Join(",", palette.Values);
+        if (key == lastGridKey) return;
+        lastGridKey = key;
+
         var next = BuildIcon(grid, palette, size);
         icon.Icon = next;
 

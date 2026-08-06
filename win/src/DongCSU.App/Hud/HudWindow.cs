@@ -75,24 +75,37 @@ public sealed class HudWindow : Window
         Top = top;
     }
 
+    /// <summary>
+    /// 기억해 둔 자리가 아직 화면 안인지.
+    ///
+    /// **`Forms.Screen` 을 쓰면 안 된다.** 그쪽은 물리 픽셀이고 WPF 의 Left·Top 은
+    /// DIP 라, 배율이 100%가 아닌 화면에서는 값이 어긋난다. 150% 화면이면 실제로는
+    /// 안에 있는 창을 밖에 있다고 판정해서 매번 오른쪽 위로 되돌린다.
+    /// `SystemParameters` 쪽은 DIP 라 그대로 견줄 수 있다.
+    /// </summary>
     private static bool IsOnAnyScreen(double left, double top, Size size)
     {
-        var rect = new Rect(left, top, size.Width, size.Height);
-        foreach (var screen in System.Windows.Forms.Screen.AllScreens)
-        {
-            var bounds = new Rect(
-                screen.WorkingArea.X, screen.WorkingArea.Y,
-                screen.WorkingArea.Width, screen.WorkingArea.Height);
-            // 조금이라도 걸쳐 있으면 잡아서 옮길 수 있다.
-            if (bounds.IntersectsWith(rect)) return true;
-        }
-        return false;
+        var all = new Rect(
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenHeight);
+
+        // 조금이라도 걸쳐 있으면 잡아서 옮길 수 있다.
+        return all.IntersectsWith(new Rect(left, top, size.Width, size.Height));
     }
 
+    /// <summary>
+    /// 지금 자리를 기억한다.
+    ///
+    /// **파일까지 쓴다.** 종료할 때만 쓰면, 앱이 그냥 죽거나 로그아웃으로 끝났을 때
+    /// 옮겨 둔 자리가 사라진다. 드래그를 놓는 순간에만 불리므로 자주 쓰지도 않는다.
+    /// </summary>
     public void SavePosition()
     {
         settings.WindowLeft = Left;
         settings.WindowTop = Top;
+        settings.Save();
     }
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)

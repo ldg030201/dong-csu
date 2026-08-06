@@ -59,7 +59,11 @@ public sealed class AppController : IDisposable
         store.Changed += OnStoreChanged;
 
         updates = new UpdateService(http);
-        updates.Changed += () => Dispatch(RefreshHud);
+        updates.Changed += () => Dispatch(() =>
+        {
+            RefreshHud();
+            settingsWindow?.Refresh();
+        });
 
         tray = new TrayIcon();
         tray.RefreshRequested += () => _ = store.RefreshAsync(force: true);
@@ -107,6 +111,7 @@ public sealed class AppController : IDisposable
         hud.View.BackdropOpacity = settings.BackdropOpacity;
         hud.View.IsDark = IsDarkTheme();
         hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.Version : null;
+        hud.View.HasUpdate = updates.HasUpdate;
 
         store.PollInterval = settings.PollInterval;
         pollTimer.Interval = store.NextPollDelay();
@@ -137,7 +142,7 @@ public sealed class AppController : IDisposable
 
         RefreshHud();
         tray?.UpdateSummary(store.SummaryText(), store.NeedsReauth);
-        settingsWindow?.Dispatcher.Invoke(() => { });
+        settingsWindow?.Refresh();
     });
 
     private void RefreshHud()
@@ -148,6 +153,7 @@ public sealed class AppController : IDisposable
         hud.View.IsDisconnected = store.IsDisconnected;
         hud.View.OwlGrid = animator.CurrentGrid;
         hud.View.OwlPaletteName = animator.Animation.Palette;
+        hud.View.HasUpdate = updates.HasUpdate;
         hud.Refresh();
 
         tray?.UpdateOwl(animator.CurrentGrid, animator.CurrentPalette);
