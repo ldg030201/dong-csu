@@ -156,24 +156,24 @@ public sealed class HudWindow : Window
 
     // ── 마우스 ──────────────────────────────────────────────────────
 
-    private void OnMouseMove(object sender, System.Windows.Input.MouseEventArgs e)
+    private void OnMouseMove(object sender, MouseEventArgs e)
     {
         var hit = view.HitTest(e.GetPosition(view));
         if (hit == view.Hover) return;
 
         view.Hover = hit;
-        Cursor = hit == HudHit.None ? System.Windows.Input.Cursors.Arrow : System.Windows.Input.Cursors.Hand;
+        Cursor = hit == HudHit.None ? Cursors.Arrow : Cursors.Hand;
         ToolTip = view.TooltipFor(hit);
         view.InvalidateVisual();
     }
 
-    private void OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs e)
+    private void OnMouseLeave(object sender, MouseEventArgs e)
     {
         if (view.Hover == HudHit.None) return;
 
         view.Hover = HudHit.None;
         pressed = HudHit.None;
-        Cursor = System.Windows.Input.Cursors.Arrow;
+        Cursor = Cursors.Arrow;
         ToolTip = null;
         view.InvalidateVisual();
     }

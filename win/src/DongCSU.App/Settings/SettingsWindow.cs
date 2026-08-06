@@ -1,7 +1,9 @@
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Threading;
 using DongCSU.App.Services;
 using DongCSU.Core;
 using DongCSU.Core.Usage;
@@ -9,9 +11,12 @@ using DongCSU.Core.Usage;
 namespace DongCSU.App.Settings;
 
 /// <summary>
-/// 설정 창. 왼쪽에 탭, 오른쪽에 내용.
+/// 설정 창. 왼쪽에 탭, 오른쪽에 내용, 아래에 버전과 종료.
 ///
-/// 맥판과 같은 구성이되 **펫 탭이 없다** — 윈도우 첫 배포에는 펫 모드가 없다.
+/// 맥판과 같은 구성이되 **펫 탭이 없다** — 윈도우에는 아직 펫 모드가 없다.
+///
+/// **크기를 고정하지 않는다.** 고DPI 나 큰 글꼴에서 항목이 잘리고, 창을 키워 편하게
+/// 볼 수도 없다. 내용은 늘어나고, 좁히면 스크롤이 생긴다.
 /// </summary>
 public sealed class SettingsWindow : Window
 {
@@ -19,16 +24,33 @@ public sealed class SettingsWindow : Window
     private readonly UsageStore store;
     private readonly UpdateService updates;
     private readonly Action onChanged;
-    private readonly ContentControl body = new();
-    private readonly ListBox tabs = new();
+
+    private readonly Border root = new();
+
+    /// <summary>
+    /// 다시 그릴 때마다 **새로 만든다.**
+    ///
+    /// 같은 요소를 새 부모에 붙이면 WPF 가 "이미 다른 요소의 논리 자식"이라며 던진다.
+    /// 떼어냈다 붙이는 것보다 새로 만드는 편이 빠뜨릴 데가 없다.
+    /// </summary>
+    private ContentControl body = new();
+
+    /// <summary>상태 탭은 카운트다운이 초 단위로 움직인다. 그 탭일 때만 돈다.</summary>
+    private readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(1) };
+
+    private readonly List<Border> navItems = [];
+    private int selected;
 
     private static readonly (string Key, string Title)[] TabList =
     [
         ("status", "상태"),
         ("display", "표시"),
+        ("icon", "아이콘"),
         ("account", "계정"),
         ("version", "버전"),
     ];
+
+    private SettingsPalette Palette => SettingsPalette.For(IsDarkTheme());
 
     public SettingsWindow(AppSettings settings, UsageStore store, UpdateService updates, Action onChanged)
     {
@@ -38,163 +60,514 @@ public sealed class SettingsWindow : Window
         this.onChanged = onChanged;
 
         Title = $"{AppInfo.Name} 설정";
-        Width = 520;
-        Height = 460;
+        Width = 720;
+        Height = 560;
+        MinWidth = 480;
+        MinHeight = 380;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        ResizeMode = ResizeMode.CanMinimize;
+        ResizeMode = ResizeMode.CanResize;   // 최대화·전체화면·가장자리 드래그가 다 열린다
         ShowInTaskbar = true;
+        Content = root;
 
-        foreach (var (_, title) in TabList) tabs.Items.Add(title);
-        tabs.Width = 130;
-        tabs.SelectedIndex = 0;
-        tabs.SelectionChanged += (_, _) => ShowTab();
+        tick.Tick += (_, _) => { if (TabList[selected].Key == "status") ShowTab(); };
 
-        var grid = new Grid();
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-
-        Grid.SetColumn(tabs, 0);
-        grid.Children.Add(tabs);
-
-        var scroll = new ScrollViewer
-        {
-            Content = body,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            Padding = new Thickness(18),
-        };
-        Grid.SetColumn(scroll, 1);
-        grid.Children.Add(scroll);
-
-        Content = grid;
-        ShowTab();
+        Rebuild();
     }
 
     /// <summary>
     /// 지금 탭을 다시 그린다.
     ///
     /// 사용량이 새로 들어오거나 업데이트 확인이 끝났을 때 부른다. 이게 없으면
-    /// **창을 열어 둔 채로는 숫자가 영영 안 바뀐다** — 탭을 눌러야만 갱신된다.
+    /// **창을 열어 둔 채로는 숫자가 영영 안 바뀐다.**
     /// </summary>
-    public void Refresh() => ShowTab();
+    public void Refresh()
+    {
+        // 테마 설정이 바뀌었을 수 있다. 색까지 다시 잡는다.
+        Rebuild();
+    }
 
-    /// <summary>탭을 하나 열어 둔 채로 띄운다. 트레이에서 "버전"으로 바로 갈 때 쓴다.</summary>
+    /// <summary>탭을 하나 열어 둔 채로 띄운다. HUD 의 새 버전 표시가 여기로 보낸다.</summary>
     public void SelectTab(string key)
     {
         var index = Array.FindIndex(TabList, t => t.Key == key);
-        if (index >= 0) tabs.SelectedIndex = index;
+        if (index < 0) return;
+
+        selected = index;
+        Rebuild();
+    }
+
+    private bool IsDarkTheme() => settings.Theme switch
+    {
+        HudTheme.Light => false,
+        HudTheme.Dark => true,
+        _ => SystemTheme.IsDark(),
+    };
+
+    // ── 뼈대 ────────────────────────────────────────────────────────
+
+    private void Rebuild()
+    {
+        var palette = Palette;
+        Background = palette.Brush(palette.Window);
+        body = new ContentControl();
+
+        var grid = new Grid();
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(158) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        grid.Children.Add(BuildSidebar(palette));
+
+        var right = new Grid();
+        right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        body.Margin = new Thickness(24, 22, 24, 18);
+        var (scrollHost, _) = Ui.Scroller(palette, body);
+        Grid.SetRow(scrollHost, 0);
+        right.Children.Add(scrollHost);
+
+        var footer = BuildFooter(palette);
+        Grid.SetRow(footer, 1);
+        right.Children.Add(footer);
+
+        Grid.SetColumn(right, 1);
+        grid.Children.Add(right);
+
+        root.Child = grid;
+        ShowTab();
+        SyncTicker();
+    }
+
+    private UIElement BuildSidebar(SettingsPalette palette)
+    {
+        var nav = new StackPanel();
+        navItems.Clear();
+
+        var name = new TextBlock
+        {
+            Text = AppInfo.Name,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = palette.Brush(AppInfo.IsTestBuild ? palette.Test : palette.Secondary),
+            Margin = new Thickness(16, 18, 12, 14),
+        };
+        nav.Children.Add(name);
+
+        for (var i = 0; i < TabList.Length; i++)
+        {
+            var index = i;
+            var item = new Border
+            {
+                CornerRadius = new CornerRadius(Ui.Radius),
+                Padding = new Thickness(12, 8, 12, 8),
+                Margin = new Thickness(8, 1, 8, 1),
+                Cursor = Cursors.Hand,
+                Child = new TextBlock { Text = TabList[i].Title, FontSize = 13 },
+            };
+            item.MouseLeftButtonUp += (_, _) => { selected = index; PaintNav(palette); ShowTab(); SyncTicker(); };
+            navItems.Add(item);
+            nav.Children.Add(item);
+        }
+        PaintNav(palette);
+
+        return new Border
+        {
+            Background = palette.Brush(palette.Sidebar),
+            BorderBrush = palette.Brush(palette.Line),
+            BorderThickness = new Thickness(0, 0, 1, 0),
+            Child = nav,
+        };
+    }
+
+    private void PaintNav(SettingsPalette palette)
+    {
+        for (var i = 0; i < navItems.Count; i++)
+        {
+            var chosen = i == selected;
+            navItems[i].Background = palette.Brush(chosen ? palette.AccentSoft : Colors.Transparent);
+            var text = (TextBlock)navItems[i].Child;
+            text.Foreground = palette.Brush(chosen ? palette.Accent : palette.Secondary);
+            text.FontWeight = chosen ? FontWeights.SemiBold : FontWeights.Normal;
+        }
+    }
+
+    private UIElement BuildFooter(SettingsPalette palette)
+    {
+        var footerVersion = new TextBlock
+        {
+            Text = AppInfo.DisplayVersion,
+            FontSize = 11.5,
+            Foreground = palette.Brush(AppInfo.IsTestBuild ? palette.Test : palette.Faint),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var grid = new Grid { Margin = new Thickness(24, 12, 24, 14) };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+        Grid.SetColumn(footerVersion, 0);
+        grid.Children.Add(footerVersion);
+
+        var quit = Ui.Button(palette, $"{AppInfo.Name} 종료", () => Application.Current.Shutdown());
+        Grid.SetColumn(quit, 1);
+        grid.Children.Add(quit);
+
+        return new Border
+        {
+            BorderBrush = palette.Brush(palette.Line),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Child = grid,
+        };
+    }
+
+    private void SyncTicker()
+    {
+        var needed = TabList[selected].Key == "status";
+        if (needed && !tick.IsEnabled) tick.Start();
+        else if (!needed && tick.IsEnabled) tick.Stop();
     }
 
     private void ShowTab()
     {
-        var key = TabList[Math.Max(0, tabs.SelectedIndex)].Key;
-        body.Content = key switch
+        var palette = Palette;
+        body.Content = TabList[selected].Key switch
         {
-            "display" => DisplayTab(),
-            "account" => AccountTab(),
-            "version" => VersionTab(),
-            _ => StatusTab(),
+            "display" => DisplayTab(palette),
+            "icon" => IconTab(palette),
+            "account" => AccountTab(palette),
+            "version" => VersionTab(palette),
+            _ => StatusTab(palette),
         };
     }
 
-    // ── 상태 ──────────────────────────────────────────────────────
+    private void Apply()
+    {
+        settings.Save();
+        onChanged();
+    }
 
-    private UIElement StatusTab()
+    /// <summary>설정을 바꾸고 이 탭을 다시 그린다. 다른 항목의 활성 상태가 함께 바뀔 때 쓴다.</summary>
+    private void ApplyAndRedraw()
+    {
+        Apply();
+        ShowTab();
+    }
+
+    private static StackPanel Stack() => new();
+
+    // ── 상태 ────────────────────────────────────────────────────────
+
+    private UIElement StatusTab(SettingsPalette palette)
     {
         var panel = Stack();
+        panel.Children.Add(Ui.Title(palette, "상태"));
+
         var now = DateTimeOffset.Now;
-
-        if (store.Snapshot is { } snapshot)
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
+        header.Children.Add(new TextBlock
         {
-            if (snapshot.PlanName is { } plan) panel.Children.Add(Label($"플랜: {plan}"));
-            panel.Children.Add(Label(WindowLine("5시간 세션", snapshot.FiveHour, now)));
-            panel.Children.Add(Label(WindowLine("7일 주간", snapshot.SevenDay, now)));
-            panel.Children.Add(Hint(RemainingTime.AgeText(snapshot.FetchedAt, now)));
-        }
-        else
-        {
-            panel.Children.Add(Label("아직 사용량을 받지 못했습니다."));
-        }
-
-        if (store.ErrorText is { } error) panel.Children.Add(Hint($"마지막 조회 실패: {error}"));
-
-        var refresh = new Button
-        {
-            Content = store.IsRefreshing ? "조회 중…" : "새로고침",
-            IsEnabled = !store.IsRefreshing,
-            Margin = new Thickness(0, 10, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(14, 4, 14, 4),
-        };
-        refresh.Click += async (_, _) =>
-        {
-            await store.RefreshAsync(force: true).ConfigureAwait(true);
-            ShowTab();
-        };
-        panel.Children.Add(refresh);
-
-        return panel;
-    }
-
-    private static string WindowLine(string label, UsageWindow? window, DateTimeOffset now) =>
-        window is { } value
-            ? $"{label}: {Math.Round(value.Utilization):F0}%  ({RemainingTime.Text(value.ResetsAt, now)})"
-            : $"{label}: –";
-
-    // ── 표시 ──────────────────────────────────────────────────────
-
-    private UIElement DisplayTab()
-    {
-        var panel = Stack();
-
-        panel.Children.Add(Row("테마", EnumBox<HudTheme>(settings.Theme,
-            ["시스템에 맞춤", "밝게", "어둡게"],
-            value => { settings.Theme = value; Apply(); })));
-
-        panel.Children.Add(Row("크기", EnumBox<HudScale>(settings.Scale,
-            [.. System.Enum.GetValues<HudScale>().Select(s => s.Title())],
-            value => { settings.Scale = value; Apply(); })));
-
-        panel.Children.Add(Row("조회 주기", Choice(
-            [60, 180, 300, 600, 1800],
-            ["1분", "3분", "5분", "10분", "30분"],
-            settings.PollIntervalSeconds,
-            value => { settings.PollIntervalSeconds = value; Apply(); })));
-
-        panel.Children.Add(Row("펼침 방향", EnumBox<HudExpandSide>(settings.ExpandSide,
-            ["오른쪽", "왼쪽"],
-            value => { settings.ExpandSide = value; Apply(); })));
-
-        panel.Children.Add(Check("HUD 표시", settings.IsHudVisible,
-            value => { settings.IsHudVisible = value; Apply(); }));
-
-        panel.Children.Add(Check("접어서 링만 보기", settings.Mode == HudMode.Collapsed,
-            value => { settings.Mode = value ? HudMode.Collapsed : HudMode.Expanded; Apply(); }));
-
-        panel.Children.Add(Check("왼쪽 위에 버전 표시", settings.ShowsVersionBadge,
-            value => { settings.ShowsVersionBadge = value; Apply(); }));
-
-        panel.Children.Add(Hint("HUD는 드래그로 옮길 수 있고, 더블클릭하면 접었다 펴집니다."));
-
-        panel.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 8) });
-
-        // **자동 시작 상태를 우리 설정 파일에 적지 않는다.** 진짜 상태는 레지스트리에
-        // 있고 사용자가 작업 관리자에서 끌 수 있어서, 따로 적어 두면 껐는데도 켜진 것으로
-        // 보인다. 맥판과 같은 이유다.
-        var startup = Check("로그인할 때 자동 시작", StartupService.IsEnabled, value =>
-        {
-            if (!StartupService.SetEnabled(value)) ShowTab();   // 실패하면 표시를 되돌린다
-            Apply();
+            Text = store.Snapshot?.PlanName ?? "플랜 알 수 없음",
+            FontSize = 15,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = palette.Brush(palette.Primary),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
         });
-        panel.Children.Add(startup);
+
+        if (store.NeedsReauth) header.Children.Add(Ui.Pill(palette, "재로그인 필요", palette.Warning));
+        else if (store.IsStale) header.Children.Add(Ui.Pill(palette, "오래된 값", palette.Warning));
+        panel.Children.Add(header);
+
+        panel.Children.Add(Ui.Card(palette,
+            UsageRow(palette, "세션", store.Snapshot?.FiveHour, now),
+            Ui.Divider(palette),
+            UsageRow(palette, "주간", store.Snapshot?.SevenDay, now)));
+
+        panel.Children.Add(Ui.Section(palette, "조회"));
+        panel.Children.Add(Ui.Card(palette,
+            InfoRow(palette, "마지막 조회",
+                store.Snapshot is { } snap ? RemainingTime.AgeText(snap.FetchedAt, now) : "아직 없음"),
+            Ui.Divider(palette),
+            InfoRow(palette, "다음 조회",
+                store.NextPollAt is { } next
+                    ? (next <= now ? "곧" : RemainingTime.ClockText(next, now))
+                    : "멈춤"),
+            Ui.Divider(palette),
+            InfoRow(palette, "조회 주기", PollTitle(settings.PollIntervalSeconds))));
+
+        if (store.ErrorText is { } error) panel.Children.Add(Ui.Hint(palette, $"마지막 조회 실패: {error}"));
+
+        panel.Children.Add(Ui.ButtonRow(
+            Ui.Button(palette, store.IsRefreshing ? "조회 중…" : "새로고침", async () =>
+            {
+                await store.RefreshAsync(force: true).ConfigureAwait(true);
+                ShowTab();
+            }, Ui.ButtonKind.Accent, enabled: !store.IsRefreshing)));
 
         return panel;
     }
 
-    // ── 계정 ──────────────────────────────────────────────────────
+    private UIElement UsageRow(SettingsPalette palette, string label, UsageWindow? window, DateTimeOffset now)
+    {
+        var value = new StackPanel { Orientation = Orientation.Horizontal };
+        value.Children.Add(new TextBlock
+        {
+            Text = window is { } filled ? $"{Math.Round(filled.Utilization):F0}%" : "—",
+            FontSize = 20,
+            FontWeight = FontWeights.Bold,
+            // 숫자를 링과 같은 색으로 칠한다. 어느 링 얘기인지 여기서도 이어진다.
+            Foreground = palette.Brush(window is { } w
+                ? ToColor(UsageColor.For(w.Utilization))
+                : palette.Tertiary),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        value.Children.Add(new TextBlock
+        {
+            Text = RemainingTime.Text(window?.ResetsAt, now),
+            FontSize = 12,
+            Foreground = palette.Brush(palette.Tertiary),
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(10, 0, 0, 3),
+        });
 
-    private UIElement AccountTab()
+        return Ui.Row(palette, label, value);
+    }
+
+    private static UIElement InfoRow(SettingsPalette palette, string label, string value) =>
+        Ui.Row(palette, label, new TextBlock
+        {
+            Text = value,
+            FontSize = 12.5,
+            Foreground = palette.Brush(palette.Secondary),
+        });
+
+    private static string PollTitle(int seconds) => seconds switch
+    {
+        60 => "1분",
+        180 => "3분",
+        300 => "5분",
+        1800 => "30분",
+        _ => "10분",
+    };
+
+    private static Color ToColor(Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
+
+    // ── 표시 ────────────────────────────────────────────────────────
+
+    private UIElement DisplayTab(SettingsPalette palette)
     {
         var panel = Stack();
+        panel.Children.Add(Ui.Title(palette, "표시"));
+
+        var visible = settings.IsHudVisible;
+        var expanded = settings.Mode != HudMode.Collapsed;
+
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "HUD 표시", Ui.Toggle(palette, visible, value =>
+            {
+                settings.IsHudVisible = value;
+                ApplyAndRedraw();   // 아래 항목들의 활성 상태가 함께 바뀐다
+            })),
+            Ui.Divider(palette),
+            Ui.Row(palette, "접어서 링만 보기", Ui.Toggle(palette, !expanded, value =>
+            {
+                settings.Mode = value ? HudMode.Collapsed : HudMode.Expanded;
+                ApplyAndRedraw();
+            }), enabled: visible),
+            Ui.Divider(palette),
+            Ui.Row(palette, "펼침 방향", Ui.Segmented(palette, ["오른쪽", "왼쪽"],
+                (int)settings.ExpandSide,
+                index => { settings.ExpandSide = (HudExpandSide)index; Apply(); }), enabled: visible)));
+
+        panel.Children.Add(Ui.Section(palette, "모양"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "테마", Ui.Segmented(palette, ["시스템", "밝게", "어둡게"],
+                (int)settings.Theme,
+                index => { settings.Theme = (HudTheme)index; Apply(); Rebuild(); })),
+            Ui.Divider(palette),
+            Ui.Row(palette, "크기", Ui.Segmented(palette,
+                [.. Enum.GetValues<HudScale>().Select(s => s.Title())],
+                (int)settings.Scale,
+                index => { settings.Scale = (HudScale)index; Apply(); }), enabled: visible),
+            Ui.Divider(palette),
+            Ui.Row(palette, "배경 불투명도",
+                Ui.Slider(palette, settings.BackdropOpacity, AppSettings.MinBackdropOpacity, 1.0, value =>
+                {
+                    // **여기서 다시 그리지 않는다.** 탭을 통째로 다시 만들면 드래그가 끊긴다.
+                    settings.BackdropOpacity = value;
+                    Apply();
+                }),
+                hint: "너무 투명하면 글자가 안 읽혀 아래를 막아 뒀습니다.", enabled: visible)));
+
+        panel.Children.Add(Ui.Section(palette, "곁들이"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "왼쪽 위에 버전 표시", Ui.Toggle(palette, settings.ShowsVersionBadge,
+                value => { settings.ShowsVersionBadge = value; Apply(); }), enabled: visible),
+            Ui.Divider(palette),
+            Ui.Row(palette, "CPU · 메모리 표시", Ui.Toggle(palette, settings.ShowsProcessStats,
+                value => { settings.ShowsProcessStats = value; Apply(); }),
+                hint: "이 앱 자신이 쓰는 자원입니다. 켜면 카드가 한 줄 길어집니다.",
+                enabled: visible && expanded)));
+
+        panel.Children.Add(Ui.Section(palette, "조회"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "조회 주기", Ui.Segmented(palette,
+                ["1분", "3분", "5분", "10분", "30분"],
+                Math.Max(0, Array.IndexOf(PollChoices, settings.PollIntervalSeconds)),
+                index => { settings.PollIntervalSeconds = PollChoices[index]; ApplyAndRedraw(); }),
+                hint: "너무 조이면 서버가 요청을 제한합니다."),
+            Ui.Divider(palette),
+            Ui.Row(palette, "로그인할 때 자동 시작", Ui.Toggle(palette, StartupService.IsEnabled, value =>
+            {
+                // 진짜 상태는 레지스트리에 있다. 실패하면 표시를 되돌린다.
+                if (!StartupService.SetEnabled(value)) ShowTab();
+                Apply();
+            }))));
+
+        panel.Children.Add(Ui.ButtonRow(
+            Ui.Button(palette, "위치 초기화", () =>
+            {
+                settings.WindowLeft = null;
+                settings.WindowTop = null;
+                ApplyAndRedraw();
+            }, enabled: visible),
+            Ui.Button(palette, "모든 설정 초기화", ResetEverything, Ui.ButtonKind.Danger)));
+
+        panel.Children.Add(Ui.Hint(palette,
+            "HUD는 드래그로 옮길 수 있고, 더블클릭하면 접었다 펴집니다. "
+            + "화면 밖으로 보냈으면 위치 초기화를 누르세요."));
+
+        return panel;
+    }
+
+    private static readonly int[] PollChoices = [60, 180, 300, 600, 1800];
+
+    /// <summary>
+    /// 설정을 통째로 되돌린다.
+    ///
+    /// **되돌릴 수 없으니 한 번 묻는다.** 자동 시작도 함께 끈다 — 설정 파일에는 없지만
+    /// 사용자가 보기에 그것도 이 앱의 설정이다.
+    /// </summary>
+    private void ResetEverything()
+    {
+        var answer = MessageBox.Show(
+            this,
+            "모든 설정을 처음 상태로 되돌립니다. 되돌릴 수 없습니다.\n로그인할 때 자동 시작도 함께 꺼집니다.",
+            $"{AppInfo.Name} 설정 초기화",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.OK) return;
+
+        var fresh = new AppSettings();
+        settings.Mode = fresh.Mode;
+        settings.Theme = fresh.Theme;
+        settings.Scale = fresh.Scale;
+        settings.ExpandSide = fresh.ExpandSide;
+        settings.IconStyle = fresh.IconStyle;
+        settings.PollIntervalSeconds = fresh.PollIntervalSeconds;
+        settings.IsHudVisible = fresh.IsHudVisible;
+        settings.ShowsVersionBadge = fresh.ShowsVersionBadge;
+        settings.ChecksForUpdates = fresh.ChecksForUpdates;
+        settings.ShowsProcessStats = fresh.ShowsProcessStats;
+        settings.AnimatesMascot = fresh.AnimatesMascot;
+        settings.BackdropOpacity = fresh.BackdropOpacity;
+        settings.WindowLeft = null;
+        settings.WindowTop = null;
+
+        StartupService.SetEnabled(false);
+        AppLog.Write("설정을 모두 초기화했다");
+
+        Apply();
+        Rebuild();
+    }
+
+    // ── 아이콘 ──────────────────────────────────────────────────────
+
+    private UIElement IconTab(SettingsPalette palette)
+    {
+        var panel = Stack();
+        panel.Children.Add(Ui.Title(palette, "아이콘"));
+
+        foreach (var group in Enum.GetValues<IconStyleGroup>())
+        {
+            panel.Children.Add(Ui.Section(palette, group.Title()));
+
+            var strip = new WrapPanel();
+            foreach (var style in Enum.GetValues<IconStyle>().Where(s => s.Group() == group))
+            {
+                strip.Children.Add(IconTile(palette, style));
+            }
+            panel.Children.Add(strip);
+        }
+
+        var animated = settings.IconStyle.IsAnimated();
+        panel.Children.Add(Ui.Section(palette, "움직임"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "마스코트 움직이기", Ui.Toggle(palette, settings.AnimatesMascot,
+                value => { settings.AnimatesMascot = value; Apply(); }),
+                hint: animated
+                    ? "끄면 평소 자세로 멈추고, 기분에 따른 색은 그대로입니다."
+                    : $"{settings.IconStyle.ShortTitle()}은(는) 정지 그림이라 움직이지 않습니다.",
+                enabled: animated)));
+
+        panel.Children.Add(Ui.Hint(palette,
+            "Claude 쪽 그림에는 애니메이션을 넣지 않습니다 — 저작권이 Anthropic에 있어 "
+            + "새 자세를 만들어 붙일 그림이 아닙니다."));
+
+        return panel;
+    }
+
+    private UIElement IconTile(SettingsPalette palette, IconStyle style)
+    {
+        var chosen = settings.IconStyle == style;
+
+        var preview = new IconPreview
+        {
+            IconStyle = style,
+            IsDark = palette.IsDark,
+            Width = 44,
+            Height = 44,
+            HorizontalAlignment = HorizontalAlignment.Center,
+        };
+
+        var stack = new StackPanel();
+        stack.Children.Add(preview);
+        stack.Children.Add(new TextBlock
+        {
+            Text = style.ShortTitle(),
+            FontSize = 11,
+            TextAlignment = TextAlignment.Center,
+            Foreground = palette.Brush(chosen ? palette.Accent : palette.Tertiary),
+            Margin = new Thickness(0, 6, 0, 0),
+        });
+
+        var tile = new Border
+        {
+            Width = 92,
+            Background = palette.Brush(chosen ? palette.AccentSoft : palette.Card),
+            BorderBrush = palette.Brush(chosen ? palette.Accent : palette.Line),
+            BorderThickness = new Thickness(chosen ? 1.5 : 1),
+            CornerRadius = new CornerRadius(Ui.Radius + 2),
+            Padding = new Thickness(10, 12, 10, 10),
+            Margin = new Thickness(0, 0, 10, 10),
+            Cursor = Cursors.Hand,
+            ToolTip = style.Title(),
+            Child = stack,
+        };
+        tile.MouseLeftButtonUp += (_, _) =>
+        {
+            settings.IconStyle = style;
+            ApplyAndRedraw();
+        };
+        return tile;
+    }
+
+    // ── 계정 ────────────────────────────────────────────────────────
+
+    private UIElement AccountTab(SettingsPalette palette)
+    {
+        var panel = Stack();
+        panel.Children.Add(Ui.Title(palette, "계정"));
 
         // 자격 증명 파일이 실제로 있는지부터 보여준다.
         //
@@ -202,64 +575,50 @@ public sealed class SettingsWindow : Window
         // 내밀면 막다른 길이다. 무엇이 없는지, 어디를 봐야 하는지를 화면에서 알려준다.
         var found = FileCredentialSource.DefaultPaths().FirstOrDefault(File.Exists);
 
-        panel.Children.Add(Label(found is null
-            ? "Claude Code 로그인 정보를 찾지 못했습니다."
-            : "Claude Code 로그인 정보를 찾았습니다."));
-
-        panel.Children.Add(Hint(found ?? string.Join("\n", FileCredentialSource.DefaultPaths())));
-
-        if (found is null)
+        var header = new StackPanel { Orientation = Orientation.Horizontal };
+        header.Children.Add(new TextBlock
         {
-            panel.Children.Add(Hint(
-                "\nClaude 앱(또는 Claude Code)에서 한 번 로그인하면 이 파일이 만들어집니다.\n"
-                + "터미널은 필요 없습니다 — Claude 앱을 열고 Claude Code로 아무 대화나 시작해 보세요."));
-        }
-        else if (store.NeedsReauth)
-        {
-            panel.Children.Add(Hint(
-                "\n토큰이 만료됐습니다. Claude 앱에서 다시 로그인하면 조회가 재개됩니다.\n"
-                + "토큰 수명이 8시간이라 종종 필요합니다."));
-        }
-        else
-        {
-            panel.Children.Add(Hint(
-                "\n사용량은 이 파일에 담긴 토큰으로 읽습니다. 토큰은 Authorization 헤더로만 쓰이고\n"
-                + "어디에도 다시 쓰거나 남기지 않습니다."));
-        }
-
-        var buttons = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Margin = new Thickness(0, 14, 0, 0),
-        };
-
-        var openFolder = new Button
-        {
-            Content = "폴더 열기",
-            Padding = new Thickness(14, 4, 14, 4),
+            Text = found is null ? "로그인 정보를 찾지 못했습니다" : "로그인 정보를 찾았습니다",
+            FontSize = 14,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = palette.Brush(palette.Primary),
+            VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0),
-        };
-        openFolder.Click += (_, _) => OpenClaudeFolder();
-        buttons.Children.Add(openFolder);
-
-        var openLog = new Button
+        });
+        if (found is not null && store.NeedsReauth)
         {
-            Content = "기록 열기",
-            Padding = new Thickness(14, 4, 14, 4),
-            Margin = new Thickness(0, 0, 8, 0),
-        };
-        openLog.Click += (_, _) => OpenPath(AppLog.DefaultPath);
-        buttons.Children.Add(openLog);
+            header.Children.Add(Ui.Pill(palette, "만료", palette.Warning));
+        }
+        panel.Children.Add(header);
 
-        var recheck = new Button { Content = "다시 확인", Padding = new Thickness(14, 4, 14, 4) };
-        recheck.Click += async (_, _) =>
+        panel.Children.Add(Ui.Hint(palette, found ?? string.Join("\n", FileCredentialSource.DefaultPaths())));
+
+        panel.Children.Add(Ui.Section(palette, "안내"));
+        panel.Children.Add(Ui.Card(palette, new TextBlock
         {
-            await store.RefreshAsync(force: true).ConfigureAwait(true);
-            ShowTab();
-        };
-        buttons.Children.Add(recheck);
+            Text = found is null
+                ? "Claude 앱(또는 Claude Code)에서 한 번 로그인하면 이 파일이 만들어집니다. "
+                  + "터미널은 필요 없습니다 — Claude 앱을 열고 Claude Code로 아무 대화나 시작해 보세요."
+                : store.NeedsReauth
+                    ? "토큰이 만료됐고 갱신도 실패했습니다. Claude 앱에서 다시 로그인하면 조회가 재개됩니다."
+                    : "만료된 토큰은 앱이 스스로 갱신합니다. Claude Code를 켜 두지 않아도 사용량이 계속 들어옵니다. "
+                      + "토큰은 Authorization 헤더로만 쓰이고 어디에도 다시 쓰거나 남기지 않습니다.",
+            FontSize = 12.5,
+            TextWrapping = TextWrapping.Wrap,
+            LineHeight = 20,
+            Foreground = palette.Brush(palette.Secondary),
+            Margin = new Thickness(0, 8, 0, 8),
+        }));
 
-        panel.Children.Add(buttons);
+        panel.Children.Add(Ui.ButtonRow(
+            Ui.Button(palette, "Claude 폴더 열기", OpenClaudeFolder),
+            Ui.Button(palette, "기록 열기", () => OpenPath(AppLog.DefaultPath)),
+            Ui.Button(palette, "다시 확인", async () =>
+            {
+                await store.RefreshAsync(force: true).ConfigureAwait(true);
+                ShowTab();
+            }, Ui.ButtonKind.Accent)));
+
         return panel;
     }
 
@@ -296,154 +655,152 @@ public sealed class SettingsWindow : Window
         }
     }
 
-    // ── 버전 ──────────────────────────────────────────────────────
+    // ── 버전 ────────────────────────────────────────────────────────
 
-    private UIElement VersionTab()
+    private UIElement VersionTab(SettingsPalette palette)
     {
         var panel = Stack();
-        panel.Children.Add(Label($"지금 버전: {AppInfo.Version}"));
+        panel.Children.Add(Ui.Title(palette, "버전"));
 
-        if (!updates.IsInstalled)
+        var big = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 2) };
+        big.Children.Add(new TextBlock
         {
-            panel.Children.Add(Hint("설치본이 아니라 자동 업데이트를 쓸 수 없습니다."));
+            Text = AppInfo.Version,
+            FontSize = 26,
+            FontWeight = FontWeights.Bold,
+            Foreground = palette.Brush(palette.Primary),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        if (AppInfo.IsTestBuild)
+        {
+            var pill = Ui.Pill(palette, "테스트 빌드", palette.Test);
+            pill.Margin = new Thickness(10, 6, 0, 0);
+            big.Children.Add(pill);
         }
-        else if (updates.HasUpdate)
+        panel.Children.Add(big);
+        panel.Children.Add(new TextBlock
         {
-            panel.Children.Add(Label($"새 버전 {updates.LatestVersion}"));
-            var apply = new Button
-            {
-                // 68MB 를 받는다. 눌렀는데 아무 일도 안 일어나는 것처럼 보이면 안 된다.
-                Content = updates.IsApplying ? "받는 중… (68MB)" : "업데이트",
-                IsEnabled = !updates.IsApplying,
-                Margin = new Thickness(0, 6, 0, 0),
-                HorizontalAlignment = HorizontalAlignment.Left,
-                Padding = new Thickness(14, 4, 14, 4),
-            };
-            apply.Click += async (_, _) =>
-            {
-                ShowTab();                                      // 먼저 "받는 중"으로 바꾼다
-                await updates.ApplyAsync().ConfigureAwait(true);
-                ShowTab();                                      // 실패했으면 이유가 뜬다
-            };
-            panel.Children.Add(apply);
-            panel.Children.Add(Hint("받아서 깔고 나면 앱이 저절로 다시 뜹니다."));
-        }
-        else if (updates.LastChecked is not null)
+            Text = StatusLine(),
+            FontSize = 12.5,
+            Foreground = palette.Brush(palette.Secondary),
+            Margin = new Thickness(0, 0, 0, 4),
+        });
+
+        if (updates.LastChecked is { } checkedAt)
         {
-            panel.Children.Add(Hint("최신 버전입니다."));
+            panel.Children.Add(Ui.Hint(palette,
+                $"마지막 확인: {RemainingTime.AgeText(checkedAt, DateTimeOffset.Now)}"));
         }
 
-        var check = new Button
+        var buttons = new List<UIElement>
         {
-            Content = updates.IsChecking ? "확인 중…" : "업데이트 확인",
-            IsEnabled = !updates.IsChecking,
-            Margin = new Thickness(0, 6, 0, 10),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(14, 4, 14, 4),
+            Ui.Button(palette, updates.IsChecking ? "확인 중…" : "업데이트 확인", async () =>
+            {
+                await updates.CheckAsync().ConfigureAwait(true);
+                ShowTab();
+            }, enabled: !updates.IsChecking && !AppInfo.IsTestBuild),
         };
-        check.Click += async (_, _) => { await updates.CheckAsync().ConfigureAwait(true); ShowTab(); };
-        panel.Children.Add(check);
 
-        if (updates.LastError is { } updateError) panel.Children.Add(Hint(updateError));
+        if (updates.HasUpdate && updates.IsInstalled)
+        {
+            buttons.Insert(0, Ui.Button(palette,
+                // 68MB 를 받는다. 눌렀는데 아무 일도 안 일어나는 것처럼 보이면 안 된다.
+                updates.IsApplying ? "받는 중… (68MB)" : $"{updates.LatestVersion} 로 업데이트",
+                async () =>
+                {
+                    ShowTab();
+                    await updates.ApplyAsync().ConfigureAwait(true);
+                    ShowTab();
+                }, Ui.ButtonKind.Accent, enabled: !updates.IsApplying));
+        }
+        panel.Children.Add(Ui.ButtonRow([.. buttons]));
 
-        panel.Children.Add(Check("하루에 한 번 새 버전 확인", settings.ChecksForUpdates,
-            value => { settings.ChecksForUpdates = value; Apply(); }));
+        if (updates.LastError is { } updateError) panel.Children.Add(Ui.Hint(palette, updateError));
 
-        panel.Children.Add(new Separator { Margin = new Thickness(0, 12, 0, 8) });
-        panel.Children.Add(Label("변경 내역"));
+        panel.Children.Add(Ui.Section(palette, "확인"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "하루에 한 번 새 버전 확인", Ui.Toggle(palette, settings.ChecksForUpdates,
+                value => { settings.ChecksForUpdates = value; Apply(); }),
+                hint: AppInfo.IsTestBuild ? "테스트 빌드는 업데이트를 걸지 않습니다." : null,
+                enabled: !AppInfo.IsTestBuild)));
+
+        panel.Children.Add(Ui.Section(palette, "변경 내역"));
 
         // 원격 내역이 있으면 그걸 쓴다. 아직 안 받았으면 앱에 박힌 것을 보여준다.
         var entries = updates.RemoteEntries.Count > 0 ? updates.RemoteEntries : Changelog.Entries;
-        foreach (var entry in entries)
-        {
-            var header = entry.Date is { } date ? $"{entry.Version}  ({date})" : $"{entry.Version}  (예정)";
-            panel.Children.Add(new TextBlock
-            {
-                Text = header,
-                FontWeight = FontWeights.SemiBold,
-                Margin = new Thickness(0, 10, 0, 2),
-            });
-            foreach (var note in entry.Notes)
-            {
-                panel.Children.Add(new TextBlock
-                {
-                    Text = $"· {note}",
-                    TextWrapping = TextWrapping.Wrap,
-                    Margin = new Thickness(8, 1, 0, 1),
-                    Foreground = Brushes.Gray,
-                });
-            }
-        }
+        foreach (var entry in entries) panel.Children.Add(ChangelogEntryView(palette, entry));
 
         return panel;
     }
 
-    // ── 부품 ──────────────────────────────────────────────────────
-
-    private void Apply()
+    private string StatusLine()
     {
-        settings.Save();
-        onChanged();
+        if (AppInfo.IsTestBuild) return "테스트 빌드라 자동 업데이트를 쓰지 않습니다.";
+        if (!updates.IsInstalled) return "설치본이 아니라 자동 업데이트를 쓸 수 없습니다.";
+        if (updates.HasUpdate) return $"새 버전 {updates.LatestVersion} 이 나와 있습니다.";
+        if (updates.LastChecked is not null) return "최신 버전입니다.";
+        return "아직 확인하지 않았습니다.";
     }
 
-    private static StackPanel Stack() => new() { Orientation = Orientation.Vertical };
-
-    private static TextBlock Label(string text) => new()
+    private UIElement ChangelogEntryView(SettingsPalette palette, ChangelogEntry entry)
     {
-        Text = text,
-        Margin = new Thickness(0, 3, 0, 3),
-        TextWrapping = TextWrapping.Wrap,
-    };
-
-    private static TextBlock Hint(string text) => new()
-    {
-        Text = text,
-        FontSize = 11,
-        Foreground = Brushes.Gray,
-        Margin = new Thickness(0, 3, 0, 3),
-        TextWrapping = TextWrapping.Wrap,
-    };
-
-    private static UIElement Row(string label, UIElement control)
-    {
-        var row = new DockPanel { Margin = new Thickness(0, 5, 0, 5), LastChildFill = true };
-        var text = new TextBlock { Text = label, Width = 84, VerticalAlignment = VerticalAlignment.Center };
-        DockPanel.SetDock(text, Dock.Left);
-        row.Children.Add(text);
-        row.Children.Add(control);
-        return row;
-    }
-
-    private static CheckBox Check(string label, bool value, Action<bool> onSet)
-    {
-        var box = new CheckBox { Content = label, IsChecked = value, Margin = new Thickness(0, 5, 0, 5) };
-        box.Checked += (_, _) => onSet(true);
-        box.Unchecked += (_, _) => onSet(false);
-        return box;
-    }
-
-    private static ComboBox EnumBox<T>(T current, IReadOnlyList<string> titles, Action<T> onSet)
-        where T : struct, System.Enum
-    {
-        var values = System.Enum.GetValues<T>();
-        var box = new ComboBox { SelectedIndex = Array.IndexOf(values, current) };
-        foreach (var title in titles) box.Items.Add(title);
-        box.SelectionChanged += (_, _) =>
+        var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+        header.Children.Add(new TextBlock
         {
-            if (box.SelectedIndex >= 0 && box.SelectedIndex < values.Length) onSet(values[box.SelectedIndex]);
+            Text = entry.Version,
+            FontSize = 13,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = palette.Brush(palette.Primary),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 0),
+        });
+
+        // 지금 쓰는 버전이 목록 어디인지 알 수 있어야 한다.
+        if (entry.Version == AppInfo.Version) header.Children.Add(Ui.Pill(palette, "지금 버전", palette.Accent));
+        else if (entry.Date is null) header.Children.Add(Ui.Pill(palette, "준비 중", palette.Warning));
+
+        if (entry.Date is { } date)
+        {
+            header.Children.Add(new TextBlock
+            {
+                Text = date,
+                FontSize = 11.5,
+                Foreground = palette.Brush(palette.Faint),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(8, 0, 0, 0),
+            });
+        }
+
+        var notes = new StackPanel();
+        notes.Children.Add(header);
+        foreach (var note in entry.Notes)
+        {
+            notes.Children.Add(new TextBlock
+            {
+                Text = $"· {note}",
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 19,
+                Foreground = palette.Brush(palette.Secondary),
+                Margin = new Thickness(2, 1, 0, 1),
+            });
+        }
+
+        return new Border
+        {
+            Background = palette.Brush(palette.Card),
+            BorderBrush = palette.Brush(palette.Line),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Ui.Radius + 2),
+            Padding = new Thickness(14, 12, 14, 12),
+            Margin = new Thickness(0, 0, 0, 8),
+            Child = notes,
         };
-        return box;
     }
 
-    private static ComboBox Choice(
-        IReadOnlyList<int> values, IReadOnlyList<string> titles, int current, Action<int> onSet)
+    protected override void OnClosed(EventArgs e)
     {
-        var box = new ComboBox { SelectedIndex = Math.Max(0, values.ToList().IndexOf(current)) };
-        foreach (var title in titles) box.Items.Add(title);
-        box.SelectionChanged += (_, _) =>
-        {
-            if (box.SelectedIndex >= 0 && box.SelectedIndex < values.Count) onSet(values[box.SelectedIndex]);
-        };
-        return box;
+        tick.Stop();
+        base.OnClosed(e);
     }
 }
