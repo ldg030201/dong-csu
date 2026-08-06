@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/DongCSU.Core/DongCSU.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/DongCSU.Core.Tests/DongCSU.Core.Tests.csproj" />
+  </Folder>
+</Solution>

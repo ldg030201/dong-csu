@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    화면을 그리지 않는 부분만 여기 둔다. WPF 는 윈도우에서만 빌드되지만 이 라이브러리는
+    어디서나 빌드·테스트된다 — 맥에서 개발하면서 부엉이 합성이 맞는지 바로 돌려볼 수 있다.
+    UI 코드를 여기 넣지 않는다. 넣는 순간 그게 안 된다.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      맥 소스에서 뽑은 부엉이 데이터를 앱 안에 박는다. 파일로 따라다니게 하면
+      사용자가 지우거나 옛 것이 남아서 그림이 어긋난다. 빌드 시점의 것으로 고정한다.
+    -->
+    <EmbeddedResource Include="../../../shared/owl.json" LogicalName="owl.json" />
+  </ItemGroup>
+
+</Project>

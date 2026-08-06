@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "mac/**"
+      - "win/**"
       - "shared/**"
       - ".github/workflows/build.yml"
   pull_request:
@@ -66,3 +67,26 @@ jobs:
           # 2.0.0 이하가 아직 보는 뿌리 쪽 사본. 어긋나면 옛 앱이 옛 내역을 본다.
           diff -q /tmp/fresh.json ../docs/changelog.json \
             || { echo "docs/changelog.json(옛 앱용 사본)이 다르다 — dump_changelog 로 다시 뽑아라"; exit 1; }
+
+  win:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: win
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: 도구 버전
+        run: dotnet --info
+
+      - name: 빌드
+        run: dotnet build -c Release
+
+      # 부엉이 그림이 맥과 같은지 여기서 걸린다. 레이어 겹치기는 파일로 넘어오지 않아
+      # 윈도우가 따로 구현했고, owl.json 에 실린 맥의 합성 결과와 전 프레임을 대조한다.
+      - name: 테스트
+        run: dotnet test -c Release --no-build
