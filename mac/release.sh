@@ -147,7 +147,7 @@ echo "▸ formula 갱신"
 
 # ── 6. GitHub 릴리스 ───────────────────────────────────────────
 if command -v gh >/dev/null 2>&1; then
-  if gh release create "$TAG" --title "$TAG" --generate-notes >/dev/null 2>&1; then
+  if gh release create "$TAG" --title "macOS $VERSION" --generate-notes >/dev/null 2>&1; then
     echo "▸ GitHub 릴리스 생성"
   else
     echo "▸ GitHub 릴리스 생성 실패 (수동: gh release create $TAG --generate-notes)"
