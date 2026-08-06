@@ -1,0 +1,76 @@
+name: win-release
+
+# 윈도우판을 만들어 릴리스에 올린다.
+#
+# 맥은 Homebrew 가 각자 기계에서 소스를 빌드하지만, 윈도우는 여기서 만든 설치 exe 를
+# 받아서 쓴다. Velopack 이 설치본과 델타를 만들고, 앱은 GitHub 릴리스를 보고 스스로
+# 업데이트한다.
+
+on:
+  push:
+    tags: ["win-v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "만들 버전 (예: 1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: win
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: 버전 정하기
+        id: version
+        shell: bash
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME#win-v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 테스트
+        run: dotnet test tests/DongCSU.Core.Tests/DongCSU.Core.Tests.csproj -c Release
+
+      - name: 게시
+        run: >
+          dotnet publish src/DongCSU.App -c Release -r win-x64 --self-contained
+          -p:Version=${{ steps.version.outputs.value }} -o publish
+
+      - name: 설치본 만들기
+        run: |
+          dotnet tool install -g vpk
+          vpk pack --packId DongCSU --packVersion ${{ steps.version.outputs.value }} `
+            --packDir publish --mainExe DongCSU.exe `
+            --packTitle DongCSU --packAuthors ldg030201 `
+            --icon src/DongCSU.App/Resources/DongCSU.ico `
+            --outputDir releases
+
+      - name: 릴리스에 올리기
+        if: startsWith(github.ref, 'refs/tags/win-v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes \
+            || echo "릴리스가 이미 있다 — 파일만 올린다"
+          gh release upload "$GITHUB_REF_NAME" releases/* --clobber
+
+      - name: 결과 수집
+        uses: actions/upload-artifact@v7
+        with:
+          name: DongCSU-Setup
+          path: win/releases/*
+          if-no-files-found: error
