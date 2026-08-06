@@ -209,10 +209,13 @@ public sealed class HudView : FrameworkElement
     private void DrawUpdateDot(DrawingContext context, double s)
     {
         var radius = 3 * s;
-        // 버전 글자가 있으면 그 왼쪽에, 없으면 모서리에 붙인다.
-        var x = VersionBadge is null ? 8 * s + radius : 8 * s - radius - 2 * s;
-        var brush = Frozen(Color.FromRgb(0x3A, 0x8E, 0xF0));
-        context.DrawEllipse(brush, null, new Point(Math.Max(radius + s, x), 9 * s), radius, radius);
+
+        // **모서리가 깎여 있다는 것을 잊으면 안 된다.** 배경은 반지름 20(접으면 26)으로
+        // 깎여서, 왼쪽 위 (4, 9) 근처는 배경이 **아직 시작되지 않은 자리**다. 거기 찍으면
+        // 점만 허공에 떠서 창 밖에 잘못 찍힌 것처럼 보인다 — 1.1.1 에서 실제로 그랬다.
+        // (11, 11) 이면 두 반지름 모두에서 원이 통째로 안쪽에 들어온다.
+        var center = new Point(11 * s, 11 * s);
+        context.DrawEllipse(Frozen(Color.FromRgb(0x3A, 0x8E, 0xF0)), null, center, radius, radius);
     }
 
     private FormattedText Text(string value, double size, Typeface face, Brush brush) =>
