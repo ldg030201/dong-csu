@@ -36,7 +36,7 @@ public static class Changelog
         new ChangelogEntry
         {
             Version = "1.0.0",
-            Date = null,
+            Date = "2026-08-06",
             Notes =
             [
                 "윈도우판 첫 배포",

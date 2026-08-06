@@ -44,6 +44,13 @@ jobs:
       - name: 테스트
         run: dotnet test tests/DongCSU.Core.Tests/DongCSU.Core.Tests.csproj -c Release
 
+      # 태그만 붙이고 변경 내역을 안 적으면, 사용자는 새 버전을 받았는데
+      # 설정 창의 버전 탭에 아무것도 안 뜬다.
+      - name: 변경 내역이 이 버전을 아는지
+        run: >
+          dotnet run --project tools/DongCSU.Tools -c Release --
+          --check-release ${{ steps.version.outputs.value }}
+
       - name: 게시
         run: >
           dotnet publish src/DongCSU.App -c Release -r win-x64 --self-contained

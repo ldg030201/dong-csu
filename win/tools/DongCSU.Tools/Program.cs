@@ -9,6 +9,7 @@ if (args.Length == 0)
           dotnet run --project tools/DongCSU.Tools -- --dump-owl       [out.json]
           dotnet run --project tools/DongCSU.Tools -- --print-owl      [애니메이션 이름]
           dotnet run --project tools/DongCSU.Tools -- --check-icon    <아이콘 경로>
+          dotnet run --project tools/DongCSU.Tools -- --check-release <버전>
         """);
     return 2;
 }
@@ -30,6 +31,9 @@ switch (args[0])
     case "--check-icon":
         return CheckIcon(args.ElementAtOrDefault(1)
             ?? "src/DongCSU.App/Resources/DongCSU.ico");
+
+    case "--check-release":
+        return CheckRelease(args.ElementAtOrDefault(1));
 
     default:
         Console.Error.WriteLine($"모르는 인자: {args[0]}");
@@ -126,5 +130,42 @@ static int CheckIcon(string iconPath)
     Console.Error.WriteLine($"아이콘이 owl.json 과 다르다 — python3 win/make-icon.py 로 다시 만들어라");
     Console.Error.WriteLine($"  기대: {expected}");
     Console.Error.WriteLine($"  파일: {actual}");
+    return 1;
+}
+
+/// <summary>
+/// 이 버전을 내보내도 되는지.
+///
+/// **태그만 붙이고 변경 내역을 안 적는 실수**를 막는다. 그러면 사용자는 새 버전을
+/// 받았는데 설정 창의 버전 탭에는 아무것도 안 뜬다. 날짜도 함께 본다 — 비어 있으면
+/// "아직 안 나간 항목"이라는 뜻이라 릴리스와 앞뒤가 안 맞는다.
+/// </summary>
+static int CheckRelease(string? version)
+{
+    if (string.IsNullOrWhiteSpace(version))
+    {
+        Console.Error.WriteLine("버전을 넘겨라: --check-release 1.0.0");
+        return 2;
+    }
+
+    var newest = Changelog.Entries[0];
+    var problems = new List<string>();
+
+    if (newest.Version != version)
+    {
+        problems.Add($"변경 내역 맨 위가 {newest.Version} 인데 내려는 것은 {version} 이다");
+    }
+    if (string.IsNullOrEmpty(newest.Date))
+    {
+        problems.Add($"{newest.Version} 에 날짜가 없다 — Changelog.cs 에서 확정해라");
+    }
+
+    if (problems.Count == 0)
+    {
+        Console.WriteLine($"{version} 을 내보낼 수 있다 ({newest.Notes.Count}줄, {newest.Date})");
+        return 0;
+    }
+
+    foreach (var problem in problems) Console.Error.WriteLine($"  {problem}");
     return 1;
 }
