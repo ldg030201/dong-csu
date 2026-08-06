@@ -36,7 +36,7 @@ public static class Changelog
         new ChangelogEntry
         {
             Version = "2.0.0",
-            Date = null,
+            Date = "2026-08-07",
             Notes =
             [
                 "만료된 토큰을 스스로 갱신하도록 변경 (Claude Code를 켜 두지 않아도 조회)",
