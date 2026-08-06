@@ -43,13 +43,16 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 struct SettingsView: View {
     static let sidebarWidth: CGFloat = 124
     static let contentWidth: CGFloat = 356
-    /// 창 크기의 유일한 출처. 뷰 프레임과 NSWindow 양쪽이 이걸 쓴다.
-    /// 높이는 가장 긴 탭(표시)이 스크롤 없이 들어가는 값이다.
-    /// 탭에 항목을 더했으면 `--render-settings`로 재어 보고 여기를 함께 올린다.
+    /// **처음 열릴 때의 크기이자, 내용이 스크롤 없이 다 들어가는 최소 크기.**
+    /// 높이는 가장 긴 탭(표시)이 기준이다. 탭에 항목을 더했으면
+    /// `--render-settings`로 재어 보고 여기를 함께 올린다.
     ///
     /// 표시 탭은 평소 582이고, 로그인 항목을 시스템 설정에서 꺼 두면 안내 한 줄이
     /// 더 붙는다. **그 상태까지 들어가는 값**이라 평소에는 아래가 조금 빈다 —
     /// 드물게 뜨는 줄이 잘려서 버튼을 못 누르는 것보다 낫다.
+    ///
+    /// 창은 이보다 **키울 수도 줄일 수도** 있다. 키우면 내용이 따라 늘어나고,
+    /// 줄이면 스크롤이 생긴다. 그 규칙은 `body`에 있다.
     static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 604)
 
     @ObservedObject var settings: HUDSettings
@@ -86,10 +89,25 @@ struct SettingsView: View {
         if let initialTab { settings.settingsTab = initialTab }
     }
 
+    /// 창 크기를 따라간다.
+    ///
+    /// **키우면 늘어나고 줄이면 스크롤이 생긴다.** 둘 다 되게 하려면 창에서 받은 크기와
+    /// 내용의 최소 크기 중 **큰 쪽**을 내용에 준다 — 창이 크면 그 크기가 이겨서 꽉 차고,
+    /// 창이 작으면 최소 크기가 이겨서 넘치는 만큼 스크롤이 생긴다.
+    ///
+    /// `ScrollView` 만으로는 안 된다. 스크롤 방향으로는 크기를 제안하지 않아서, 안에
+    /// `maxWidth: .infinity` 를 줘도 내용은 제 크기에 머문다 — 창만 커지고 알맹이는
+    /// 가운데 고정된 채 둘레만 비는 게 그래서 생긴다.
     var body: some View {
-        // 창을 줄이면 가로·세로 스크롤이 생긴다. 내용 폭은 고정해서 레이아웃이 흔들리지 않게 한다.
-        ScrollView([.horizontal, .vertical]) {
-            content
+        GeometryReader { proxy in
+            ScrollView([.horizontal, .vertical]) {
+                content
+                    .frame(
+                        minWidth: max(Self.size.width, proxy.size.width),
+                        minHeight: max(Self.size.height, proxy.size.height),
+                        alignment: .topLeading
+                    )
+            }
         }
     }
 
@@ -106,14 +124,15 @@ struct SettingsView: View {
                     Spacer(minLength: 0)
                 }
                 .padding(18)
-                .frame(width: Self.contentWidth, alignment: .leading)
+                // 남는 폭·높이를 가져간다. 사이드바만 고정이고 본문은 창을 따라 늘어난다.
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
                 Divider()
                 footer
             }
         }
-        // 미리보기는 내용이 창보다 길면 잘린다. 그때는 높이를 풀어 전부 그린다.
-        .frame(width: Self.size.width, height: isPreviewRender ? nil : Self.size.height)
+        // 미리보기 렌더에는 창이 없어서 폭을 정해 줘야 한다. 높이는 풀어 두고 전부 그린다.
+        .frame(width: isPreviewRender ? Self.size.width : nil, alignment: .topLeading)
     }
 
     private var sidebar: some View {
@@ -715,15 +734,9 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                 version: version
             )
 
-            // **크기를 바꿀 수 없게 한다.**
-            //
-            // 내용이 고정 폭(사이드바 + 356)이라, 창만 키우면 알맹이는 그대로 가운데
-            // 남고 둘레만 빈다. 전체화면으로 넘기면 더 심하다 — 늘어나지도 않고
-            // 따라가지도 않는 채로 멈춰 있는 것처럼 보인다. 줄일 수 있게 두면 잘려서
-            // 버튼을 못 누른다. macOS 설정 창들이 대개 그렇듯 고정으로 둔다.
             let window = NSWindow(
                 contentRect: NSRect(origin: .zero, size: SettingsView.size),
-                styleMask: [.titled, .closable],
+                styleMask: [.titled, .closable, .resizable],
                 backing: .buffered,
                 defer: false
             )
@@ -734,16 +747,12 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             window.contentViewController = NSHostingController(rootView: view)
             // NSHostingController는 레이아웃 전에 크기를 모른다. 명시하지 않으면 창이 0으로 찌그러진다.
             window.setContentSize(SettingsView.size)
-            window.contentMinSize = SettingsView.size
-            window.contentMaxSize = SettingsView.size
-            // 초록 버튼으로 전체화면에 들어가는 것도 막는다. styleMask 만으로는 남는다.
-            window.collectionBehavior.insert(.fullScreenNone)
+            // 이보다 줄이면 스크롤로 볼 수 있다. 키우면 내용이 따라 늘어난다.
+            window.contentMinSize = NSSize(width: 320, height: 220)
             window.isReleasedWhenClosed = false
             window.delegate = self
-            // 닫았다 다시 열면 이전 자리를 그대로 쓴다. 크기는 고정이라 자리만 본다.
-            if let lastFrame {
-                window.setFrameOrigin(lastFrame.origin)
-            }
+            // 닫았다 다시 열면 이전 자리·크기를 그대로 쓴다.
+            if let lastFrame { window.setFrame(lastFrame, display: false) }
             self.window = window
         }
 
