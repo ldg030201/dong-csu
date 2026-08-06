@@ -36,7 +36,7 @@ public static class Changelog
         new ChangelogEntry
         {
             Version = "1.1.1",
-            Date = null,
+            Date = "2026-08-06",
             Notes =
             [
                 "Claude가 켜져 있는데도 토큰 만료로 조회를 포기하던 문제 수정",
