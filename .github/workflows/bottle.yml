@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "bottle을 만들 태그 (예: v1.3.1)"
+        description: "bottle을 만들 태그 (예: mac-v2.1.0)"
         required: true
 
 permissions:

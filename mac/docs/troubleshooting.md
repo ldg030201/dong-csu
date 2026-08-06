@@ -7,7 +7,7 @@
 옛 버전에서 올라오다 꼬였을 때 쓴다. **이 한 줄로 지우는 것부터 다시 설치까지 끝난다.**
 
 ```bash
-pkill -f DongCSU; rm -rf /Applications/DongCSU.app /Applications/dong-csu.app; brew uninstall dong-csu; brew untap ldg030201/dong-csu; brew untrust --tap https://github.com/ldg030201/dong-csu 2>/dev/null; rm -f ~/Library/Caches/Homebrew/dong-csu*; brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
+pkill -f DongCSU; rm -rf /Applications/DongCSU.app /Applications/dong-csu.app; brew uninstall dong-csu; brew untap ldg030201/dong-csu; brew untrust --tap https://github.com/ldg030201/dong-csu 2>/dev/null; rm -f ~/Library/Caches/Homebrew/dong-csu*; brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install -y dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
 
 지우기만 하려면 `rm -f ~/Library/Caches/Homebrew/dong-csu*` 까지만 실행한다.
@@ -71,7 +71,7 @@ brew untrust --tap ldg030201/dong-csu
 받아둔 tarball이 캐시에 남아 있는 경우가 대부분이다.
 
 ```bash
-rm -f ~/Library/Caches/Homebrew/dong-csu* && brew update && brew install dong-csu
+rm -f ~/Library/Caches/Homebrew/dong-csu* && brew update && brew install -y dong-csu
 ```
 
 ### Launchpad·Spotlight에 안 보인다

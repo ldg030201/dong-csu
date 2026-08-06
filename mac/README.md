@@ -8,7 +8,7 @@
 
 ![macOS](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)
 ![Swift](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white)
-[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases/latest)
+[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=mac-v*&color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases/latest)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-3A72C4)
 ![License](https://img.shields.io/badge/license-MIT-3A72C4)
 
@@ -62,16 +62,16 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 
 <table>
 <tr>
-<td align="center" width="20%"><img src="docs/characters/owl/idle.gif" width="96" alt="평소"><br><sub><b>평소</b></sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 80%↑</sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 95%↑</sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/offline.gif" width="96" alt="끊김"><br><sub><b>끊김</b><br>조회 실패</sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/dragged.gif" width="96" alt="끌림"><br><sub><b>끌림</b><br>드래그 중</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/idle.gif" width="96" alt="평소"><br><sub><b>평소</b></sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 80%↑</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 95%↑</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/offline.gif" width="96" alt="끊김"><br><sub><b>끊김</b><br>조회 실패</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/dragged.gif" width="96" alt="끌림"><br><sub><b>끌림</b><br>드래그 중</sub></td>
 </tr>
 <tr>
-<td align="center"><img src="docs/characters/owl/dizzy.gif" width="96" alt="어지러움"><br><sub><b>어지러움</b><br>마구 흔들면</sub></td>
-<td align="center"><img src="docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
-<td align="center"><img src="docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>커서가 쫓아올 때</sub></td>
+<td align="center"><img src="../docs/characters/owl/dizzy.gif" width="96" alt="어지러움"><br><sub><b>어지러움</b><br>마구 흔들면</sub></td>
+<td align="center"><img src="../docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
+<td align="center"><img src="../docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>커서가 쫓아올 때</sub></td>
 <td colspan="2" align="left"><sub>펫 모드에서는 <b>혼자 돌아다닌다.</b><br>커서를 올려두면 비켜주고, 계속 쫓아가면 <b>뛰어서</b> 달아난다.<br><b>타이핑 중에는 가만히 있는다.</b> 설정 창의 <b>펫</b> 탭에서 끌 수 있다.</sub></td>
 </tr>
 </table>
@@ -79,7 +79,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 ## 📦 설치
 
 ```bash
-brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
+brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install -y dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
 
 ### 필요한 것

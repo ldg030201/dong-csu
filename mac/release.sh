@@ -21,10 +21,12 @@ cd "$ROOT"
 VERSION="${1:-}"
 # 네 번째 자리는 긴급 수정용이다. 0.2.0 다음 핫픽스는 0.2.0.1.
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-  echo "사용법: ./release.sh <버전>    예: ./release.sh 0.2.0  또는  ./release.sh 0.2.0.1" >&2
+  echo "사용법: ./release.sh <버전>    예: ./release.sh 2.1.0  또는  ./release.sh 2.1.0.1" >&2
   exit 1
 fi
-TAG="v$VERSION"
+# 판마다 태그를 갈라 붙인다 — 윈도우와 번호를 따로 세기 때문이다(../CLAUDE.md).
+# v2.0.0 까지는 접두어가 없었다. 그 태그들은 그대로 둔다.
+TAG="mac-v$VERSION"
 
 COMMITTED=0
 restore_version_files() {

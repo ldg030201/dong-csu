@@ -6,7 +6,7 @@
 한 번만 손으로 옮겨 주세요. 아래 한 줄이면 지우기부터 설치까지 끝납니다.
 
 ```bash
-pkill -f DongMCU; rm -rf /Applications/DongMCU.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*; brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
+pkill -f DongMCU; rm -rf /Applications/DongMCU.app; brew uninstall dong-mcu; brew untap ldg030201/dong-mcu; rm -f ~/Library/Caches/Homebrew/dong-mcu*; brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust ldg030201/dong-csu && brew install -y dong-csu && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
 
 **설정은 그대로 넘어옵니다.** 창 위치·아이콘·크기·펫 설정을 첫 실행 때 옛 앱에서
@@ -30,7 +30,7 @@ pkill -f DongMCU; rm -rf /Applications/DongMCU.app; brew uninstall dong-mcu; bre
 | `brew untap ldg030201/dong-mcu` | 옛 tap 을 뗍니다. 남겨 두면 옛 formula 를 계속 봅니다 |
 | `rm -f ~/Library/Caches/Homebrew/dong-mcu*` | 받아둔 tarball 을 지웁니다 |
 | `brew tap … dong-csu` | 새 tap 을 답니다 |
-| `brew install dong-csu` | 새로 설치합니다 (소스 빌드라 몇십 초 걸립니다) |
+| `brew install -y dong-csu` | 새로 설치합니다 (소스 빌드라 몇십 초 걸립니다) |
 | `cp -R … /Applications/` | Launchpad·Spotlight 에 뜨게 복사합니다. 심볼릭 링크는 안 됩니다 |
 
 ## 설정까지 완전히 지우고 싶다면

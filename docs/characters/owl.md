@@ -131,7 +131,7 @@ dong-csu의 마스코트. HUD 링 가운데, 메뉴바, 앱 아이콘이 **전�
 
 ## 펫 모드
 
-<img src="../pet.png" width="80" align="left" alt="펫" hspace="12">
+<img src="../../mac/docs/pet.png" width="80" align="left" alt="펫" hspace="12">
 
 **마스코트를 더블클릭하면** 펫 모드로 들어가고, 다시 더블클릭하면 들어오기 직전의
 보기로 돌아간다. 마스코트 **밖**을 더블클릭하면 예전처럼 접었다 폈다 한다 — 셋을 한
