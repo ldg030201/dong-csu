@@ -352,6 +352,7 @@ final class HUDController {
             $0.rebuildRootView()
         }
         observe(settings.$showsVersionBadge) { $0.rebuildRootView() }
+        observe(settings.$animatesIcon) { $0.syncOwlAnimator() }
         observe(settings.$petWanders) { $0.syncMotion() }
         // 커서를 피하려면 마스코트 위에 커서가 있는지를 알아야 한다.
         // 링을 항상 보이게 해 뒀어도 그때는 추적 영역이 필요하다.
@@ -408,7 +409,7 @@ final class HUDController {
     private func syncOwlAnimator(visible: Bool? = nil) {
         let isVisible = visible ?? panel.isVisible
 
-        if isVisible, !areScreensAsleep, settings.iconStyle.isAnimated {
+        if isVisible, !areScreensAsleep, settings.iconStyle.isAnimated, settings.animatesIcon {
             owlAnimator.start()
         } else {
             owlAnimator.stop()

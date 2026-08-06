@@ -195,7 +195,21 @@ final class UpdateChecker: ObservableObject {
         # 플래그(-y) 대신 환경변수를 쓴다 — 옛 Homebrew 는 모르는 변수를 그냥 무시하지만,
         # 모르는 플래그를 만나면 통째로 실패한다.
         export HOMEBREW_NO_ASK=1
-        brew update && brew upgrade dong-csu || exit 1
+
+        # **`brew update` 를 먼저 돌리지 않는다.** 그건 Homebrew 자신과 깔려 있는 tap 을
+        # 전부 갱신해서 10~30초가 걸린다. 우리한테 필요한 건 우리 tap 하나뿐이고,
+        # 그것만 당기면 0.5초면 끝난다.
+        TAP="$(brew --repository ldg030201/dong-csu 2>/dev/null)"
+        if [ -d "$TAP/.git" ] && git -C "$TAP" pull --quiet 2>/dev/null; then
+          echo "tap 갱신 완료"
+        else
+          # tap 만으로 안 되는 경우(Homebrew 자체가 오래됐거나 tap 이 git 이 아닐 때)에만
+          # 전체 갱신으로 물러난다.
+          echo "tap 만으로는 갱신하지 못해 brew update 로 넘어갑니다. 조금 걸립니다."
+          brew update || exit 1
+        fi
+
+        brew upgrade dong-csu || exit 1
 
         if [ -d /Applications/DongCSU.app ]; then
           echo

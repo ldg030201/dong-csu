@@ -43,6 +43,12 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.2.0", date: nil, notes: [
+            "마스코트 애니메이션 끄기 설정 추가 (아이콘 탭)",
+            "모든 설정 초기화 추가 (표시 탭)",
+            "설정 창을 키우거나 전체화면으로 넘기면 내용이 가운데 멈춰 있던 문제 수정",
+            "앱 안의 업데이트가 Homebrew 전체를 갱신하던 것을 이 tap 만 갱신하도록 개선",
+        ]),
         ChangelogEntry(version: "2.1.1", date: "2026-08-06", notes: [
             "로그인할 때 자동 시작 설정 추가 (표시 탭)",
         ]),

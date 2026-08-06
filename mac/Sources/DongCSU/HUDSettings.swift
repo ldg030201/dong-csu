@@ -126,21 +126,21 @@ enum PollInterval: Int, CaseIterable {
 /// UserDefaults를 직접 읽고 쓰면 화면마다 상태가 어긋나기 쉽다.
 @MainActor
 final class HUDSettings: ObservableObject {
-    @Published var appearance: HUDAppearance {
+    @Published var appearance: HUDAppearance = .default {
         didSet { defaults.set(appearance.rawValue, forKey: Keys.appearance) }
     }
 
-    @Published var iconStyle: ClaudeIconStyle {
+    @Published var iconStyle: ClaudeIconStyle = .default {
         didSet { defaults.set(iconStyle.rawValue, forKey: Keys.iconStyle) }
     }
 
-    @Published var mode: HUDMode {
+    @Published var mode: HUDMode = .default {
         didSet { defaults.set(mode.rawValue, forKey: Keys.mode) }
     }
 
     var isCollapsed: Bool { mode == .collapsed }
 
-    @Published var petRingDisplay: PetRingDisplay {
+    @Published var petRingDisplay: PetRingDisplay = .default {
         didSet { defaults.set(petRingDisplay.rawValue, forKey: Keys.petRingDisplay) }
     }
 
@@ -148,26 +148,26 @@ final class HUDSettings: ObservableObject {
     /// 접어 두고 쓰다 펫에 들렀는데 나올 때 펼쳐져 있으면 놀란다.
     @Published var modeBeforePet: HUDMode = .expanded
 
-    @Published var isHUDVisible: Bool {
+    @Published var isHUDVisible: Bool = true {
         didSet { defaults.set(!isHUDVisible, forKey: Keys.hidden) }
     }
 
-    @Published var expandSide: HUDExpandSide {
+    @Published var expandSide: HUDExpandSide = .default {
         didSet { defaults.set(expandSide.rawValue, forKey: Keys.expandSide) }
     }
 
-    @Published var scale: HUDScale {
+    @Published var scale: HUDScale = .default {
         didSet { defaults.set(scale.rawValue, forKey: Keys.scale) }
     }
 
     /// 새 버전이 나왔는지 하루 한 번 GitHub에 물어볼지.
     /// 끄면 이 앱은 Anthropic API 외에 아무 데도 접속하지 않는다.
-    @Published var checksForUpdates: Bool {
+    @Published var checksForUpdates: Bool = true {
         didSet { defaults.set(!checksForUpdates, forKey: Keys.updateCheckOff) }
     }
 
     /// HUD 배경 불투명도. 너무 투명하면 글자가 안 읽혀서 아래를 막아둔다.
-    @Published var backdropOpacity: Double {
+    @Published var backdropOpacity: Double = HUDSettings.defaultOpacity {
         didSet {
             let clamped = min(Self.maxOpacity, max(Self.minOpacity, backdropOpacity))
             if clamped != backdropOpacity {
@@ -178,7 +178,7 @@ final class HUDSettings: ObservableObject {
         }
     }
 
-    @Published var pollInterval: PollInterval {
+    @Published var pollInterval: PollInterval = .default {
         didSet { defaults.set(pollInterval.rawValue, forKey: Keys.pollInterval) }
     }
 
@@ -209,22 +209,30 @@ final class HUDSettings: ObservableObject {
     }
 
     /// HUD 왼쪽 아래에 이 앱의 CPU·메모리를 표시할지.
-    @Published var showsProcessStats: Bool {
+    @Published var showsProcessStats: Bool = false {
         didSet { defaults.set(showsProcessStats, forKey: Keys.showsProcessStats) }
     }
 
     /// HUD 왼쪽 위에 버전을 표시할지. 테스트판은 뒤에 `test`가 붙는다.
-    @Published var showsVersionBadge: Bool {
+    /// 가운데 마스코트를 움직일지.
+    ///
+    /// 움직임 자체가 거슬리는 사람이 있고, 배터리를 아끼고 싶을 때도 끈다.
+    /// **정지 그림인 아이콘에는 애초에 걸리지 않는다** — `ClaudeIconStyle.isAnimated` 참고.
+    @Published var animatesIcon: Bool = true {
+        didSet { defaults.set(!animatesIcon, forKey: Keys.iconAnimationOff) }
+    }
+
+    @Published var showsVersionBadge: Bool = true {
         didSet { defaults.set(!showsVersionBadge, forKey: Keys.versionBadgeOff) }
     }
 
     /// 펫이 가만히 두면 혼자 화면을 걸어다닐지.
-    @Published var petWanders: Bool {
+    @Published var petWanders: Bool = true {
         didSet { defaults.set(!petWanders, forKey: Keys.petWandersOff) }
     }
 
     /// 커서를 펫 위에 올려둔 채 잡지 않으면 비켜줄지.
-    @Published var petDodgesCursor: Bool {
+    @Published var petDodgesCursor: Bool = true {
         didSet { defaults.set(!petDodgesCursor, forKey: Keys.petDodgesCursorOff) }
     }
 
@@ -276,6 +284,8 @@ final class HUDSettings: ObservableObject {
         static let pollInterval = "hud.pollInterval"
         // 버전 표시도 기본값이 켜짐이라 반대 의미로 저장한다.
         static let versionBadgeOff = "hud.versionBadgeOff"
+        // 애니메이션도 기본값이 켜짐이라 반대 의미로 저장한다.
+        static let iconAnimationOff = "hud.iconAnimationOff"
         // 둘 다 기본값이 켜짐이라 반대 의미로 저장한다.
         static let petWandersOff = "pet.wandersOff"
         static let petDodgesCursorOff = "pet.dodgesCursorOff"
@@ -285,6 +295,11 @@ final class HUDSettings: ObservableObject {
         self.defaults = defaults
         // 앱 이름이 바뀌면 UserDefaults 도메인이 갈린다. 읽기 전에 옛 것을 옮겨 온다.
         if defaults == .standard { Self.migrateLegacyDefaults(into: defaults) }
+        load()
+    }
+
+    /// 저장된 값을 전부 다시 읽어 온다. `init`과 `resetAll()`이 같이 쓴다.
+    private func load() {
         appearance = HUDAppearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .default
         iconStyle = ClaudeIconStyle(rawValue: defaults.string(forKey: Keys.iconStyle) ?? "") ?? .default
         // 모드가 생기기 전에 접어 두고 쓰던 사람은 그대로 접힌 채로 시작한다.
@@ -305,10 +320,32 @@ final class HUDSettings: ObservableObject {
         showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)
         pollInterval = PollInterval(rawValue: defaults.integer(forKey: Keys.pollInterval)) ?? .default
         showsVersionBadge = !defaults.bool(forKey: Keys.versionBadgeOff)
+        animatesIcon = !defaults.bool(forKey: Keys.iconAnimationOff)
         // 펫 모드를 고른 사람은 마스코트를 보려고 고른 것이다. 꺼 둔 채로 내보니
         // 설정을 열어보기 전까지 이런 게 있는 줄도 모른 채 지나갔다.
         petWanders = !defaults.bool(forKey: Keys.petWandersOff)
         petDodgesCursor = !defaults.bool(forKey: Keys.petDodgesCursorOff)
+    }
+
+    /// 저장해 둔 설정을 전부 지우고 기본값으로 되돌린다.
+    ///
+    /// **키를 하나씩 지우지 않는다.** 창 위치(`hud.origin.*`)나 지난 기능이 남긴 값처럼
+    /// `Keys`에 없는 것들이 있어서, 목록을 손으로 관리하면 반드시 빠뜨린다. 도메인을
+    /// 통째로 비우고 **다시 옮겨 오지 않게 하는 표시만** 남긴다 — 그게 지워지면
+    /// 다음 실행 때 옛 `dong-mcu` 설정이 되살아나서 초기화가 아니게 된다.
+    func resetAll() {
+        guard let domain = Bundle.main.bundleIdentifier else { return }
+        let alreadyMigrated = defaults.bool(forKey: Keys.migratedFromLegacy)
+
+        defaults.removePersistentDomain(forName: domain)
+        if alreadyMigrated { defaults.set(true, forKey: Keys.migratedFromLegacy) }
+
+        // 로그인 항목은 UserDefaults가 아니라 시스템이 들고 있다. 설정 창에서 켜고 끄는
+        // 것으로 보이므로 여기서도 함께 끈다.
+        LoginItem.setEnabled(false)
+
+        load()
+        startsAtLogin = LoginItem.isEnabled
     }
 }
 

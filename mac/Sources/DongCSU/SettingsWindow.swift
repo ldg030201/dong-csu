@@ -47,10 +47,10 @@ struct SettingsView: View {
     /// 높이는 가장 긴 탭(표시)이 스크롤 없이 들어가는 값이다.
     /// 탭에 항목을 더했으면 `--render-settings`로 재어 보고 여기를 함께 올린다.
     ///
-    /// 표시 탭은 평소 526이고, 로그인 항목을 시스템 설정에서 꺼 두면 안내 한 줄이
+    /// 표시 탭은 평소 582이고, 로그인 항목을 시스템 설정에서 꺼 두면 안내 한 줄이
     /// 더 붙는다. **그 상태까지 들어가는 값**이라 평소에는 아래가 조금 빈다 —
     /// 드물게 뜨는 줄이 잘려서 버튼을 못 누르는 것보다 낫다.
-    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 548)
+    static let size = CGSize(width: sidebarWidth + 1 + contentWidth, height: 604)
 
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
@@ -60,6 +60,9 @@ struct SettingsView: View {
     /// 미리보기 렌더는 ScrollView 안을 그리지 못한다. 그럴 때는 스크롤을 벗겨서
     /// 내용이 잘리더라도 보이게 한다.
     var isPreviewRender = false
+
+    /// 초기화는 되돌릴 수 없어서 한 번 더 묻는다.
+    @State private var isConfirmingReset = false
 
     /// 어느 탭이 열려 있는지. 메뉴에서 "변경 내역…"을 누르면 창 밖에서 바꾸므로
     /// 뷰 안의 @State가 아니라 설정 객체가 들고 있다.
@@ -321,6 +324,30 @@ struct SettingsView: View {
                         .controlSize(.small)
                 }
             }
+
+            Divider().padding(.vertical, 2)
+
+            HStack(spacing: 8) {
+                Button("모든 설정 초기화") { isConfirmingReset = true }
+                Text("창 위치·크기·아이콘·펫 설정을 전부 처음 상태로 되돌린다.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .confirmationDialog(
+                "모든 설정을 초기화할까요?",
+                isPresented: $isConfirmingReset,
+                titleVisibility: .visible
+            ) {
+                Button("초기화", role: .destructive) {
+                    settings.resetAll()
+                    // 창 위치는 설정 객체가 아니라 패널이 들고 있다. 함께 되돌린다.
+                    actions.resetPosition()
+                }
+                Button("취소", role: .cancel) {}
+            } message: {
+                Text("되돌릴 수 없습니다. 로그인할 때 자동 시작도 함께 꺼집니다.")
+            }
         }
     }
 
@@ -417,7 +444,30 @@ struct SettingsView: View {
                     }
                 }
             }
+
+            Divider().padding(.vertical, 2)
+
+            Toggle("마스코트 움직이기", isOn: $settings.animatesIcon)
+                .disabled(!settings.iconStyle.isAnimated)
+
+            // 정지 그림을 골라 두면 스위치가 꺼져 있는 이유를 알 수 없다. 적어 준다.
+            Text(animationNote)
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// 애니메이션 스위치 밑에 붙는 설명. 고른 그림에 따라 달라진다.
+    private var animationNote: String {
+        guard settings.iconStyle.isAnimated else {
+            return "\(settings.iconStyle.shortTitle)은 정지 그림이라 움직이지 않는다. "
+                + "Claude 쪽 그림은 저작권이 Anthropic에 있어 자세를 새로 만들지 않는다 — "
+                + "움직이는 건 이 앱이 직접 그린 캐릭터뿐이다."
+        }
+        return settings.animatesIcon
+            ? "한도가 차면 지치고, 조회가 끊기면 색이 빠진다. 끄면 평소 자세로 멈춘다."
+            : "지금은 멈춰 있다. 기분에 따른 색 변화는 그대로 보인다."
     }
 
     private func iconTile(_ style: ClaudeIconStyle) -> some View {
@@ -665,9 +715,15 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                 version: version
             )
 
+            // **크기를 바꿀 수 없게 한다.**
+            //
+            // 내용이 고정 폭(사이드바 + 356)이라, 창만 키우면 알맹이는 그대로 가운데
+            // 남고 둘레만 빈다. 전체화면으로 넘기면 더 심하다 — 늘어나지도 않고
+            // 따라가지도 않는 채로 멈춰 있는 것처럼 보인다. 줄일 수 있게 두면 잘려서
+            // 버튼을 못 누른다. macOS 설정 창들이 대개 그렇듯 고정으로 둔다.
             let window = NSWindow(
                 contentRect: NSRect(origin: .zero, size: SettingsView.size),
-                styleMask: [.titled, .closable, .resizable],
+                styleMask: [.titled, .closable],
                 backing: .buffered,
                 defer: false
             )
@@ -678,12 +734,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             window.contentViewController = NSHostingController(rootView: view)
             // NSHostingController는 레이아웃 전에 크기를 모른다. 명시하지 않으면 창이 0으로 찌그러진다.
             window.setContentSize(SettingsView.size)
-            // 이보다 줄이면 스크롤로 볼 수 있다.
-            window.contentMinSize = NSSize(width: 320, height: 220)
+            window.contentMinSize = SettingsView.size
+            window.contentMaxSize = SettingsView.size
+            // 초록 버튼으로 전체화면에 들어가는 것도 막는다. styleMask 만으로는 남는다.
+            window.collectionBehavior.insert(.fullScreenNone)
             window.isReleasedWhenClosed = false
             window.delegate = self
-            // 닫았다 다시 열면 이전 자리·크기를 그대로 쓴다.
-            if let lastFrame { window.setFrame(lastFrame, display: false) }
+            // 닫았다 다시 열면 이전 자리를 그대로 쓴다. 크기는 고정이라 자리만 본다.
+            if let lastFrame {
+                window.setFrameOrigin(lastFrame.origin)
+            }
             self.window = window
         }
 
