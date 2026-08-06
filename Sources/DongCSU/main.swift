@@ -1,6 +1,6 @@
 import AppKit
 
-let dongCSUVersion = "1.5.2"
+let dongCSUVersion = "2.0.0"
 
 if CommandLine.arguments.contains("--version") {
     print("dong-csu \(AppInfo.version)")
