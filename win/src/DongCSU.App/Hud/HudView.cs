@@ -25,6 +25,12 @@ public enum HudHit
     /// 마스코트가 창의 거의 전부라, 여기서 못 끌면 창을 옮길 방법이 없다.
     /// </summary>
     Mascot,
+    /// <summary>다음 조회 카운트다운. 누를 것은 없고 무슨 상태인지 알려만 준다.</summary>
+    Countdown,
+    /// <summary>이 앱 자신이 쓰는 CPU·메모리 줄.</summary>
+    StatsRow,
+    /// <summary>왼쪽 위 버전 딱지.</summary>
+    VersionBadge,
 }
 
 /// <summary>
@@ -391,7 +397,60 @@ public sealed class HudView : FrameworkElement
         // 다른 것을 다 덮는다. 링과 마스코트가 겹쳐 있으므로 링 전체를 잡는다.
         if (RingRect().Contains(point)) return HudHit.Mascot;
 
+        // 누를 것이 없는 자리들. 무엇인지 알려만 주므로 **맨 뒤**에 본다.
+        if (VersionBadgeStrip() is { } version && version.Contains(point)) return HudHit.VersionBadge;
+        if (StatsStrip() is { } stats && stats.Contains(point)) return HudHit.StatsRow;
+        if (CountdownStrip() is { } countdown && countdown.Contains(point)) return HudHit.Countdown;
+
         return HudHit.None;
+    }
+
+    /// <summary>
+    /// 글로만 된 자리들의 대략적인 범위.
+    ///
+    /// 글자 폭을 정확히 재지 않는다 — 재려면 <see cref="FormattedText"/> 를 만들어야 하는데,
+    /// 그건 마우스가 움직일 때마다 도는 자리에 두기엔 비싸다. **누를 것이 없는 자리**라
+    /// 조금 넉넉해도 탈이 없다.
+    /// </summary>
+    private Rect? CountdownStrip()
+    {
+        if (Mode is HudMode.Collapsed or HudMode.Pet) return null;
+
+        var s = Scale;
+        var size = DesiredHudSize;
+        var inset = HasStatsRow ? 13 * s : 10 * s;
+        var bottom = HasStatsRow ? size.Height - 4 * s : BaseExpandedHeight * s - 7 * s;
+        var width = 76 * s;
+        var top = bottom - 13 * s;
+
+        return new Rect(ToRight ? size.Width - inset - width : inset, top, width, 13 * s);
+    }
+
+    private Rect? StatsStrip()
+    {
+        if (!HasStatsRow) return null;
+
+        var s = Scale;
+        var size = DesiredHudSize;
+        var inset = 13 * s;
+        var width = 108 * s;
+        var bottom = size.Height - 4 * s;
+
+        return new Rect(ToRight ? inset : size.Width - inset - width, bottom - 13 * s, width, 13 * s);
+    }
+
+    private Rect? VersionBadgeStrip()
+    {
+        if (Mode == HudMode.Collapsed || VersionBadge is null) return null;
+
+        var s = Scale;
+        var rect = UpdateBadgeRect();
+        var width = 46 * s;
+        var left = ToRight
+            ? (HasUpdate ? rect.Right + 3 * s : rect.Left)
+            : (HasUpdate ? rect.Left - 3 * s : rect.Right) - width;
+
+        return new Rect(left, rect.Top, width, rect.Height);
     }
 
     /// <summary>그 자리가 무엇인지 알려주는 문구. 작은 그림뿐이라 이게 없으면 물어볼 곳이 없다.</summary>
@@ -405,8 +464,23 @@ public sealed class HudView : FrameworkElement
         HudHit.Mascot => Mode == HudMode.Pet
             ? SummaryText ?? "두 번 눌러 원래 보기로"
             : "두 번 눌러 마스코트만 보기",
+        HudHit.Countdown => CountdownHelp,
+        HudHit.StatsRow => "dong-csu 자신이 쓰는 CPU와 메모리",
+        HudHit.VersionBadge => VersionBadgeIsTest ? "테스트 빌드다 — 배포본이 아니다" : "지금 버전",
         _ => null,
     };
+
+    /// <summary>카운트다운 자리가 지금 무슨 뜻인지. 숫자만으로는 멈춘 건지 도는 건지 모른다.</summary>
+    private string CountdownHelp
+    {
+        get
+        {
+            if (NeedsReauth) return $"Claude Code 재로그인이 필요하다 — {ErrorText}";
+            if (ErrorText is { } error) return $"갱신 실패로 마지막 성공값을 보여주는 중 — {error}";
+            if (NextPollAt is null) return "화면이 꺼져 있어 조회를 멈춘 상태";
+            return "다음 사용량 조회까지 남은 시간";
+        }
+    }
 
     /// <summary>펫에서 마스코트에 올렸을 때 띄울 요약. 창이 넣어 준다.</summary>
     public string? SummaryText { get; set; }

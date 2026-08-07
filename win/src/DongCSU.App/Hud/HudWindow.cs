@@ -401,7 +401,11 @@ public sealed class HudWindow : Window
 
         view.Hover = hit;
         // 마스코트는 끄는 자리다. 손가락 커서를 띄우면 눌러야 할 것처럼 보인다.
-        Cursor = hit is HudHit.None or HudHit.Mascot ? Cursors.Arrow : Cursors.Hand;
+        // 카운트다운·자원 줄·버전 딱지는 **읽는 자리**라 마찬가지다.
+        Cursor = hit is HudHit.None or HudHit.Mascot
+            or HudHit.Countdown or HudHit.StatsRow or HudHit.VersionBadge
+            ? Cursors.Arrow
+            : Cursors.Hand;
         ToolTip = view.TooltipFor(hit);
         view.InvalidateVisual();
     }
