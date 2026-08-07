@@ -3,18 +3,34 @@ using DongCSU.Core.Owl;
 namespace DongCSU.Core.Tests;
 
 /// <summary>
-/// 손에 들린 채로 어지러울 때.
+/// 손에 들려 있는 동안.
 ///
-/// **흔드는 그 자리에서 눈이 풀려야 한다** — 놓아야 보이면 흔든 보람이 없다.
-/// 다만 몸은 매달린 자세 그대로다. 통째로 비틀거리는 그림으로 갈아타면 허공에서
-/// 휘청이는 꼴이라 무엇이 흔들리는 건지 알 수 없다.
+/// **자세는 프레임을 돌려서 만들지 않는다.** 끄는 속도로 만든다 — 가만히 잡고만 있으면
+/// 매달린 채로 멈춰 있고, 옮기는 방향에 따라 몸이 처지고 날개가 움직인다. 잡기만 해도
+/// 계속 흔들리면 무엇 때문에 움직이는 건지 알 수 없다.
 /// </summary>
 public class DizzyDragTests
 {
+    private static readonly DateTimeOffset Start = new(2026, 8, 7, 12, 0, 0, TimeSpan.Zero);
+
     private static OwlAnimator Animator() => new(OwlDocument.Embedded, new Random(1));
 
     private static OwlAnimation Animation(string name) =>
         OwlDocument.Embedded.Animations.Single(a => a.Name == name);
+
+    /// <summary>매달린 자세 하나를 글자로. 얼굴은 한 틱 전, 발은 두 틱 전 기울기를 따른다.</summary>
+    private static string[] Carried(
+        int lean, int face, int feet, OwlEyes eyes = OwlEyes.Open, OwlWings wings = OwlWings.Droop) =>
+        OwlComposer.Compose(OwlDocument.Embedded, new OwlPose
+        {
+            Eyes = eyes,
+            Wings = wings,
+            Feet = OwlFeet.Dangle,
+            Lean = lean,
+            FaceLean = face - lean,
+            FeetLean = feet,
+            Bob = 0,
+        });
 
     [Fact]
     public void 끌리는_중에_어지러우면_자세는_끌린_그대로다()
@@ -27,22 +43,17 @@ public class DizzyDragTests
         Assert.Equal("dragged", animator.Animation.Name);
     }
 
-    /// <summary>몸은 그대로고 **눈만** 바뀐다. 그림이 달라지긴 해야 한다.</summary>
+    /// <summary>몸은 매달린 그대로고 **눈만** 바뀐다.</summary>
     [Fact]
     public void 끌리는_중에_어지러우면_눈만_바뀐다()
     {
         var animator = Animator();
         animator.IsDragged = true;
-        var calm = animator.CurrentGrid;
+        Assert.Equal(Carried(0, 0, 0), animator.CurrentGrid);
 
         animator.IsDizzy = true;
-        var woozy = animator.CurrentGrid;
 
-        Assert.NotEqual(calm, woozy);
-
-        // 같은 자세를 어지러운 눈으로 합성한 것과 글자 단위로 같아야 한다.
-        var pose = Animation("dragged").Frames[0].Pose with { Eyes = OwlEyes.Dizzy };
-        Assert.Equal(OwlComposer.Compose(OwlDocument.Embedded, pose), woozy);
+        Assert.Equal(Carried(0, 0, 0, OwlEyes.Dizzy), animator.CurrentGrid);
     }
 
     /// <summary>손에서 놓으면 그때는 통째로 비틀거리는 그림으로 간다.</summary>
@@ -60,23 +71,126 @@ public class DizzyDragTests
     }
 
     /// <summary>
-    /// **끌리는 중에 어지러워져도 프레임을 되감지 않는다.** 되감으면 흔드는 도중에
-    /// 몸이 툭 튄다 — 자세가 바뀌는 게 아니라 눈만 바뀌는 것이라 이어져야 한다.
+    /// **잡고만 있으면 가만히 매달려 있다.** 사용자가 본 증상이 이것이다 — 잡기만 해도
+    /// 계속 흔들렸다.
     /// </summary>
     [Fact]
-    public void 끌리는_중에는_어지러워져도_되감지_않는다()
+    public void 잡고만_있으면_자세가_그대로다()
     {
         var animator = Animator();
         animator.IsDragged = true;
-        animator.Advance();
-        animator.Advance();
-        var poseBefore = Animation("dragged").Frames[2].Pose;
+        var still = animator.CurrentGrid;
 
-        animator.IsDizzy = true;
+        var now = Start;
+        for (var i = 0; i < 12; i++)
+        {
+            now += OwlAnimator.DragTick;
+            animator.Advance(now);
+            Assert.Equal(still, animator.CurrentGrid);
+        }
+    }
 
+    /// <summary>오른쪽으로 빠르게 끌면 몸이 **왼쪽으로** 처진다. 손보다 늦게 따라오기 때문이다.</summary>
+    [Fact]
+    public void 오른쪽으로_끌면_몸이_왼쪽으로_처진다()
+    {
+        var animator = Animator();
+        animator.IsDragged = true;
+
+        var now = Start;
+        animator.SetDragVelocity(400, 0, now);
+        now += OwlAnimator.DragTick;
+        animator.Advance(now);
+
+        Assert.Equal(Carried(lean: -1, face: 0, feet: 0), animator.CurrentGrid);
+    }
+
+    /// <summary>느리게 옮기는 것만으로는 안 처진다. 자리를 잡으려고 미는 동안 흔들리면 성가시다.</summary>
+    [Fact]
+    public void 느리게_옮기면_그냥_매달려_있다()
+    {
+        var animator = Animator();
+        animator.IsDragged = true;
+
+        var now = Start;
+        animator.SetDragVelocity(100, 0, now);
+        now += OwlAnimator.DragTick;
+        animator.Advance(now);
+
+        Assert.Equal(Carried(0, 0, 0), animator.CurrentGrid);
+    }
+
+    /// <summary>들어 올리면 날개를 든다. 세게 내리면 활짝 편다.</summary>
+    [Theory]
+    [InlineData(300, OwlWings.Lift)]
+    [InlineData(-300, OwlWings.Lift)]
+    [InlineData(-900, OwlWings.Spread)]
+    [InlineData(50, OwlWings.Droop)]
+    public void 세로_속도가_날개를_정한다(double vertical, OwlWings expected)
+    {
+        var animator = Animator();
+        animator.IsDragged = true;
+
+        var now = Start;
+        animator.SetDragVelocity(0, vertical, now);
+        now += OwlAnimator.DragTick;
+        animator.Advance(now);
+
+        Assert.Equal(Carried(0, 0, 0, OwlEyes.Open, expected), animator.CurrentGrid);
+    }
+
+    /// <summary>
+    /// **마우스가 멈추면 매달린 자세로 돌아온다.** 멈추면 이벤트가 끊겨서 속도가 옛 값으로
+    /// 남는데, 그걸 그대로 쓰면 손을 세워 둔 채로 영영 처져 있는다.
+    /// </summary>
+    [Fact]
+    public void 마우스가_멈추면_매달린_자세로_돌아온다()
+    {
+        var animator = Animator();
+        animator.IsDragged = true;
+
+        var now = Start;
+        animator.SetDragVelocity(400, 0, now);
+        now += OwlAnimator.DragTick;
+        animator.Advance(now);
+        Assert.NotEqual(Carried(0, 0, 0), animator.CurrentGrid);
+
+        // 속도를 더 넣지 않는다. 한 틱만 지나도 0.13초를 넘겨 몸은 바로 선다.
+        // 다만 얼굴과 발이 한 틱·두 틱 늦게 따라오므로 다 가라앉는 데 세 틱이 든다.
+        for (var i = 0; i < 3; i++)
+        {
+            now += OwlAnimator.DragTick;
+            animator.Advance(now);
+        }
+
+        Assert.Equal(Carried(0, 0, 0), animator.CurrentGrid);
+    }
+
+    /// <summary>
+    /// **우리가 만든 매달린 자세가 맥이 뽑아 둔 것과 글자 하나까지 같아야 한다.**
+    ///
+    /// <c>owl.json</c> 의 <c>dragged</c> 프레임들은 맥이 같은 규칙으로 만든 결과다.
+    /// 기울기 세 개(몸·얼굴·발)에서 그 프레임이 나오면 옮겨 적은 규칙이 맞는 것이다.
+    /// </summary>
+    [Theory]
+    [InlineData(0, -1, 0, 0)]
+    [InlineData(1, -1, -1, 0)]
+    [InlineData(2, 0, -1, -1)]
+    [InlineData(3, 1, 0, -1)]
+    public void 매달린_자세가_맥이_뽑아둔_것과_같다(int frame, int lean, int face, int feet)
+    {
+        Assert.Equal(Animation("dragged").Frames[frame].Grid, Carried(lean, face, feet));
+    }
+
+    /// <summary>날개를 든 칸과 편 칸도 대조한다.</summary>
+    [Theory]
+    [InlineData(6, OwlWings.Lift)]
+    [InlineData(7, OwlWings.Spread)]
+    public void 날개_자세도_맥이_뽑아둔_것과_같다(int frame, OwlWings wings)
+    {
         Assert.Equal(
-            OwlComposer.Compose(OwlDocument.Embedded, poseBefore with { Eyes = OwlEyes.Dizzy }),
-            animator.CurrentGrid);
+            Animation("dragged").Frames[frame].Grid,
+            Carried(0, 0, 0, OwlEyes.Open, wings));
     }
 
     /// <summary>끌리지 않을 때는 그대로다 — 어지러움이 기분·걸음을 이긴다.</summary>

@@ -49,6 +49,9 @@ public sealed class PetShake(TimeProvider? time = null)
 
     public bool IsDizzy => dizzyUntil > time.GetUtcNow();
 
+    /// <summary>마지막으로 잰 속도(pt/s). 끌려가는 자세를 정할 때도 이 값을 쓴다.</summary>
+    public PetPoint Velocity { get; private set; }
+
     /// <summary>
     /// 끌기 시작. **점수를 새로 센다** — 사이를 두고 조금씩 흔든 것이 쌓여서
     /// 엉뚱한 때에 어지러워지면 안 된다.
@@ -59,6 +62,7 @@ public sealed class PetShake(TimeProvider? time = null)
         lastHorizontal = 0;
         lastVertical = 0;
         previous = null;
+        Velocity = default;
     }
 
     /// <summary>
@@ -85,6 +89,7 @@ public sealed class PetShake(TimeProvider? time = null)
 
         var dx = (position.X - before.X) / seconds;
         var dy = (position.Y - before.Y) / seconds;
+        Velocity = new PetPoint(dx, dy);
 
         // 아주 긴 간격(다른 창에 갔다 온 뒤 등)에 점수가 통째로 날아가지 않게 막는다.
         score = Math.Max(0, score - DecayPerSecond * Math.Min(seconds, 0.25));

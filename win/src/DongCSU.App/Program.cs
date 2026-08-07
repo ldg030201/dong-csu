@@ -143,6 +143,8 @@ public sealed class AppController : IDisposable
         // 크기를 옮기는 동안에는 걸음을 멈춰 뒀다. 끝나면 다시 켠다.
         hud.Settled += () => SyncMotion();
         hud.DizzyStarted += OnDizzyStarted;
+        // 끌리는 자세는 프레임을 돌리는 게 아니라 **끄는 속도**로 만든다.
+        hud.DragMoved += v => animator.SetDragVelocity(v.X, v.Y, DateTimeOffset.UtcNow);
         // 우클릭은 트레이와 **같은 메뉴**를 띄운다. 설정 창이 튀어나오면 놀란다.
         hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
         hud.SettingsRequested += () => OpenSettings();
@@ -279,6 +281,8 @@ public sealed class AppController : IDisposable
             StartFrameTimer();
         }
 
+        // 끊겼다 돌아왔는지에 따라 걸음을 멈추거나 다시 켠다.
+        SyncMotion();
         RefreshHud();
         tray?.UpdateSummary(store.SummaryText(), store.NeedsReauth);
         settingsWindow?.Refresh();
@@ -391,6 +395,9 @@ public sealed class AppController : IDisposable
         && !window.IsHeld
         && !window.IsResizing
         && !screensAsleep
+        // 조회가 끊긴 동안에는 멈춰 있는다. 회색으로 굳은 채 걸어다니면
+        // "멈췄다"는 표시가 무색해진다.
+        && !store.IsDisconnected
         && (settings.PetWanders || settings.PetDodgesCursor);
 
     /// <summary>잡혔다 놓였다. 자세를 바꾸고 움직임을 멈췄다 다시 켠다.</summary>

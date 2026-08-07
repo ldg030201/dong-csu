@@ -109,7 +109,62 @@ public class OwlGaitTests
 
         for (var i = 0; i < 4; i++) animator.Advance();
 
-        Assert.Same(first, animator.CurrentGrid);
+        Assert.Equal(first, animator.CurrentGrid);
+    }
+
+    /// <summary>
+    /// **우리가 합성한 걸음이 맥이 뽑아 둔 것과 글자 하나까지 같아야 한다.**
+    ///
+    /// 걷는 자세는 <c>owl.json</c> 의 그림을 그대로 쓰지 않고 기분이 준 자세 위에 발을
+    /// 얹어 만든다(그래야 지친 채로 걷는다). 옮겨 적은 규칙은 언젠가 어긋나므로,
+    /// 평소(idle) 기분에서는 맥의 결과와 대조해 굳혀 둔다.
+    /// </summary>
+    [Theory]
+    [InlineData("walk", PetGait.Walk)]
+    [InlineData("run", PetGait.Run)]
+    public void 합성한_걸음이_맥이_뽑아둔_것과_같다(string name, PetGait gait)
+    {
+        var frames = OwlDocument.Embedded.Animations.Single(a => a.Name == name).Frames;
+        var animator = Animator();
+        animator.SetGait(gait);
+
+        for (var phase = 0; phase < 4; phase++)
+        {
+            Assert.Equal(frames[phase].Grid, animator.CurrentGrid);
+            animator.Advance();
+        }
+    }
+
+    /// <summary>
+    /// **지친 채로 걷는다.** 걷기 그림을 통째로 쓰면 걷는 순간 눈이 다시 떠지고 처진
+    /// 날개가 올라가서, 사용량이 줄어든 것처럼 읽힌다.
+    /// </summary>
+    [Theory]
+    [InlineData(OwlMood.Tired)]
+    [InlineData(OwlMood.Exhausted)]
+    public void 지친_부엉이는_걸어도_지친_얼굴이다(OwlMood mood)
+    {
+        var document = OwlDocument.Embedded;
+        var resting = document.Animations.Single(a => a.Name == mood.Name()).Frames[0].Pose;
+
+        var animator = Animator();
+        animator.SetMood(mood);
+        animator.SetGait(PetGait.Walk);
+
+        // 눈과 날개는 기분이 준 그대로, 발만 걷는 자세여야 한다.
+        var expected = OwlComposer.Compose(document, resting with
+        {
+            Feet = OwlFeet.StepA,
+            Lean = -1,
+            FaceLean = 0,
+            Bob = 0,
+        });
+
+        Assert.Equal(expected, animator.CurrentGrid);
+        // 평소 기분의 걸음과는 달라야 한다 — 같으면 지친 티가 안 난다.
+        Assert.NotEqual(
+            document.Animations.Single(a => a.Name == "walk").Frames[0].Grid,
+            animator.CurrentGrid);
     }
 
     /// <summary>
@@ -120,17 +175,20 @@ public class OwlGaitTests
     public void 걸을_때_깜빡임은_한참에_한_번이다()
     {
         var animator = Animator();
-        var blink = OwlDocument.Embedded.Animations.Single(a => a.Name == "walk").Frames[6].Grid;
         animator.SetGait(PetGait.Walk);
 
-        var blinks = 0;
-        for (var i = 0; i < 100; i++)
+        var open = 0;
+        var shut = 0;
+        for (var i = 0; i < 120; i++)
         {
             animator.Advance();
-            if (ReferenceEquals(animator.CurrentGrid, blink)) blinks++;
+            // 눈 자리(5번째 줄)에 흰자가 남아 있으면 뜬 것이다.
+            if (animator.CurrentGrid[4].Contains('w')) open++; else shut++;
         }
 
-        // 100틱이면 서너 번. 여덟 칸을 통째로 돌렸다면 열두 번이 넘는다.
-        Assert.InRange(blinks, 2, 5);
+        // 120틱이면 서너 번 깜빡이고 한 번에 두어 칸이다. 여덟 칸을 통째로 돌렸다면
+        // 열다섯 번이 넘는다.
+        Assert.InRange(shut, 1, 14);
+        Assert.True(open > shut);
     }
 }

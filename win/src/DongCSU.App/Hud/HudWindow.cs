@@ -105,6 +105,9 @@ public sealed class HudWindow : Window
                 // 끄는 동안 자리를 계속 넣어 준다. DragMove 는 자기 루프를 돌지만
                 // LocationChanged 는 그 안에서도 온다.
                 if (Shake.Sample(new PetPoint(Left, Top))) DizzyStarted?.Invoke();
+                // 끌리는 자세는 이 속도로 만든다. **화면 좌표는 아래로 커지므로 세로를
+                // 뒤집는다** — 부엉이 쪽은 "들어 올리면 양수"로 센다.
+                DragMoved?.Invoke(new PetPoint(Shake.Velocity.X, -Shake.Velocity.Y));
                 return;
             }
             Moved?.Invoke();
@@ -251,6 +254,9 @@ public sealed class HudWindow : Window
 
     /// <summary>크기 옮기기가 끝났다. 걸음을 다시 켜라는 신호다.</summary>
     public event Action? Settled;
+
+    /// <summary>끄는 동안의 속도(pt/s). 위가 양수다. 끌리는 자세가 이걸 보고 정해진다.</summary>
+    public event Action<PetPoint>? DragMoved;
 
     /// <summary>
     /// 그리는 자리를 창의 어느 모서리에 붙일지 정한다.

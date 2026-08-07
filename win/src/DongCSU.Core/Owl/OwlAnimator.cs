@@ -60,9 +60,12 @@ public static class OwlMoodResolver
 /// 시간을 직접 재지 않는다 — <see cref="Advance"/> 가 다음 프레임까지 기다릴 시간을
 /// 돌려주고, 타이머는 부르는 쪽이 건다. 그래야 테스트가 시계 없이 돈다.
 /// </summary>
-public sealed class OwlAnimator(OwlDocument document, Random? random = null)
+public sealed class OwlAnimator(OwlDocument document, Random? random = null, TimeProvider? time = null)
 {
     private readonly Random random = random ?? Random.Shared;
+
+    /// <summary>끌리는 동안 "마우스가 멈췄나"를 재는 데만 쓴다. 나머지는 시계 없이 돈다.</summary>
+    private readonly TimeProvider time = time ?? TimeProvider.System;
     private OwlMood mood = OwlMood.Idle;
     private DongCSU.Core.Pet.PetGait? gait;
     private int frameIndex;
@@ -81,7 +84,13 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
 
         var wasStill = gait is null;
         gait = next;
-        if (wasStill) frameIndex = 0;
+        if (wasStill)
+        {
+            frameIndex = 0;
+            // 걷기 시작할 때는 기분이 준 눈 그대로. 첫 칸부터 깜빡이면 어색하다.
+            eyes = MoodPose.Eyes;
+        }
+        Recompose();
         return true;
     }
 
@@ -102,6 +111,15 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
             if (dragged == value) return;
             dragged = value;
             frameIndex = 0;
+            if (dragged)
+            {
+                // 잡은 순간에는 아직 속도가 없다. 가만히 매달린 자세로 시작한다.
+                previousLean = 0;
+                olderLean = 0;
+                dragVelocityAt = DateTimeOffset.MinValue;
+                carried = CarriedPose(0, 0, 0, dizzy ? OwlEyes.Dizzy : OwlEyes.Open, OwlWings.Droop);
+            }
+            Recompose();
         }
     }
 
@@ -119,6 +137,10 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
             if (dizzy == value) return;
             dizzy = value;
             if (!dragged) frameIndex = 0;
+            if (IsWalking) eyes = dizzy ? OwlEyes.Dizzy : MoodPose.Eyes;
+            // 들려 있는 동안에는 다음 틱을 기다리지 않고 바로 눈을 푼다.
+            if (dragged) carried = carried with { Eyes = dizzy ? OwlEyes.Dizzy : OwlEyes.Open };
+            Recompose();
         }
     }
 
@@ -148,22 +170,15 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
     }
 
     /// <summary>
-    /// 걷기·달리기 그림은 여덟 칸이지만 **다리 주기는 앞 네 칸**이다. 뒤 네 칸은 같은
-    /// 다리에 눈 깜빡임이 얹힌 것이고, 그중 실제로 눈이 감긴 것은 <c>여섯 번째 하나뿐</c>이다.
-    ///
-    /// 여덟 칸을 통째로 돌리면 **한 걸음마다(1.1초) 깜빡인다.** 맥은 다리와 눈을 따로
-    /// 돌려서 22~34틱(3~5초)에 한 번 깜빡인다. 여기서도 그렇게 센다.
+    /// 눈을 몇 틱마다 깜빡일지. 붙박아 두기만 하면 노려보는 것처럼 보인다.
+    /// 지터가 없으면 시계처럼 정확한 박자로 깜빡인다.
     /// </summary>
-    private const int GaitLegFrames = 4;
-    private const int GaitBlinkFrame = GaitLegFrames + 2;
-    private const int GaitBlinkLeg = GaitBlinkFrame - GaitLegFrames;
     private const int BlinkInterval = 22;
     private const int BlinkJitter = 12;
 
     private int blinkCountdown = BlinkInterval;
-    private bool blinkQueued;
 
-    /// <summary>지금 걷는 그림을 쓰고 있는지. 끌림·어지러움이 걸음보다 먼저다.</summary>
+    /// <summary>지금 걷는 자세를 쓰고 있는지. 끌림·어지러움이 걸음보다 먼저다.</summary>
     private bool IsWalking => !dragged && !dizzy && gait is not null;
 
     public OwlFrame CurrentFrame
@@ -171,40 +186,195 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
         get
         {
             var frames = Animation.Frames;
-            if (!IsWalking || frames.Count <= GaitBlinkFrame)
-            {
-                return frames[Math.Min(frameIndex, frames.Count - 1)];
-            }
-
-            var leg = frameIndex % GaitLegFrames;
-            return frames[blinkQueued && leg == GaitBlinkLeg ? GaitBlinkFrame : leg];
+            return frames[Math.Min(frameIndex, frames.Count - 1)];
         }
     }
 
     /// <summary>
-    /// 지금 그려야 할 그림. <c>owl.json</c> 이 실어 온 합성 결과를 그대로 쓴다.
+    /// 지금 그려야 할 그림. 대개는 <c>owl.json</c> 이 실어 온 합성 결과를 그대로 쓴다.
     ///
-    /// **한 가지만 예외다** — 손에 들린 채로 어지러우면 매달린 자세에 풀린 눈만 얹는다.
+    /// **스스로 도는 상태(걸음·끌림)만 예외다.** 그때는 자세를 여기서 합성한다 —
+    /// 자세히는 <see cref="Recompose"/> 를 보라.
     /// </summary>
-    public string[] CurrentGrid
+    public string[] CurrentGrid => made ?? CurrentFrame.Grid;
+
+    /// <summary>합성해 둔 그림. 합성할 것이 없으면 null 이고 프레임 그대로를 쓴다.</summary>
+    private string[]? made;
+
+    /// <summary>이번 칸의 눈. 깜빡임은 <see cref="Advance"/> 에서만 새로 고른다.</summary>
+    private OwlEyes eyes;
+
+    /// <summary>
+    /// 지금 상태로 그림을 다시 만든다.
+    ///
+    /// 두 가지를 여기서 합성한다.
+    ///
+    /// **걸음** — 걷기 그림을 통째로 쓰면 **지친 부엉이가 걷는 순간 말짱해진다.** 감긴
+    /// 눈이 떠지고 처진 날개가 올라가서, 사용량이 줄어든 것처럼 읽힌다. 맥처럼 기분이
+    /// 준 자세 위에 **발과 몸 기울임만** 얹는다.
+    ///
+    /// **끌림 + 어지러움** — 몸은 매달린 자세 그대로 두고 눈만 푼다. 통째로 비틀거리는
+    /// 그림으로 갈아타면 허공에서 휘청이는 꼴이라 무엇이 흔들리는 건지 알 수 없다.
+    /// </summary>
+    private void Recompose()
     {
-        get
+        if (dragged)
         {
-            var frame = CurrentFrame;
-            if (!dragged || !dizzy) return frame.Grid;
-
-            // 통째로 dizzy 그림으로 갈아타면 **허공에서 비틀거리는 꼴**이라 무엇이
-            // 흔들리는 건지 알 수 없다. 맥도 몸은 carried 그대로 두고 눈만 바꾼다.
-            if (dizzyDrag.TryGetValue(frame, out var made)) return made;
-
-            made = OwlComposer.Compose(document, frame.Pose with { Eyes = OwlEyes.Dizzy });
-            dizzyDrag[frame] = made;
-            return made;
+            made = OwlComposer.Compose(document, carried);
+            return;
         }
+
+        if (IsWalking && gait is { } moving)
+        {
+            var baseline = MoodPose;
+            made = OwlComposer.Compose(document, GaitPose(baseline, frameIndex, moving) with
+            {
+                Eyes = eyes,
+            });
+            return;
+        }
+
+        made = null;
     }
 
-    /// <summary>끌린 자세 + 풀린 눈. 프레임마다 한 번만 합성하고 재사용한다.</summary>
-    private readonly Dictionary<OwlFrame, string[]> dizzyDrag = [];
+    // ── 끌려가는 동안 ────────────────────────────────────────────────
+
+    /// <summary>끌리는 동안 자세를 다시 잡는 주기.</summary>
+    public static readonly TimeSpan DragTick = TimeSpan.FromSeconds(0.09);
+
+    /// <summary>마우스가 멈추면 이벤트가 끊긴다. 이만큼 지난 속도는 0으로 본다.</summary>
+    private static readonly TimeSpan DragIdle = TimeSpan.FromSeconds(0.13);
+
+    /// <summary>이 속도(pt/s)를 넘어야 몸이 처진다. 느리게 옮기면 그냥 매달려 있다.</summary>
+    private const double DragLeanSpeed = 140;
+
+    /// <summary>위아래로 이만큼 빠르면 날개가 한 단계 움직인다(pt/s).</summary>
+    private const double WingLiftSpeed = 200;
+    private const double WingSpreadSpeed = 620;
+
+    private double dragDx;
+    private double dragDy;
+    private DateTimeOffset dragVelocityAt = DateTimeOffset.MinValue;
+
+    /// <summary>한 틱 전과 두 틱 전의 몸 기울기. 얼굴과 발이 각각 여기에 남는다.</summary>
+    private int previousLean;
+    private int olderLean;
+
+    private OwlPose carried = CarriedPose(0, 0, 0, OwlEyes.Open, OwlWings.Droop);
+
+    /// <summary>
+    /// 끌려가는 동안 마우스의 속도(pt/s). 부호는 **마우스가 가는 쪽**이다.
+    ///
+    /// 가로는 몸이 처지는 방향을 정한다 — 오른쪽으로 가면 몸이 왼쪽으로 뒤처진다.
+    /// 세로는 날개 높이를 정한다 — 들어 올리면 날개를 들고, 세게 내리면 활짝 편다.
+    ///
+    /// **위가 양수다.** 화면 좌표는 아래로 커지므로 넣는 쪽에서 뒤집어 준다.
+    /// </summary>
+    public void SetDragVelocity(double dx, double dy, DateTimeOffset now)
+    {
+        dragDx = dx;
+        dragDy = dy;
+        dragVelocityAt = now;
+    }
+
+    /// <summary>
+    /// 끌리는 자세 한 칸.
+    ///
+    /// **마우스가 멈추면 가만히 매달려 있어야 한다.** 잡고만 있어도 계속 흔들리면
+    /// 무엇 때문에 움직이는 건지 알 수 없다. 이벤트가 끊긴 지 <see cref="DragIdle"/> 이
+    /// 지나면 속도를 0으로 본다.
+    ///
+    /// 얼굴과 발은 몸보다 **한 틱·두 틱 늦게** 따라온다. 매달린 것은 손보다 늦게
+    /// 움직이기 때문이다.
+    /// </summary>
+    private void AdvanceDrag(DateTimeOffset now)
+    {
+        var moving = now - dragVelocityAt < DragIdle;
+        var vx = moving ? dragDx : 0;
+        var vy = moving ? dragDy : 0;
+
+        var lean = Math.Abs(vx) > DragLeanSpeed ? (vx > 0 ? -1 : 1) : 0;
+        carried = CarriedPose(lean, previousLean, olderLean, BlinkingEyes(OwlEyes.Open), Wings(vy));
+
+        olderLean = previousLean;
+        previousLean = lean;
+        Recompose();
+    }
+
+    /// <summary>마우스가 가는 반대쪽으로 처진다. 매달린 것은 손보다 늦게 따라오기 때문이다.</summary>
+    private static OwlPose CarriedPose(int lean, int face, int feet, OwlEyes eyes, OwlWings wings) => new()
+    {
+        Eyes = eyes,
+        Wings = wings,
+        Feet = OwlFeet.Dangle,
+        Lean = lean,
+        FaceLean = face - lean,
+        FeetLean = feet,
+        Bob = 0,
+    };
+
+    private static OwlWings Wings(double vertical)
+    {
+        if (vertical > WingLiftSpeed) return OwlWings.Lift;
+        if (vertical < -WingSpreadSpeed) return OwlWings.Spread;
+        if (vertical < -WingLiftSpeed) return OwlWings.Lift;
+        return OwlWings.Droop;
+    }
+
+    /// <summary>기분이 정한 기본 자세. 걸을 때 여기에 발을 얹는다.</summary>
+    private OwlPose MoodPose =>
+        document.Animations.Single(a => a.Name == mood.Name()).Frames[0].Pose;
+
+    /// <summary>
+    /// 걷는 자세 한 칸. 기분이 준 자세에서 <b>발·기울임·날개만</b> 바꾼다.
+    ///
+    /// **뛸 때는 발을 모으는 칸마다 날개를 펼친다.** 부엉이는 다리가 짧아서 발만 빨리
+    /// 놀리면 종종거리는 것으로 보인다. 기울기가 0인 칸에서만 펴는 이유는, 기운 칸에서
+    /// 펴면 바깥쪽 한 칸이 캔버스 밖으로 잘려 한쪽 날개만 짧아지기 때문이다.
+    /// </summary>
+    private static OwlPose GaitPose(OwlPose baseline, int phase, DongCSU.Core.Pet.PetGait gait)
+    {
+        (OwlFeet Feet, int Lean, bool Planted) step = (phase % 4) switch
+        {
+            0 => (OwlFeet.StepA, -1, true),
+            2 => (OwlFeet.StepB, 1, true),
+            _ => (OwlFeet.Stand, 0, false),
+        };
+
+        return baseline with
+        {
+            Feet = step.Feet,
+            Lean = step.Lean,
+            Wings = gait == DongCSU.Core.Pet.PetGait.Run
+                ? (step.Planted ? OwlWings.Folded : OwlWings.Spread)
+                : baseline.Wings,
+            FaceLean = 0,
+            // 주저앉은 채로 걸으면 다리가 몸에 가려져서 미끄러지는 것으로 보인다.
+            Bob = 0,
+        };
+    }
+
+    /// <summary>
+    /// 스스로 도는 상태의 눈. 흔들려 놨으면 풀린 채로, 아니면 이따금 깜빡인다.
+    ///
+    /// **지친 눈을 억지로 뜨게 하지 않는다.** 걷는다고 눈이 다시 떠지면 사용량이 줄어든
+    /// 것처럼 읽힌다. 이미 감고 있는 부엉이(탈진)는 반대로 이따금 실눈을 뜨는 것으로 대신한다.
+    /// </summary>
+    private OwlEyes BlinkingEyes(OwlEyes baseline)
+    {
+        if (dizzy) return OwlEyes.Dizzy;
+
+        blinkCountdown--;
+        var next = blinkCountdown switch
+        {
+            1 => baseline == OwlEyes.Closed ? OwlEyes.Half : OwlEyes.Closed,
+            0 or 2 => OwlEyes.Half,
+            _ => baseline,
+        };
+
+        if (blinkCountdown <= 0) blinkCountdown = BlinkInterval + random.Next(BlinkJitter + 1);
+        return next;
+    }
 
     /// <summary>
     /// 다 써서 쓸 수 없는 상태. 켜면 **자세는 그대로 두고 색만 뺀다.**
@@ -227,6 +397,9 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
         if (mood == next) return false;
         mood = next;
         frameIndex = 0;
+        // 걷는 중에 지쳐도 눈은 바로 따라간다. 걸음이 끝나야 지친 얼굴이 되면 늦다.
+        if (IsWalking) eyes = MoodPose.Eyes;
+        Recompose();
         return true;
     }
 
@@ -236,35 +409,42 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
     /// <c>null</c> 이면 **더 넘길 것이 없다** — 프레임이 하나뿐인 기분(끊김)이다.
     /// 그때는 타이머를 걸지 않는다. 0초 타이머를 걸면 쉬지 않고 도는 루프가 된다.
     /// </summary>
-    public TimeSpan? Advance()
+    public TimeSpan? Advance() => Advance(time.GetUtcNow());
+
+    /// <summary>시각을 받는 판. 테스트가 시계 없이 돈다.</summary>
+    public TimeSpan? Advance(DateTimeOffset now)
     {
+        // 끌리는 동안에는 프레임을 넘기지 않고 **속도로 자세를 만든다.**
+        if (dragged)
+        {
+            AdvanceDrag(now);
+            return DragTick;
+        }
+
         var frames = Animation.Frames;
         if (frames.Count <= 1) return null;
 
-        if (IsWalking && frames.Count > GaitBlinkFrame)
+        // **다리 주기는 네 칸이다.** 걷기 그림이 여덟 칸인 것은 뒤 네 개에 눈 깜빡임이
+        // 얹혀 있어서인데, 우리는 눈을 따로 돌리므로 앞 네 칸만 쓴다. 여덟 칸을 통째로
+        // 돌리면 한 걸음마다(1.1초) 깜빡여서 경련하는 것처럼 보인다.
+        if (IsWalking)
         {
-            // 깜빡임을 보여준 칸을 지나가면 내려놓는다.
-            if (blinkQueued && frameIndex % GaitLegFrames == GaitBlinkLeg) blinkQueued = false;
-
-            frameIndex = (frameIndex + 1) % GaitLegFrames;
-
-            // 깜빡일 차례가 되면 예약해 두고, 눈 감은 그림이 있는 다리 자세에서 쓴다.
-            if (!blinkQueued && --blinkCountdown <= 0)
-            {
-                blinkQueued = true;
-                blinkCountdown = BlinkInterval + random.Next(BlinkJitter + 1);
-            }
-
-            return DelayFor(CurrentFrame);
+            frameIndex = (frameIndex + 1) % 4;
+            eyes = BlinkingEyes(MoodPose.Eyes);
+            Recompose();
+            return DelayFor(frames[0]);
         }
 
         frameIndex = (frameIndex + 1) % frames.Count;
+        Recompose();
         return DelayFor(frames[frameIndex]);
     }
 
     /// <summary>지금 프레임을 얼마나 더 보여줄지. 타이머를 처음 걸 때 쓴다.</summary>
     public TimeSpan? CurrentDelay()
     {
+        if (dragged) return DragTick;
+
         var frames = Animation.Frames;
         return frames.Count <= 1 ? null : DelayFor(CurrentFrame);
     }
