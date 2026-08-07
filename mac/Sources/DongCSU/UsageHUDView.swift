@@ -63,7 +63,12 @@ struct UsageHUDView: View {
     static let basePetRingDiameter: CGFloat = 124
     /// 창은 링을 담을 만큼. 링을 감추고 있을 때도 크기는 그대로다 —
     /// 호버할 때 창을 늘리면 커서가 창 밖으로 밀려나 호버가 끊긴다.
-    static let basePetSize = CGSize(width: 128, height: 128)
+    /// 링 아래에 붙는 버튼 줄의 높이.
+    static let basePetButtonRow: CGFloat = 32
+
+    /// 창은 링을 담을 만큼 + 아래 버튼 줄. 링을 감추고 있을 때도 크기는 그대로다 —
+    /// 호버할 때 창을 늘리면 커서가 창 밖으로 밀려나 호버가 끊긴다.
+    static let basePetSize = CGSize(width: 128, height: 128 + basePetButtonRow)
 
     static func size(mode: HUDMode, showsStats: Bool = false, scale: CGFloat = 1) -> CGSize {
         func scaled(_ size: CGSize) -> CGSize {
@@ -100,12 +105,41 @@ struct UsageHUDView: View {
     static func petHitRect(scale: CGFloat) -> CGRect {
         let panel = size(mode: .pet, scale: scale)
         let side = basePetRingDiameter * scale
+        let row = basePetButtonRow * scale
+        // 뷰 좌표는 아래가 0이다. 버튼 줄이 아래에 깔리고 링은 그 **위** 영역의 가운데다.
         return CGRect(
             x: (panel.width - side) / 2,
-            y: (panel.height - side) / 2,
+            y: row + (panel.height - row - side) / 2,
             width: side,
             height: side
         )
+    }
+
+    /// 펫 모드에서 새 버전 배지가 앉는 자리 — **창 오른쪽 위**.
+    ///
+    /// 링(원)의 바깥 모서리라 마스코트를 가리지 않는다. 다만 커서 피하기를 거는
+    /// `petHitRect`(사각형)와는 겹치므로, 여기 마우스가 올라오면 도망을 막아야 한다.
+    /// `HUDController` 가 이 자리에 추적 영역을 따로 걸어 그렇게 한다.
+    static func petUpdateRect(scale: CGFloat) -> CGRect {
+        let panel = size(mode: .pet, scale: scale)
+        let side = updateBadgeSize(scale: scale)
+        let inset = 2 * scale
+        return CGRect(
+            x: panel.width - side - inset,
+            y: panel.height - side - inset,
+            width: side,
+            height: side
+        )
+    }
+
+    /// 링 아래 버튼 줄이 차지하는 자리.
+    ///
+    /// **커서 피하기를 거는 추적 영역(`petHitRect`)과 겹치지 않는다.** 버튼을 누르러
+    /// 다가갔는데 펫이 달아나면 영영 못 누른다. 자리를 갈라 두면 특별히 예외를 두지
+    /// 않아도 그 일이 생기지 않는다.
+    static func petButtonsRect(scale: CGFloat) -> CGRect {
+        let panel = size(mode: .pet, scale: scale)
+        return CGRect(x: 0, y: 0, width: panel.width, height: basePetButtonRow * scale)
     }
 
     static func petOwlHeight(scale: CGFloat) -> CGFloat { basePetOwlHeight * scale }
@@ -242,6 +276,28 @@ struct UsageHUDView: View {
     /// 창 크기는 링에 맞춰 두고 마스코트를 가운데 놓는다. 호버할 때 창을 늘리면
     /// 커서가 창 밖으로 밀려나 호버가 끊기고, 그 자리에서 켜졌다 꺼졌다 한다.
     private var petBody: some View {
+        VStack(spacing: 0) {
+            petRingArea
+            petButtonRow
+        }
+        .frame(
+            width: Self.size(mode: .pet, scale: scale).width,
+            height: Self.size(mode: .pet, scale: scale).height
+        )
+        .help(store.summaryText)
+    }
+
+    private var petRingArea: some View {
+        ZStack(alignment: .topTrailing) {
+            petRingStack
+            // 새 버전이 있을 때만. 링 바깥 모서리라 마스코트를 가리지 않는다.
+            if showsUpdateBadge {
+                updateBadge.padding(s(2))
+            }
+        }
+    }
+
+    private var petRingStack: some View {
         ZStack {
             ringPair(
                 diameter: s(Self.basePetRingDiameter),
@@ -264,9 +320,49 @@ struct UsageHUDView: View {
         }
         .frame(
             width: Self.size(mode: .pet, scale: scale).width,
-            height: Self.size(mode: .pet, scale: scale).height
+            height: Self.size(mode: .pet, scale: scale).height - s(Self.basePetButtonRow)
         )
-        .help(store.summaryText)
+    }
+
+    /// 링 밖 아래에 붙는 동그란 아이콘 버튼들.
+    ///
+    /// 링과 마찬가지로 **마우스를 올렸을 때만** 보인다 — 펫은 마스코트만 띄우는 보기라
+    /// 버튼이 늘 떠 있으면 그 뜻이 사라진다.
+    private var petButtonRow: some View {
+        HStack(spacing: s(8)) {
+            petCircleButton(systemName: "gearshape.fill", hovering: isHoveringSettings) {
+                onOpenSettings?()
+            }
+            petCircleButton(systemName: "arrow.clockwise", hovering: isHoveringRefresh) {
+                store.refresh(force: true)
+            }
+            .opacity(store.isRefreshing ? 0.35 : 1)
+        }
+        .frame(height: s(Self.basePetButtonRow))
+        .opacity(showsPetRing ? 1 : 0)
+        .animation(.easeOut(duration: 0.18), value: showsPetRing)
+    }
+
+    private func petCircleButton(
+        systemName: String,
+        hovering: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: s(11), weight: .semibold))
+                .foregroundStyle(hovering ? palette.controlActive : palette.controlIdle)
+                .frame(width: s(24), height: s(24))
+                .background {
+                    // 투명한 배경 위에 뜨는 버튼이라 제 바탕이 있어야 읽힌다.
+                    Circle().fill(Color(nsColor: palette.backdrop(opacity: 0.92)))
+                }
+                .overlay {
+                    Circle().strokeBorder(palette.ringTrack, lineWidth: s(1))
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
     }
 
     /// 접힌 모습: 링 + 세로 버튼 열. 버튼은 펼쳐질 방향 쪽에 붙는다.

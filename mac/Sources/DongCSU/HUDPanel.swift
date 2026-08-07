@@ -45,12 +45,16 @@ final class HUDInteractionView: NSView {
     /// 버튼 묶음과 업데이트 배지처럼 눌려야 하는 자리들이 들어온다.
     var passThroughRects: [CGRect] = []
 
-    /// 이 사각형 안에서만 마우스를 받는다. nil이면 뷰 전체가 대상이다.
+    /// 이 사각형들 안에서만 마우스를 받는다. 비어 있으면 뷰 전체가 대상이다.
     /// 펫 모드는 창 대부분이 투명해서, 전부 받으면 빈 자리를 눌러도 클릭이 먹는다.
-    var liveRect: CGRect?
+    /// 링과 그 아래 버튼 줄, 둘로 갈려 있다.
+    var liveRects: [CGRect] = []
 
     /// 마스코트 위에 마우스가 올라오고 나갈 때. 추적 영역을 걸어야 불린다.
     var onHoverChanged: (@MainActor (Bool) -> Void)?
+
+    /// 링 아래 버튼 줄 위에 마우스가 올라오고 나갈 때.
+    var onButtonsHoverChanged: (@MainActor (Bool) -> Void)?
 
     /// 마우스를 누르고 있는 동안. 스스로 움직이던 걸 그동안 멈춘다.
     /// 손에 잡힌 채로 걸어나가면 잡은 자리에서 미끄러진다.
@@ -68,13 +72,24 @@ final class HUDInteractionView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         // point는 superview 좌표계로 들어온다.
         let local = convert(point, from: superview)
-        if let liveRect, !liveRect.contains(local) { return nil }
+        if !liveRects.isEmpty, !liveRects.contains(where: { $0.contains(local) }) { return nil }
         if passThroughRects.contains(where: { $0.contains(local) }) { return nil }
         return super.hitTest(point)
     }
 
-    override func mouseEntered(with event: NSEvent) { onHoverChanged?(true) }
-    override func mouseExited(with event: NSEvent) { onHoverChanged?(false) }
+    /// 어느 추적 영역에서 온 것인지 갈라서 알린다.
+    /// `userInfo["buttons"]`가 있으면 버튼 줄, 없으면 마스코트 쪽이다.
+    private func isButtons(_ event: NSEvent) -> Bool {
+        (event.trackingArea?.userInfo?["buttons"] as? Bool) == true
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        if isButtons(event) { onButtonsHoverChanged?(true) } else { onHoverChanged?(true) }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        if isButtons(event) { onButtonsHoverChanged?(false) } else { onHoverChanged?(false) }
+    }
 
     override func mouseDown(with event: NSEvent) {
         onPressChanged?(true)
@@ -265,6 +280,9 @@ final class HUDController {
         interactionView.onHoverChanged = { [weak self] hovering in
             self?.setPetHover(hovering)
         }
+        interactionView.onButtonsHoverChanged = { [weak self] hovering in
+            self?.setPetButtonsHover(hovering)
+        }
         interactionView.onPressChanged = { [weak self] pressed in
             guard let self, self.isPressed != pressed else { return }
             self.isPressed = pressed
@@ -366,8 +384,10 @@ final class HUDController {
         // 배율은 창 크기·모서리·클릭 영역까지 바꾼다. 접기와 같은 경로를 탄다.
         observe(settings.$scale) { $0.applyMode() }
         // 새 버전이 잡히면 표시를 띄우고 그 자리를 클릭 통과 영역에 더한다.
+        // 펫에서는 배지 위에서 도망을 막는 추적 영역도 그때 걸린다.
         observe(updates.$remoteEntries) {
             $0.refreshPassThroughRects()
+            $0.refreshTrackingArea()
             $0.rebuildRootView()
         }
     }
@@ -802,13 +822,30 @@ final class HUDController {
 
     /// 펫 모드에서 마스코트 위에 마우스가 있는지. 그동안만 뒤에 링이 드러난다.
     private var isHoveringPet = false
+
+    /// 링 아래 버튼 줄에 마우스가 올라와 있는지.
+    ///
+    /// **여기 있는 동안에는 절대 비키지 않는다.** 버튼을 누르러 다가갔는데 달아나면
+    /// 영영 못 누른다. 자리를 갈라 뒀지만(`petButtonsRect`), 링을 스쳐 내려오면서
+    /// 이미 예약된 도망이 남아 있을 수 있어 여기서 한 번 더 막는다.
+    private var isHoveringPetButtons = false
     private var trackingArea: NSTrackingArea?
+    private var buttonTrackingArea: NSTrackingArea?
+    private var updateTrackingArea: NSTrackingArea?
 
     /// 호버를 감시할 영역을 지금 모드에 맞춘다. 펫이 아니면 아예 걸지 않는다.
     private func refreshTrackingArea() {
         if let trackingArea {
             interactionView.removeTrackingArea(trackingArea)
             self.trackingArea = nil
+        }
+        if let buttonTrackingArea {
+            interactionView.removeTrackingArea(buttonTrackingArea)
+            self.buttonTrackingArea = nil
+        }
+        if let updateTrackingArea {
+            interactionView.removeTrackingArea(updateTrackingArea)
+            self.updateTrackingArea = nil
         }
         // 링을 항상 보이거나 아예 안 보이게 해 뒀으면 마우스를 좇을 이유가 없다 —
         // 커서를 피하게 해 뒀다면 그때는 링과 무관하게 커서 자리를 알아야 한다.
@@ -825,6 +862,29 @@ final class HUDController {
         )
         interactionView.addTrackingArea(area)
         trackingArea = area
+
+        // 버튼 줄은 **따로** 좇는다. 여기 들어온 것은 도망의 이유가 아니라
+        // 버튼을 보여줄 이유다. 같은 영역으로 묶으면 둘을 구분할 수 없다.
+        let buttons = NSTrackingArea(
+            rect: UsageHUDView.petButtonsRect(scale: scale),
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: interactionView,
+            userInfo: ["buttons": true]
+        )
+        interactionView.addTrackingArea(buttons)
+        buttonTrackingArea = buttons
+
+        // 새 버전 배지는 링 사각형 **안**에 있어서 자리로 가를 수 없다.
+        // 겹쳐 걸고, 여기 들어오면 도망을 막는 것으로 푼다.
+        guard updates.hasUpdate else { return }
+        let badge = NSTrackingArea(
+            rect: UsageHUDView.petUpdateRect(scale: scale),
+            options: [.mouseEnteredAndExited, .activeAlways],
+            owner: interactionView,
+            userInfo: ["buttons": true]
+        )
+        interactionView.addTrackingArea(badge)
+        updateTrackingArea = badge
 
         // 추적 영역은 **이미 안에 들어와 있는 커서에는 mouseEntered를 보내지 않는다.**
         // 마스코트를 더블클릭해서 펫으로 들어오면 커서가 바로 그 위에 있으므로,
@@ -862,8 +922,26 @@ final class HUDController {
         hoverDodgeTimer = timer
     }
 
+    /// 버튼 줄 위에 마우스가 들어오고 나갈 때.
+    ///
+    /// 들어오면 **예약된 도망을 취소한다.** 링을 스쳐 내려오면 이미 타이머가 걸려 있고,
+    /// 그대로 두면 버튼을 누르려는 순간 달아난다.
+    private func setPetButtonsHover(_ hovering: Bool) {
+        guard isHoveringPetButtons != hovering else { return }
+        isHoveringPetButtons = hovering
+
+        if hovering {
+            hoverDodgeTimer?.invalidate()
+            hoverDodgeTimer = nil
+        }
+        // 버튼은 링과 같은 조건으로 보인다. 여기 있는 동안에도 보이게 유지한다.
+        rebuildRootView()
+    }
+
     private func dodgeCursorIfIdle() {
         hoverDodgeTimer = nil
+        // 버튼 줄 위라면 비키지 않는다. 누르러 온 손에서 달아나면 안 된다.
+        guard !isHoveringPetButtons else { return }
         // 잡고 있는 중이면 비키지 않는다. 손에 들린 게 도망가면 놀란다.
         guard !isPressed, !isDraggingPanel, NSEvent.pressedMouseButtons == 0 else { return }
         // 글을 쓰는 동안에는 커서를 피하지 않는다(왼쪽으로 물러나면 쓴 글을 덮는다).
@@ -911,9 +989,23 @@ final class HUDController {
                 )
             )
         }
+        // 펫의 버튼 줄과 새 버전 배지는 SwiftUI 버튼이라 클릭을 아래로 흘려보내야 눌린다.
+        if mode == .pet {
+            rects.append(UsageHUDView.petButtonsRect(scale: scale))
+            if updates.hasUpdate {
+                rects.append(UsageHUDView.petUpdateRect(scale: scale))
+            }
+        }
         interactionView.passThroughRects = rects
-        // 펫은 창 대부분이 투명하다. 마스코트가 있는 자리만 마우스를 받게 좁힌다.
-        interactionView.liveRect = mode == .pet ? UsageHUDView.petHitRect(scale: scale) : nil
+
+        // 펫은 창 대부분이 투명하다. 마스코트가 있는 자리와 버튼 줄만 마우스를 받게 좁힌다.
+        interactionView.liveRects = mode == .pet
+            ? [
+                UsageHUDView.petHitRect(scale: scale),
+                UsageHUDView.petButtonsRect(scale: scale),
+                UsageHUDView.petUpdateRect(scale: scale),
+            ]
+            : []
     }
 
     /// 표시 상태가 바뀌면 뷰를 다시 만든다. 숨겨져 있는 동안 카운트다운의 1초 타이머를 끄기 위해서다.
@@ -923,7 +1015,7 @@ final class HUDController {
             iconStyle: iconStyle,
             showsCountdown: panel.isVisible && mode == .expanded,
             mode: mode,
-            isHovered: isHoveringPet,
+            isHovered: isHoveringPet || isHoveringPetButtons,
             petRingDisplay: settings.petRingDisplay,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
