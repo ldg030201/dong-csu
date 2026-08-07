@@ -35,6 +35,12 @@ enum OwlMood: String, CaseIterable {
         self == .offline ? .offline : AppInfo.owlPalette
     }
 
+    /// 회색으로 굳는 색. 지금 쓸 수 없다는 뜻이다.
+    ///
+    /// 끊겼을 때(값이 지금 것이 아님)와 주간을 다 썼을 때(진짜로 못 씀) 둘 다 이걸 쓴다.
+    /// 자세만 주저앉고 색이 그대로면 "지쳤지만 아직 된다"로 읽힌다.
+    static let unusablePalette = OwlPalette.offline
+
     /// 이 기분에서 차례로 보여줄 프레임들. 마지막까지 가면 처음으로 돌아간다.
     var frames: [OwlFrame] {
         switch self {
@@ -382,9 +388,18 @@ final class OwlAnimator: ObservableObject {
     /// 뒤에 바꿔도 다시 그려지지 않는다. 그리기 전에 한 번만 꽂는다.
     var paletteOverride: OwlPalette?
 
+    /// 다 써서 쓸 수 없는 상태. 켜면 자세는 그대로 두고 색만 뺀다.
+    ///
+    /// 기분을 따로 만들지 않는 이유: `owl.json` 에 애니메이션이 하나 더 생기고
+    /// 윈도우판도 그걸 알아야 한다. 자세는 탈진과 똑같고 **색만 다른** 것이라
+    /// 여기서 색을 바꾸는 편이 옮길 것이 적다.
+    var isUnusable = false
+
     var palette: OwlPalette {
         // 끊김의 회색은 색 자체가 정보라 덮어쓰지 않는다.
-        guard mood != .offline, let paletteOverride else { return mood.palette }
+        guard mood != .offline else { return mood.palette }
+        if isUnusable { return OwlMood.unusablePalette }
+        guard let paletteOverride else { return mood.palette }
         return paletteOverride
     }
 
@@ -418,6 +433,14 @@ final class OwlAnimator: ObservableObject {
         guard newMood != requestedMood else { return }
         requestedMood = newMood
         applyMood()
+    }
+
+    /// 다 써서 쓸 수 없는 상태인지 알려 준다. 색만 바뀌고 자세는 그대로다.
+    func setUnusable(_ unusable: Bool) {
+        guard unusable != isUnusable else { return }
+        isUnusable = unusable
+        // 색만 바뀌므로 프레임을 다시 돌릴 필요는 없고, 다시 그리기만 하면 된다.
+        objectWillChange.send()
     }
 
     /// 어지러움은 사용량이나 연결 상태가 아니라 **이 앱이 어떻게 다뤄졌는지**에서 나온다.

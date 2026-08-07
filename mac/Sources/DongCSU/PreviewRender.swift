@@ -193,6 +193,8 @@ enum HUDPreviewRenderer {
         // 멈춘 애니메이터는 그 기분의 첫 프레임에 머물러 있어 정지 그림이 된다.
         let animator = OwlAnimator()
         animator.setMood(OwlMood.resolve(store: store, isDragging: false))
+        // 실제 화면과 같은 규칙으로 색을 뺀다. 안 그러면 미리보기만 멀쩡해 보인다.
+        animator.setUnusable(store.isWeeklySpent)
         // 테스트판 모습을 그릴 때는 마스코트 색도 함께 바꾼다. 실제 테스트 번들에서는
         // `AppInfo.owlPalette`가 같은 색을 주므로 미리보기가 어긋나지 않는다.
         if versionBadgeIsTest {

@@ -471,6 +471,8 @@ final class HUDController {
     /// 사용량·연결 상태·드래그 여부에서 지금 기분을 다시 정한다.
     private func refreshMood() {
         owlAnimator.setMood(OwlMood.resolve(store: store, isDragging: isDraggingPanel))
+        // 주간을 다 썼으면 자세는 탈진 그대로 두고 색을 뺀다. 링·숫자와 같은 규칙이다.
+        owlAnimator.setUnusable(store.isWeeklySpent)
     }
 
     /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
