@@ -239,12 +239,31 @@ public sealed class HudView : FrameworkElement
 
     public PetRingDisplay PetRingDisplay { get; set; } = PetRingDisplay.Hover;
 
-    private bool ShowsPetRing => PetRingDisplay switch
+    public bool ShowsPetRing => PetRingDisplay switch
     {
         PetRingDisplay.Always => true,
         PetRingDisplay.Never => false,
         _ => IsHovered,
     };
+
+    /// <summary>
+    /// 펫 링이 얼마나 떠올랐는지(0~1). **창이 애니메이션으로 밀어 준다.**
+    ///
+    /// 곧바로 켜고 끄면 마우스가 스칠 때마다 링이 번쩍인다. 맥은 0.18초에 걸쳐
+    /// 떠오르게 한다. <c>AffectsRender</c> 라 값이 바뀔 때마다 알아서 다시 그린다.
+    /// </summary>
+    public static readonly DependencyProperty PetRingFadeProperty = DependencyProperty.Register(
+        nameof(PetRingFade), typeof(double), typeof(HudView),
+        new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public double PetRingFade
+    {
+        get => (double)GetValue(PetRingFadeProperty);
+        set => SetValue(PetRingFadeProperty, value);
+    }
+
+    /// <summary>맥과 같은 시간. 더 길면 굼떠 보이고 짧으면 곧바로 켜는 것과 다름없다.</summary>
+    public static readonly TimeSpan PetRingFadeDuration = TimeSpan.FromSeconds(0.18);
 
     private HudPalette Palette => IsDark ? HudPalette.Dark : HudPalette.Light;
 
@@ -463,7 +482,7 @@ public sealed class HudView : FrameworkElement
 
         // 펫에서는 링을 감췄다 보였다 한다. 감춰도 창 크기는 그대로다.
         var ringOpacity = isPet
-            ? (ShowsPetRing ? (IsDisconnected ? 0.4 : 0.95) : 0)
+            ? PetRingFade * (IsDisconnected ? 0.4 : 0.95)
             : 1;
 
         if (ringOpacity > 0)
@@ -488,8 +507,14 @@ public sealed class HudView : FrameworkElement
 
         if (isPet)
         {
+            // 움직이는 캐릭터는 팔레트가 회색으로 바뀌어 스스로 드러낸다. 정지 그림은
+            // 그럴 수 없는데, 펫에는 링도 안 보여서 조회가 끊긴 걸 알 방법이 없어진다.
+            // 링에 이미 쓰는 방식대로 흐리게 해서 지금 값이 아님을 알린다.
+            var dim = IsDisconnected && !IconStyle.IsAnimated();
+            if (dim) context.PushOpacity(0.4);
             // 마스코트가 주인공이라 링 안지름과 무관하게 크게 잡는다.
             DrawIcon(context, center, BasePetOwlHeight * s);
+            if (dim) context.Pop();
             return;
         }
 
@@ -843,11 +868,15 @@ public sealed class HudView : FrameworkElement
     /// </summary>
     private void DrawPetButtons(DrawingContext context, HudPalette palette, double s)
     {
-        if (!ShowsPetRing) return;
+        // 링과 같은 박자로 떠오른다. 버튼만 곧바로 켜지면 따로 노는 것처럼 보인다.
+        if (PetRingFade <= 0) return;
+        if (PetRingFade < 1) context.PushOpacity(PetRingFade);
 
         var rects = ButtonRects();
         DrawPetButton(context, rects[1], GlyphSettings, HudHit.Settings, palette, s);
         DrawPetButton(context, rects[2], GlyphRefresh, HudHit.Refresh, palette, s);
+
+        if (PetRingFade < 1) context.Pop();
     }
 
     private void DrawPetButton(

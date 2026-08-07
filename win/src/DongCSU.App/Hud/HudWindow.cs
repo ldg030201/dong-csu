@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using DongCSU.Core;
 using DongCSU.Core.Pet;
@@ -60,6 +61,9 @@ public sealed class HudWindow : Window
 
     /// <summary>마우스가 마스코트 위에 있는지. 커서 피하기가 이걸 센다.</summary>
     public bool IsMascotHovered => view.Hover == HudHit.Mascot;
+
+    /// <summary>펫 링이 향하는 값. 같은 목표로 애니메이션을 다시 걸지 않으려고 들고 있는다.</summary>
+    private double petRingFadeTarget;
 
     /// <summary>버튼 줄이나 새 버전 표시 위에 있는지. **여기서는 절대 비키지 않는다.**</summary>
     public bool IsControlHovered =>
@@ -120,6 +124,8 @@ public sealed class HudWindow : Window
 
         if (changed && !double.IsNaN(oldWidth)) AnchorAfterResize(oldWidth, size.Width);
 
+        // 보기나 "사용량 링" 설정이 바뀌었을 수 있다. 링이 향할 곳을 다시 잡는다.
+        SyncPetRingFade();
         view.InvalidateVisual();
         SyncTicker();
     }
@@ -268,6 +274,7 @@ public sealed class HudWindow : Window
         if (hovering != view.IsHovered)
         {
             view.IsHovered = hovering;
+            SyncPetRingFade();
             view.InvalidateVisual();
         }
 
@@ -289,7 +296,30 @@ public sealed class HudWindow : Window
         pressed = HudHit.None;
         Cursor = Cursors.Arrow;
         ToolTip = null;
+        SyncPetRingFade();
         view.InvalidateVisual();
+    }
+
+    /// <summary>
+    /// 펫 링을 0.18초에 걸쳐 띄우거나 내린다.
+    ///
+    /// **곧바로 켜고 끄면 마우스가 스칠 때마다 번쩍인다.** 애니메이션은 WPF 에 맡긴다 —
+    /// <c>AffectsRender</c> 라 값이 바뀌는 프레임마다 알아서 다시 그린다.
+    /// </summary>
+    private void SyncPetRingFade()
+    {
+        var target = view.Mode == HudMode.Pet && view.ShowsPetRing ? 1.0 : 0.0;
+        // 목표가 그대로면 손대지 않는다. 다시 걸면 진행 중인 것이 처음부터 다시 돈다.
+        if (target == petRingFadeTarget) return;
+        petRingFadeTarget = target;
+
+        view.BeginAnimation(HudView.PetRingFadeProperty, new DoubleAnimation
+        {
+            To = target,
+            Duration = HudView.PetRingFadeDuration,
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
+            FillBehavior = FillBehavior.HoldEnd,
+        });
     }
 
     private void OnMouseDown(object sender, MouseButtonEventArgs e)
