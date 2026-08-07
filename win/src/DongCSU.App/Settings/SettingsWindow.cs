@@ -425,10 +425,13 @@ public sealed class SettingsWindow : Window
 
         panel.Children.Add(Ui.Section(palette, "곁들이"));
         panel.Children.Add(Ui.Card(palette,
-            Ui.Row(palette, "왼쪽 위에 버전 표시", Ui.Toggle(palette, settings.ShowsVersionBadge,
+            // 테스트판은 번호 뒤에 test 가 붙는다. 두 판을 나란히 띄웠을 때 이걸로 가른다.
+            Ui.Row(palette,
+                AppInfo.IsTestBuild ? "왼쪽 위에 버전 표시 (테스트판은 test)" : "왼쪽 위에 버전 표시",
+                Ui.Toggle(palette, settings.ShowsVersionBadge,
                 value => { settings.ShowsVersionBadge = value; Apply(); }), enabled: visible),
             Ui.Divider(palette),
-            Ui.Row(palette, "CPU · 메모리 표시", Ui.Toggle(palette, settings.ShowsProcessStats,
+            Ui.Row(palette, "아래 줄에 CPU · 메모리 표시", Ui.Toggle(palette, settings.ShowsProcessStats,
                 value => { settings.ShowsProcessStats = value; Apply(); }),
                 hint: "이 앱 자신이 쓰는 자원입니다. 켜면 카드가 한 줄 길어집니다.",
                 enabled: visible && expanded)));
@@ -610,7 +613,8 @@ public sealed class SettingsWindow : Window
                 hint: "마스코트 뒤에 두르는 링입니다.",
                 enabled: visible)));
 
-        panel.Children.Add(Ui.Section(palette, "움직임"));
+        // 펫 모드에서만 도는 것들이라 제목에 적어 둔다. 안 그러면 왜 잠겼는지 알 수 없다.
+        panel.Children.Add(Ui.Section(palette, "스스로 움직이기 (펫 모드에서만)"));
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "혼자 돌아다니기", Ui.Toggle(palette, settings.PetWanders,
                 value => { settings.PetWanders = value; Apply(); }),
