@@ -57,6 +57,13 @@ final class UsageMeter: ObservableObject {
         return (state.stoppedAt ?? now).timeIntervalSince(startedAt)
     }
 
+    /// 지금 바로 한 번 조회해 달라고 부탁한다.
+    ///
+    /// **시작을 누른 순간 기준점을 잡아야 한다.** 다음 폴링까지 기다리면 기본 설정에서
+    /// 10분 동안 "첫 조회를 기다리는 중"만 뜬다 — 그동안 실제로 쓴 것도 기준이 없어서
+    /// 못 센다. 저장소를 직접 알지 않으려고 클로저로 받는다.
+    var onNeedsSample: (() -> Void)?
+
     /// 토큰을 다시 세는 주기.
     ///
     /// 사용량 조회(기본 10분)에 묶어두면 화면 숫자가 너무 오래 멈춰 있는다. 덧붙은
@@ -69,7 +76,10 @@ final class UsageMeter: ObservableObject {
     init(store: MeterStore = MeterStore()) {
         self.store = store
         state = store.load() ?? State()
-        if isRunning { startScanTimer() }
+        guard isRunning else { return }
+        startScanTimer()
+        // 앱이 꺼져 있는 동안 쌓인 것을 바로 얹는다. 타이머만 걸면 1분 동안 빈다.
+        scanTokens()
     }
 
     /// 렌더 확인용. 파일도 타이머도 건드리지 않는다.
@@ -81,6 +91,7 @@ final class UsageMeter: ObservableObject {
     // MARK: - 시작 · 중지
 
     func start() {
+        acceptsFinalSample = false
         var fresh = State()
         fresh.startedAt = Date()
         // **지금 파일 끝을 기준으로 잡는다.** 0부터 읽으면 며칠 치 옛 기록을 훑게 된다.
@@ -90,10 +101,20 @@ final class UsageMeter: ObservableObject {
 
         startScanTimer()
         scanTokens()
+        // **기준점은 지금 값이어야 한다.** 마지막 조회는 10분 전 것일 수 있고, 그걸
+        // 기준으로 삼으면 시작을 누르기 전에 쓴 몫이 이번 측정에 들어간다.
+        onNeedsSample?()
     }
 
     func stop() {
         guard isRunning else { return }
+
+        // **멈출 때도 한 번 더 잰다.** 조회 주기가 10분인데 5분 재고 멈추면 표본이
+        // 시작 때 하나뿐이라 소모량이 늘 0%p가 된다. 시작과 중지에서 각각 한 번씩
+        // 재면 아무리 짧게 재도 두 점 사이의 차이가 남는다.
+        acceptsFinalSample = true
+        onNeedsSample?()
+
         state.stoppedAt = Date()
         stopScanTimer()
         save()
@@ -101,7 +122,12 @@ final class UsageMeter: ObservableObject {
         scanTokens()
     }
 
+    /// 멈춘 뒤 딱 한 번, 마지막 표본을 받아 준다. 조회가 돌아오는 데 시간이 걸려서
+    /// 그때는 이미 `stoppedAt` 이 찍혀 있다.
+    private var acceptsFinalSample = false
+
     func reset() {
+        acceptsFinalSample = false
         stopScanTimer()
         state = State()
         save()
@@ -115,7 +141,8 @@ final class UsageMeter: ObservableObject {
     /// 그때 값이 0으로 떨어지므로 그냥 빼면 기록이 날아간다. 리셋을 만나면 새 창에서
     /// 쓴 몫을 그대로 더한다.
     func record(_ snapshot: UsageSnapshot) {
-        guard isRunning else { return }
+        guard isRunning || acceptsFinalSample else { return }
+        if !isRunning { acceptsFinalSample = false }
 
         for limit in Self.limits(of: snapshot) {
             guard let track = state.tracks[limit.id] else {

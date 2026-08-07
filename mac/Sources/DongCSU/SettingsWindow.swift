@@ -325,9 +325,10 @@ struct SettingsView: View {
             measureLabel("한도 소모", note: "클로드 앱·웹 포함")
 
             if meter.tracksInOrder.isEmpty {
-                Text("첫 조회를 기다리는 중…")
+                // 시작하면 곧바로 조회가 나간다. 여기 오래 머물면 조회가 실패한 것이다.
+                Text(store.errorText.map { "조회 실패: \($0)" } ?? "기준점을 잡는 중…")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(store.errorText == nil ? Color.secondary : Color.orange)
             } else {
                 ForEach(Array(meter.tracksInOrder.enumerated()), id: \.offset) { _, track in
                     HStack(spacing: 8) {

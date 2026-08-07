@@ -51,6 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 측정이 도는 동안 조회 결과를 기록에 붙인다.
         store.onSnapshot = { [weak meter] snapshot in meter?.record(snapshot) }
+        // 시작을 누르면 다음 폴링을 기다리지 않고 곧바로 기준점을 잡는다.
+        meter.onNeedsSample = { [weak store] in store?.refresh(force: true) }
 
         store.start()
 
