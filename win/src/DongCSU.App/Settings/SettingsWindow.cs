@@ -823,9 +823,12 @@ public sealed class SettingsWindow : Window
 
         panel.Children.Add(Ui.Section(palette, "변경 내역"));
 
-        // 원격 내역이 있으면 그걸 쓴다. 아직 안 받았으면 앱에 박힌 것을 보여준다.
-        var entries = updates.RemoteEntries.Count > 0 ? updates.RemoteEntries : Changelog.Entries;
-        foreach (var entry in entries) panel.Children.Add(ChangelogEntryView(palette, entry));
+        // 원격 것으로 갈아치우지 않고 **합친다** — 방금 올린 버전을 쓰는 앱은 자기보다
+        // 뒤처진 목록을 받을 수 있고, 그러면 자기 버전 항목이 화면에서 사라진다.
+        foreach (var entry in Changelog.Merge(updates.RemoteEntries))
+        {
+            panel.Children.Add(ChangelogEntryView(palette, entry));
+        }
 
         return panel;
     }

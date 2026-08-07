@@ -155,6 +155,41 @@ public static class Changelog
     public static string Dump() =>
         JsonSerializer.Serialize(new ChangelogFeed { Entries = Entries }, Options);
 
+    /// <summary>
+    /// 앱에 박힌 내역과 원격에서 받은 내역을 합친다.
+    ///
+    /// **원격 것으로 갈아치우지 않는다.** 앱에 박힌 내역은 그 버전까지밖에 모르지만,
+    /// 반대로 **방금 올린 버전을 쓰는 앱은 자기보다 뒤처진 목록을 받을 수 있다.**
+    /// 갈아치우면 그때 자기 버전 항목이 화면에서 사라진다.
+    ///
+    /// 같은 버전은 원격 쪽을 택하고(고쳐 적었을 수 있다) 버전 내림차순으로 세운다.
+    /// </summary>
+    public static IReadOnlyList<ChangelogEntry> Merge(IReadOnlyList<ChangelogEntry>? remote)
+    {
+        if (remote is not { Count: > 0 }) return Entries;
+
+        var byVersion = new Dictionary<string, ChangelogEntry>();
+        foreach (var entry in Entries) byVersion[entry.Version] = entry;
+        foreach (var entry in remote) byVersion[entry.Version] = entry;
+
+        return [.. byVersion.Values.OrderByDescending(e => e.Version, VersionOrder.Instance)];
+    }
+
+    /// <summary>버전 문자열 순서. 못 읽는 것은 글자 순으로 떨어뜨린다.</summary>
+    private sealed class VersionOrder : IComparer<string>
+    {
+        public static readonly VersionOrder Instance = new();
+
+        public int Compare(string? left, string? right)
+        {
+            if (AppVersion.TryParse(left, out var a) && AppVersion.TryParse(right, out var b))
+            {
+                return a.CompareTo(b);
+            }
+            return string.CompareOrdinal(left, right);
+        }
+    }
+
     public static ChangelogFeed? Parse(string json)
     {
         try
