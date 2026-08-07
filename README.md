@@ -24,7 +24,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 
 ## 어느 쪽을 쓰시나요
 
-| | 🍎 **[macOS](mac/README.md)** | 🪟 **[Windows](win/README.md)** |
+| | [![macOS](https://img.shields.io/badge/macOS-0E1B2E?logo=apple&logoColor=white)](mac/README.md) | [![Windows](https://img.shields.io/badge/Windows-0078D4?logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BPHBhdGggZD0iTTAgMy41IDkuNSAyLjJ2OS4zSDB6TTEwLjggMiAyNCAwdjExLjVIMTAuOHpNMCAxMi41aDkuNXY5LjNMMCAyMC41ek0xMC44IDEyLjVIMjRWMjRsLTEzLjItMS44eiIvPjwvc3ZnPgo%3D)](win/README.md) |
 | --- | --- | --- |
 | **필요한 버전** | **macOS 14 (Sonoma) 이상** | **Windows 10 1809 이상** 또는 Windows 11 |
 | 상주하는 곳 | 메뉴바 | 트레이 |

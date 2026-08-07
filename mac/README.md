@@ -37,6 +37,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 - 🔔 새 버전이 나오면 알려준다
 - 🦉 **[픽셀 마스코트](../docs/characters/README.md)** — 한도가 차면 지치고, 조회가 끊기면 색이 빠진다
 - 🖥️ 모든 Space와 전체화면 위에. Dock 아이콘 없이 메뉴바에만
+- 🔑 **로그인할 때 자동 시작** — 권한을 묻지 않는다
 
 <table>
 <tr>
@@ -102,8 +103,11 @@ brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust 
 업데이트는 앱 안의 **업데이트** 버튼으로 하거나:
 
 ```bash
-brew update && brew upgrade -y dong-csu && rm -rf /Applications/DongCSU.app && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
+git -C "$(brew --repository ldg030201/dong-csu)" pull -q || brew update; brew upgrade -y dong-csu && rm -rf /Applications/DongCSU.app && cp -R "$(brew --prefix dong-csu)/DongCSU.app" /Applications/ && open /Applications/DongCSU.app
 ```
+
+> 첫 줄은 **이 tap 만** 갱신한다(0.5초). `brew update` 는 Homebrew 와 깔려 있는 tap 을
+> 전부 갱신해서 10~30초가 걸리는데, 그건 tap 갱신이 실패했을 때만 쓴다.
 
 각 단계가 무엇을 하는지, 소스 빌드, 제거는 **[설치 안내](docs/install.md)** 참고.
 설치가 꼬였다면 **[문제 해결](docs/troubleshooting.md)**.
@@ -123,14 +127,16 @@ brew update && brew upgrade -y dong-csu && rm -rf /Applications/DongCSU.app && c
 | 탭 | 내용 |
 | --- | --- |
 | **상태** | 사용량, 초기화·조회 시각 |
-| **표시** | 테마, 크기, 조회 주기, 방향 |
-| **아이콘** | 가운데 그림 |
+| **표시** | 테마, 크기, 조회 주기, 방향, 자동 시작, 설정 초기화 |
+| **아이콘** | 가운데 그림, 캐릭터 애니메이션 |
 | **펫** | 펫 모드, 사용량 링, 스스로 움직이기 |
+| **계정** | Claude Code 재로그인 |
 | **버전** | 업데이트와 변경 내역 |
 
 - **드래그**로 이동, **더블클릭**으로 접기
 - **마스코트를 더블클릭**하면 펫 모드
 - 위치·크기·아이콘 선택은 기억된다
+- **위치 초기화**는 주 모니터 오른쪽 위로 되돌린다
 
 </td>
 </tr>
