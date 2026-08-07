@@ -465,7 +465,12 @@ struct UsageHUDView: View {
                     now: context.date,
                     isSpent: store.isWeeklySpent
                 )
-                metric(title: "주간", window: store.snapshot?.sevenDay, now: context.date)
+                metric(
+                    title: "주간",
+                    window: store.snapshot?.sevenDay,
+                    now: context.date,
+                    isSpent: store.isWeeklySpent
+                )
             }
             .shadow(color: palette.textShadow, radius: s(2), y: s(0.5))
             .opacity(store.isStale ? 0.45 : 1)
@@ -740,15 +745,21 @@ struct UsageHUDView: View {
     ) -> some View {
         let inner = Self.innerDiameter(outer: diameter, outerWidth: outerWidth, gap: s(7))
         return ZStack {
-            // 주간을 다 썼으면 세션은 쓸 수 없다. 초록으로 남겨 두면 여유가 있는
-            // 것처럼 보이므로 색을 빼서 죽은 것으로 그린다.
+            // 주간을 다 썼으면 **둘 다** 색을 뺀다. 세션은 쓸 수 없어서고, 주간은
+            // 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는 죽었는데
+            // 링은 살아 있어서, 아직 뭔가 되는 것처럼 읽힌다.
             ring(
                 window: store.snapshot?.fiveHour,
                 diameter: diameter,
                 lineWidth: outerWidth,
                 isSpent: store.isWeeklySpent
             )
-            ring(window: store.snapshot?.sevenDay, diameter: inner, lineWidth: innerWidth)
+            ring(
+                window: store.snapshot?.sevenDay,
+                diameter: inner,
+                lineWidth: innerWidth,
+                isSpent: store.isWeeklySpent
+            )
         }
         .frame(width: diameter, height: diameter)
     }

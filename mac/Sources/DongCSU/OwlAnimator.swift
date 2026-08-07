@@ -215,8 +215,9 @@ extension OwlMood {
     @MainActor
     static func resolve(store: UsageStore, isDragging: Bool) -> OwlMood {
         if store.isDisconnected { return .offline }
-        if isDragging { return .dragged }
+        // **다 쓴 것이 끌림보다 먼저다.** 죽은 부엉이는 집어 들어도 버둥거리지 않는다.
         if store.isWeeklySpent { return .exhausted }
+        if isDragging { return .dragged }
         guard let utilization = store.snapshot?.fiveHour?.utilization else { return .idle }
         if utilization >= exhaustedThreshold { return .exhausted }
         if utilization >= tiredThreshold { return .tired }
@@ -393,12 +394,14 @@ final class OwlAnimator: ObservableObject {
     /// 기분을 따로 만들지 않는 이유: `owl.json` 에 애니메이션이 하나 더 생기고
     /// 윈도우판도 그걸 알아야 한다. 자세는 탈진과 똑같고 **색만 다른** 것이라
     /// 여기서 색을 바꾸는 편이 옮길 것이 적다.
-    var isUnusable = false
+    @Published private(set) var isUnusable = false
 
     var palette: OwlPalette {
-        // 끊김의 회색은 색 자체가 정보라 덮어쓰지 않는다.
-        guard mood != .offline else { return mood.palette }
+        // **무엇보다 앞선다.** 아래 어느 갈래로 가든 회색이어야 한다 — 자세가 바뀌었다고
+        // 색이 돌아오면 다시 쓸 수 있게 된 것으로 읽힌다.
         if isUnusable { return OwlMood.unusablePalette }
+        // 끊김의 회색도 색 자체가 정보라 덮어쓰지 않는다.
+        guard mood != .offline else { return mood.palette }
         guard let paletteOverride else { return mood.palette }
         return paletteOverride
     }
@@ -435,12 +438,15 @@ final class OwlAnimator: ObservableObject {
         applyMood()
     }
 
-    /// 다 써서 쓸 수 없는 상태인지 알려 준다. 색만 바뀌고 자세는 그대로다.
+    /// 다 써서 쓸 수 없는 상태인지 알려 준다.
+    ///
+    /// **색만 빼는 게 아니라 통째로 멈춘다.** 죽은 것으로 보이게 해 놓고 걷거나 버둥거리면
+    /// 앞뒤가 안 맞는다. 켜는 순간 자세를 굳히고 타이머를 끊는다.
     func setUnusable(_ unusable: Bool) {
         guard unusable != isUnusable else { return }
         isUnusable = unusable
-        // 색만 바뀌므로 프레임을 다시 돌릴 필요는 없고, 다시 그리기만 하면 된다.
-        objectWillChange.send()
+        applyMood()
+        if isUnusable { advance() }
     }
 
     /// 어지러움은 사용량이나 연결 상태가 아니라 **이 앱이 어떻게 다뤄졌는지**에서 나온다.
@@ -449,6 +455,8 @@ final class OwlAnimator: ObservableObject {
     /// 끌리는 동안에는 끌림이 이긴다 — 손에 들려 있는데 바닥에서 비틀거리면 앞뒤가
     /// 안 맞는다. 대신 그때는 눈만 풀린 채로 끌려간다.
     private var effectiveMood: OwlMood {
+        // 다 썼으면 흔들어도 어지러워하지 않는다. 죽은 것에는 아무 반응이 없다.
+        guard !isUnusable else { return .exhausted }
         guard requestedMood != .dragged, isDizzy else { return requestedMood }
         return .dizzy
     }
@@ -482,6 +490,9 @@ final class OwlAnimator: ObservableObject {
 
     /// 지금 프레임을 화면에 올리고, 그 길이만큼 뒤에 다음 프레임을 예약한다.
     private func advance() {
+        // **다 썼으면 여기서 끝이다.** 걷기·끌림·깜빡임이 전부 이 아래에 있어서,
+        // 한 갈래씩 막으면 언젠가 새로 생긴 갈래를 빠뜨린다.
+        if isUnusable { return holdStill() }
         // 어지러움이 풀렸으면 원래 기분으로 돌아간다. 시간이 정하는 상태라
         // 바깥에서 알려줄 사람이 없어서 틱마다 스스로 확인한다.
         if mood == .dizzy, !isDizzy { return applyMood() }
@@ -500,6 +511,13 @@ final class OwlAnimator: ObservableObject {
         guard frames.count > 1 else { return }
 
         schedule(after: frame.duration + (frame.jitter > 0 ? .random(in: 0...frame.jitter) : 0))
+    }
+
+    /// 자세 하나로 굳는다. 타이머를 걸지 않아 다음 틱이 없다.
+    private func holdStill() {
+        timer?.invalidate()
+        timer = nil
+        pose = OwlMood.exhausted.frames[0].pose
     }
 
     /// 끌려가는 동안의 한 틱. 마우스가 어디로 얼마나 빨리 가는지에서 자세를 만든다.

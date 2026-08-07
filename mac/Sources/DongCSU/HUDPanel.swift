@@ -444,12 +444,16 @@ final class HUDController {
         let isVisible = visible ?? panel.isVisible
         // 조회가 끊긴 동안에는 멈춰 있는다. 회색으로 굳은 채 걸어다니면
         // "멈췄다"는 표시가 무색해진다.
+        //
+        // **주간을 다 썼을 때도 같다.** 그때는 아예 죽은 것으로 다루므로 스스로 걷지도,
+        // 커서를 피하지도 않는다. 색만 빼고 계속 돌아다니면 살아 있는 것으로 보인다.
         let canMove = isVisible
             && !areScreensAsleep
             && settings.mode == .pet
             && !isDraggingPanel
             && !isPressed
             && !store.isDisconnected
+            && !store.isWeeklySpent
 
         motion.wanders = settings.petWanders
         motion.dodgesCursor = settings.petDodgesCursor
@@ -490,9 +494,9 @@ final class HUDController {
 
     /// 사용량·연결 상태·드래그 여부에서 지금 기분을 다시 정한다.
     private func refreshMood() {
-        owlAnimator.setMood(OwlMood.resolve(store: store, isDragging: isDraggingPanel))
-        // 주간을 다 썼으면 자세는 탈진 그대로 두고 색을 뺀다. 링·숫자와 같은 규칙이다.
+        // 다 쓴 것을 먼저 알려 준다. 순서가 뒤면 한 틱 동안 살아 있는 자세가 스친다.
         owlAnimator.setUnusable(store.isWeeklySpent)
+        owlAnimator.setMood(OwlMood.resolve(store: store, isDragging: isDraggingPanel))
     }
 
     /// 펼침 방향이 바뀌면 손잡이(링·버튼)가 반대쪽으로 옮겨간다.
