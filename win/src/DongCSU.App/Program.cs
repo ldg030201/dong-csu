@@ -440,11 +440,17 @@ public sealed class AppController : IDisposable
             motionTimer.Stop();
             dodgeTimer.Stop();
             hover.Reset();
+            // **걸음을 멈추면 자세도 되돌린다.** 안 그러면 걷다가 펫에서 나갔을 때
+            // 카드 안의 부엉이가 영영 걷는다.
+            motion.Halt();
+            ApplyGait(motion.Gait);
             return;
         }
 
         motion.Wanders = settings.PetWanders;
         motion.DodgesCursor = settings.PetDodgesCursor;
+        // 배회를 끄면 걷던 것이 그 자리에 서므로 자세를 바로 맞춘다.
+        ApplyGait(motion.Gait);
 
         if (settings.PetDodgesCursor) dodgeTimer.Start(); else { dodgeTimer.Stop(); hover.Reset(); }
 
@@ -509,15 +515,20 @@ public sealed class AppController : IDisposable
         // **도착했을 때만 저장한다.** 매 틱 부르면 초당 열 번 설정 파일을 다시 쓴다.
         if (tick.Settled) window.SavePosition();
 
-        if (tick.Gait != lastGait)
-        {
-            lastGait = tick.Gait;
-            animator.SetGait(tick.Gait);
-            StartFrameTimer();
-            RefreshHud();
-        }
+        ApplyGait(tick.Gait);
 
         ScheduleMotion(tick.NextWakeup);
+    }
+
+    /// <summary>걸음이 바뀌면 자세를 갈아 끼운다. 걸음을 켜고 끄는 곳은 여기 하나뿐이다.</summary>
+    private void ApplyGait(PetGait? gait)
+    {
+        if (gait == lastGait) return;
+
+        lastGait = gait;
+        animator.SetGait(gait);
+        StartFrameTimer();
+        RefreshHud();
     }
 
     private PetGait? lastGait;

@@ -261,6 +261,60 @@ public class PetMotionTests
         Assert.Equal(1, settledCount);
     }
 
+    /// <summary>
+    /// **멈추면 걸음도 내려놓는다.**
+    ///
+    /// 걷던 중에 펫에서 나가면 <c>Halt</c> 로 세우는데, 여기서 걸음이 안 풀리면
+    /// 카드 안의 부엉이가 영영 걷는다.
+    /// </summary>
+    [Fact]
+    public void 세우면_걸음이_풀린다()
+    {
+        var clock = new MovingTime(Start);
+        var pet = new PetMotion(clock, new Random(7));
+
+        pet.Tick(Desk());
+        clock.Advance(TimeSpan.FromSeconds(4));
+        Assert.Equal(PetGait.Walk, pet.Tick(Desk()).Gait);
+
+        pet.Halt();
+
+        Assert.Null(pet.Gait);
+    }
+
+    /// <summary>배회를 끄면 걷던 것도 그 자리에 멈춘다. 목적지까지 마저 가면 안 먹은 것처럼 보인다.</summary>
+    [Fact]
+    public void 배회를_끄면_걷던_것도_그_자리에_멈춘다()
+    {
+        var clock = new MovingTime(Start);
+        var pet = new PetMotion(clock, new Random(7));
+
+        pet.Tick(Desk());
+        clock.Advance(TimeSpan.FromSeconds(4));
+        Assert.Equal(PetGait.Walk, pet.Tick(Desk()).Gait);
+
+        pet.Wanders = false;
+
+        Assert.Null(pet.Gait);
+    }
+
+    /// <summary>비키는 중에 세워도 풀린다 — 커서를 피하다 펫에서 나갈 수 있다.</summary>
+    [Fact]
+    public void 비키는_중에_세워도_걸음이_풀린다()
+    {
+        var clock = new MovingTime(Start);
+        var pet = new PetMotion(clock, new Random(1));
+        var desk = Desk();
+
+        pet.Tick(desk);
+        Assert.True(pet.RequestDodge(desk));
+        Assert.NotNull(pet.Gait);
+
+        pet.Halt();
+
+        Assert.Null(pet.Gait);
+    }
+
     private sealed class Stage : IPetStage
     {
         public PetRect Window { get; set; }

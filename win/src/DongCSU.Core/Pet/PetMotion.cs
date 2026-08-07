@@ -95,9 +95,39 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
     private bool started;
 
     /// <summary>혼자 돌아다닐지. 꺼도 커서 피하기는 따로 돈다.</summary>
-    public bool Wanders { get; set; } = true;
+    public bool Wanders
+    {
+        get => wanders;
+        set
+        {
+            if (wanders == value) return;
+            wanders = value;
+            // 배회를 끄면 **걷던 것도 그 자리에 멈춘다.** 목적지까지 마저 가면
+            // 방금 끈 설정이 안 먹은 것처럼 보인다.
+            if (!wanders && state == State.Walking) Halt();
+        }
+    }
+
+    private bool wanders = true;
 
     public bool DodgesCursor { get; set; } = true;
+
+    /// <summary>
+    /// 지금 움직이던 것을 멈추고 그 자리에 선다.
+    ///
+    /// 펫 모드에서 나가거나 혼자 돌아다니기를 끌 때 부른다. 부르고 나면
+    /// <see cref="Gait"/> 가 null 이 되므로 **자세도 같이 되돌려야 한다** —
+    /// 안 그러면 카드 안에서 부엉이가 영영 걷는다.
+    /// </summary>
+    public void Halt()
+    {
+        if (state is State.Walking or State.Dodging)
+        {
+            state = State.Resting;
+            restUntil = time.GetUtcNow() + RestSpan();
+        }
+        hurried = false;
+    }
 
     /// <summary>지금 걸음걸이. 서 있으면 null.</summary>
     public PetGait? Gait => state switch

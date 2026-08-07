@@ -35,6 +35,16 @@ public static class Changelog
     [
         new ChangelogEntry
         {
+            Version = "2.1.1",
+            Date = null,
+            Notes =
+            [
+                "걷던 중에 펫에서 나가면 카드 안에서 계속 걷던 문제 수정",
+                "혼자 돌아다니기를 꺼도 걷던 것이 목적지까지 마저 가던 문제 수정",
+            ],
+        },
+        new ChangelogEntry
+        {
             Version = "2.1.0",
             Date = "2026-08-07",
             // 펫 모드는 이번에 처음 나간다. **만드는 동안 고친 펫 버그는 여기 적지 않는다** —
