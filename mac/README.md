@@ -6,11 +6,11 @@
 
 **Claude 사용량을 화면 위에 항상 띄워두는 macOS 앱**
 
-![macOS](https://img.shields.io/badge/macOS-14+-000000?logo=apple&logoColor=white)
-![Swift](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white)
-[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=mac-v*&color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Amac-v)
-![Dependencies](https://img.shields.io/badge/dependencies-0-3A72C4)
-![License](https://img.shields.io/badge/license-MIT-3A72C4)
+![macOS](https://img.shields.io/badge/macOS-14+-3A72C4?logo=apple&logoColor=white&labelColor=0E1B2E)
+![Swift](https://img.shields.io/badge/Swift-5.9+-F05138?logo=swift&logoColor=white&labelColor=0E1B2E)
+[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=mac-v*&color=3A72C4&label=release&labelColor=0E1B2E)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Amac-v)
+![Dependencies](https://img.shields.io/badge/dependencies-0-57CC85?labelColor=0E1B2E)
+![License](https://img.shields.io/badge/license-MIT-9FC4EE?labelColor=0E1B2E)
 
 <img src="docs/screenshot.png" width="620" alt="HUD">
 

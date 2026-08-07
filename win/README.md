@@ -6,9 +6,9 @@
 
 **Claude 사용량을 화면 위에 항상 띄워두는 Windows 앱**
 
-![Windows](https://img.shields.io/badge/Windows-10%2B-0078D4?logo=windows&logoColor=white)
-[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=win-v*&color=3A72C4&label=release)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
-![License](https://img.shields.io/badge/license-MIT-3A72C4)
+![Windows](https://img.shields.io/badge/Windows-10%2B-F6A623?labelColor=0E1B2E)
+[![Release](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=win-v*&color=F6A623&label=release&labelColor=0E1B2E)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
+![License](https://img.shields.io/badge/license-MIT-9FC4EE?labelColor=0E1B2E)
 
 </div>
 
