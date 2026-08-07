@@ -6,8 +6,8 @@
 
 **Claude 사용량을 화면 위에 항상 띄워두는 앱**
 
-[![macOS](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=macOS*&display_name=release&label=%F0%9F%8D%8E&labelColor=0E1B2E&color=3A72C4)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Amac-v)
-[![Windows](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%F0%9F%AA%9F&labelColor=0078D4&color=F6A623)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
+[![macOS](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=macOS*&display_name=release&label=%20&logo=apple&logoColor=white&labelColor=0E1B2E&color=3A72C4)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Amac-v)
+[![Windows](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%20&labelColor=0078D4&color=F6A623&logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BPHBhdGggZD0iTTAgMy41IDkuNSAyLjJ2OS4zSDB6TTEwLjggMiAyNCAwdjExLjVIMTAuOHpNMCAxMi41aDkuNXY5LjNMMCAyMC41ek0xMC44IDEyLjVIMjRWMjRsLTEzLjItMS44eiIvPjwvc3ZnPgo%3D)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
 ![License](https://img.shields.io/badge/license-MIT-9FC4EE?labelColor=0E1B2E)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-57CC85?labelColor=0E1B2E)
 
@@ -30,7 +30,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 | 상주하는 곳 | 메뉴바 | 트레이 |
 | 설치 | Homebrew | WinGet · 설치 exe |
 | 업데이트 | 터미널에서 `brew upgrade` | 앱이 스스로 |
-| 지금 버전 | ![](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=macOS*&display_name=release&label=%F0%9F%8D%8E&labelColor=0E1B2E&color=3A72C4) | ![](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%F0%9F%AA%9F&labelColor=0078D4&color=F6A623) |
+| 지금 버전 | ![](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=macOS*&display_name=release&label=%20&logo=apple&logoColor=white&labelColor=0E1B2E&color=3A72C4) | ![](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%20&labelColor=0078D4&color=F6A623&logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BPHBhdGggZD0iTTAgMy41IDkuNSAyLjJ2OS4zSDB6TTEwLjggMiAyNCAwdjExLjVIMTAuOHpNMCAxMi41aDkuNXY5LjNMMCAyMC41ek0xMC44IDEyLjVIMjRWMjRsLTEzLjItMS44eiIvPjwvc3ZnPgo%3D) |
 | | **[설치하기 →](mac/README.md)** | **[설치하기 →](win/README.md)** |
 
 **어느 쪽이든 Claude Code에 로그인되어 있어야 합니다.** 이 앱은 Claude Code가 저장해 둔
