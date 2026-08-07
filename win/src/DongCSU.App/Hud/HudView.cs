@@ -225,12 +225,16 @@ public sealed class HudView : FrameworkElement
     /// <summary>접힌 카드와 펫에는 자원 줄을 붙일 자리가 없다.</summary>
     private bool HasStatsRow => ShowsProcessStats && Mode == HudMode.Expanded;
 
-    public Size DesiredHudSize => Mode switch
+    public Size DesiredHudSize => SizeFor(Mode);
+
+    /// <summary>어떤 보기의 창 크기. 아직 갈아타지 않은 보기의 크기도 물어볼 수 있어야 한다.</summary>
+    public Size SizeFor(HudMode mode) => mode switch
     {
         HudMode.Pet => new Size(BasePetWidth * Scale, (BasePetWidth + BasePetButtonRow) * Scale),
         HudMode.Collapsed => new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale),
         _ => new Size(
             BaseExpandedWidth * Scale,
+            // 접은 상태에는 자리가 없어서 자원 사용량을 붙이지 않는다.
             (BaseExpandedHeight + (HasStatsRow ? BaseStatsRowHeight : 0)) * Scale),
     };
 

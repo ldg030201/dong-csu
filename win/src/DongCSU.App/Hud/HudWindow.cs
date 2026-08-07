@@ -24,6 +24,12 @@ public sealed class HudWindow : Window
     /// <summary>카운트다운이 초 단위로 움직여야 해서 1초마다 다시 그린다.</summary>
     private readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    /// <summary>보기를 갈아탈 때만 도는 타이머. 창 크기를 한 칸씩 민다.</summary>
+    private readonly DispatcherTimer resizeTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(16),
+    };
+
     private bool isDragging;
 
     /// <summary>버튼을 누른 채로 있는 중. 뗄 때 같은 자리면 그때 실행한다.</summary>
@@ -103,11 +109,124 @@ public sealed class HudWindow : Window
         IsVisibleChanged += (_, _) => SyncTicker();
 
         tick.Tick += (_, _) => view.InvalidateVisual();
+        resizeTimer.Tick += (_, _) => StepResize();
+    }
+
+    /// <summary>
+    /// 보기를 바꾼다. **창 크기를 0.22초에 걸쳐 옮긴다** — 곧바로 바꾸면 카드가 툭 튄다.
+    ///
+    /// 작아질 때는 옛 내용을 그대로 둔 채 창만 줄여 **서랍이 밀려 들어가는 것처럼** 보이게 하고,
+    /// 커질 때는 새 내용을 먼저 깔아 두고 창을 키워 드러나게 한다. 맥과 같은 규칙이다.
+    ///
+    /// <c>BeginAnimation</c> 을 쓰지 않는다 — 끝난 뒤에도 속성을 붙들고 있어서
+    /// **펫이 스스로 걸을 때 <c>Left</c> 를 옮기지 못하게 된다.** 직접 한 칸씩 민다.
+    /// </summary>
+    public void SetMode(HudMode next)
+    {
+        if (view.Mode == next && pendingMode is null) return;
+
+        var to = view.SizeFor(next);
+        var shrinking = to.Width < Width || double.IsNaN(Width);
+
+        if (shrinking && !double.IsNaN(Width))
+        {
+            pendingMode = next;   // 다 줄어든 뒤에 갈아탄다
+        }
+        else
+        {
+            view.Mode = next;
+            pendingMode = null;
+        }
+
+        StartResize(to);
+    }
+
+    /// <summary>줄어드는 동안 미뤄 둔 보기. 다 줄어들면 이걸로 갈아탄다.</summary>
+    private HudMode? pendingMode;
+
+    private Size resizeFrom;
+    private Size resizeTo;
+    private double resizeLeftFrom;
+    private double resizeLeftTo;
+    private TimeSpan resizeElapsed;
+
+    /// <summary>맥과 같은 시간. 더 길면 굼떠 보이고 짧으면 곧바로 바꾸는 것과 다름없다.</summary>
+    private static readonly TimeSpan ResizeDuration = TimeSpan.FromSeconds(0.22);
+
+    private void StartResize(Size to)
+    {
+        // 아직 한 번도 안 뜬 창은 옮길 것이 없다. 그 자리에 바로 놓는다.
+        if (double.IsNaN(Width) || double.IsNaN(Left))
+        {
+            ApplyFrame(to, double.IsNaN(Left) ? Left : Left);
+            FinishResize();
+            return;
+        }
+
+        resizeFrom = new Size(Width, Height);
+        resizeTo = to;
+        resizeLeftFrom = Left;
+        // 왼쪽으로 펼치는 설정이면 오른쪽 위가 고정이라 왼쪽 변이 같이 움직인다.
+        resizeLeftTo = ExpandsLeft ? Left + resizeFrom.Width - to.Width : Left;
+        resizeElapsed = TimeSpan.Zero;
+        resizeTimer.Start();
+    }
+
+    private void StepResize()
+    {
+        resizeElapsed += resizeTimer.Interval;
+        var t = Math.Clamp(resizeElapsed / ResizeDuration, 0, 1);
+        // 맥의 easeInEaseOut. 양 끝에서 느려져서 미끄러지듯 멈춘다.
+        var eased = t < 0.5 ? 2 * t * t : 1 - Math.Pow(-2 * t + 2, 2) / 2;
+
+        ApplyFrame(
+            new Size(
+                resizeFrom.Width + (resizeTo.Width - resizeFrom.Width) * eased,
+                resizeFrom.Height + (resizeTo.Height - resizeFrom.Height) * eased),
+            resizeLeftFrom + (resizeLeftTo - resizeLeftFrom) * eased);
+
+        if (t < 1) return;
+
+        resizeTimer.Stop();
+        FinishResize();
+    }
+
+    private void FinishResize()
+    {
+        // 줄이는 동안 붙들고 있던 보기를 이제 갈아 끼운다.
+        if (pendingMode is { } mode)
+        {
+            view.Mode = mode;
+            pendingMode = null;
+        }
+
+        var size = view.DesiredHudSize;
+        ApplyFrame(size, Left);
+        ClampIntoScreen();
+        SyncPetRingFade();
+        SyncTicker();
+        view.InvalidateVisual();
+    }
+
+    private void ApplyFrame(Size size, double left)
+    {
+        Width = size.Width;
+        Height = size.Height;
+        view.Width = size.Width;
+        view.Height = size.Height;
+        if (!double.IsNaN(left)) Left = left;
     }
 
     /// <summary>뷰 상태를 창 크기에 반영하고 다시 그린다.</summary>
     public void Refresh()
     {
+        // 보기를 옮기는 중에는 크기를 건드리지 않는다 — 매 프레임 도로 끌어당긴다.
+        if (resizeTimer.IsEnabled)
+        {
+            view.InvalidateVisual();
+            return;
+        }
+
         var size = view.DesiredHudSize;
 
         // **크기가 실제로 바뀐 호출에서만 자리를 잡는다.**

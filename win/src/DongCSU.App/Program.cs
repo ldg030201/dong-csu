@@ -180,9 +180,10 @@ public sealed class AppController : IDisposable
     {
         if (hud is null) return;
 
-        hud.View.Mode = settings.Mode;
         hud.View.ExpandSide = settings.ExpandSide;
         hud.ExpandsLeft = settings.ExpandSide == HudExpandSide.Left;
+        // 크기가 달라지는 보기 갈아타기는 창이 애니메이션으로 옮긴다.
+        hud.SetMode(settings.Mode);
         hud.View.Scale = settings.Scale.Factor();
         hud.View.BackdropOpacity = settings.Backdrop;
         hud.View.IsDark = IsDarkTheme();
