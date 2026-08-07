@@ -359,7 +359,14 @@ public sealed class HudWindow : Window
         var style = NativeMethods.GetWindowLong(handle, NativeMethods.GwlExStyle);
         NativeMethods.SetWindowLong(handle, NativeMethods.GwlExStyle,
             style | NativeMethods.WsExToolWindow | NativeMethods.WsExNoActivate);
+
+        keyboard.Attach(handle);
     }
+
+    private readonly KeyboardIdleWatch keyboard = new();
+
+    /// <summary>마지막 키 입력 이후 지난 시간. 글을 쓰는 동안 펫을 멈추는 데 쓴다.</summary>
+    public TimeSpan SinceLastKey => keyboard.Elapsed;
 
     protected override void OnClosed(EventArgs e)
     {

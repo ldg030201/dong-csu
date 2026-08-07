@@ -389,6 +389,9 @@ public sealed class AppController : IDisposable
         motionTimer.Stop();
         if (hud is not { } window || stage is null || !ShouldMove) return;
 
+        // 글을 쓰는 동안에는 새로 걷지도, 커서를 피하지도 않는다.
+        stage.SinceLastKey = window.SinceLastKey;
+
         // 커서가 마스코트 위에 머물면 비킨다. **버튼 위라면 안 비킨다** —
         // 누르러 온 손에서 달아나면 영영 못 누른다.
         var now = DateTimeOffset.UtcNow;
