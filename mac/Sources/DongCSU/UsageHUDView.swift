@@ -363,7 +363,12 @@ struct UsageHUDView: View {
     private var metricsView: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: s(8)) {
-                metric(title: "세션", window: store.snapshot?.fiveHour, now: context.date)
+                metric(
+                    title: "세션",
+                    window: store.snapshot?.fiveHour,
+                    now: context.date,
+                    isSpent: store.isWeeklySpent
+                )
                 metric(title: "주간", window: store.snapshot?.sevenDay, now: context.date)
             }
             .shadow(color: palette.textShadow, radius: s(2), y: s(0.5))
@@ -639,15 +644,29 @@ struct UsageHUDView: View {
     ) -> some View {
         let inner = Self.innerDiameter(outer: diameter, outerWidth: outerWidth, gap: s(7))
         return ZStack {
-            ring(window: store.snapshot?.fiveHour, diameter: diameter, lineWidth: outerWidth)
+            // 주간을 다 썼으면 세션은 쓸 수 없다. 초록으로 남겨 두면 여유가 있는
+            // 것처럼 보이므로 색을 빼서 죽은 것으로 그린다.
+            ring(
+                window: store.snapshot?.fiveHour,
+                diameter: diameter,
+                lineWidth: outerWidth,
+                isSpent: store.isWeeklySpent
+            )
             ring(window: store.snapshot?.sevenDay, diameter: inner, lineWidth: innerWidth)
         }
         .frame(width: diameter, height: diameter)
     }
 
-    private func ring(window: UsageWindow?, diameter: CGFloat, lineWidth: CGFloat) -> some View {
+    private func ring(
+        window: UsageWindow?,
+        diameter: CGFloat,
+        lineWidth: CGFloat,
+        isSpent: Bool = false
+    ) -> some View {
         let fraction = (window?.utilization ?? 0) / 100
-        let color = UsageColor.color(for: window?.utilization ?? 0)
+        // 다 쓴 링은 사용률 색 대신 회색이다. 숫자는 그대로 두고 색만 뺀다 —
+        // 얼마나 썼는지는 여전히 알아야 하고, 쓸 수 없다는 것만 더 알려주면 된다.
+        let color = isSpent ? palette.ringSpent : UsageColor.color(for: window?.utilization ?? 0)
 
         return ZStack {
             Circle()
@@ -667,9 +686,15 @@ struct UsageHUDView: View {
 
     // MARK: - 수치
 
-    private func metric(title: String, window: UsageWindow?, now: Date) -> some View {
+    private func metric(
+        title: String,
+        window: UsageWindow?,
+        now: Date,
+        isSpent: Bool = false
+    ) -> some View {
         let utilization = window?.utilization
-        let color = UsageColor.color(for: utilization ?? 0)
+        // 링과 같은 규칙이다. 링만 회색이고 점은 초록이면 앞뒤가 안 맞는다.
+        let color = isSpent ? palette.ringSpent : UsageColor.color(for: utilization ?? 0)
 
         return VStack(alignment: .leading, spacing: s(1)) {
             HStack(spacing: s(5)) {

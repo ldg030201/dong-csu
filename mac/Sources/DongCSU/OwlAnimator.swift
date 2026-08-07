@@ -200,12 +200,17 @@ extension OwlMood {
     /// 집어 들었다고 색이 돌아오면 조회가 되살아난 것처럼 보인다. 끌든 걷든
     /// 끊긴 동안에는 회색으로 굳어 있어야 한다.
     ///
-    /// 사용률은 세션(5시간)만 본다 — 주간은 며칠에 걸쳐 천천히 차서, 그걸로 지치면
-    /// 한 주 내내 지친 얼굴로 있게 된다.
+    /// 지쳐 가는 정도는 세션(5시간)으로 본다 — 주간은 며칠에 걸쳐 천천히 차서,
+    /// 그걸로 지치면 한 주 내내 지친 얼굴로 있게 된다.
+    ///
+    /// **다만 주간을 다 쓴 것은 다르다.** 그때는 세션이 얼마 남았든 쓸 수 없으므로,
+    /// 세션 숫자를 보지 않고 곧바로 탈진이다. 이건 "천천히 지쳐 간다"가 아니라
+    /// "끝났다"라서 주간으로 판단하는 게 맞다.
     @MainActor
     static func resolve(store: UsageStore, isDragging: Bool) -> OwlMood {
         if store.isDisconnected { return .offline }
         if isDragging { return .dragged }
+        if store.isWeeklySpent { return .exhausted }
         guard let utilization = store.snapshot?.fiveHour?.utilization else { return .idle }
         if utilization >= exhaustedThreshold { return .exhausted }
         if utilization >= tiredThreshold { return .tired }

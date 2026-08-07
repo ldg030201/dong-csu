@@ -410,7 +410,8 @@ struct SettingsView: View {
             Picker("사용량 링", selection: $settings.petRingDisplay) {
                 ForEach(PetRingDisplay.allCases, id: \.self) { Text($0.title).tag($0) }
             }
-            .disabled(!settings.isHUDVisible)
+            // 펫 뒤에만 두르는 링이라 펫 모드가 아니면 고를 것이 없다.
+            .disabled(!settings.isHUDVisible || settings.mode != .pet)
 
             Text("펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간.")
                 .font(.system(size: 11))
@@ -435,7 +436,9 @@ struct SettingsView: View {
             petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.")
 
         }
-        .disabled(!settings.isHUDVisible)
+        // 제목에 "펫 모드에서만"이라고 적어 두고 켤 수 있게 두면 앞뒤가 안 맞는다.
+        // 펫 모드가 아니면 실제로 아무 일도 일어나지 않으므로 함께 잠근다.
+        .disabled(!settings.isHUDVisible || settings.mode != .pet)
     }
 
     private func petNote(_ text: String) -> some View {
@@ -466,27 +469,10 @@ struct SettingsView: View {
 
             Divider().padding(.vertical, 2)
 
-            Toggle("마스코트 움직이기", isOn: $settings.animatesIcon)
+            // 정지 그림(Claude 쪽)을 골라 두면 켤 것이 없어서 잠긴다.
+            Toggle("캐릭터 애니메이션", isOn: $settings.animatesIcon)
                 .disabled(!settings.iconStyle.isAnimated)
-
-            // 정지 그림을 골라 두면 스위치가 꺼져 있는 이유를 알 수 없다. 적어 준다.
-            Text(animationNote)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    /// 애니메이션 스위치 밑에 붙는 설명. 고른 그림에 따라 달라진다.
-    private var animationNote: String {
-        guard settings.iconStyle.isAnimated else {
-            return "\(settings.iconStyle.shortTitle)은 정지 그림이라 움직이지 않는다. "
-                + "Claude 쪽 그림은 저작권이 Anthropic에 있어 자세를 새로 만들지 않는다 — "
-                + "움직이는 건 이 앱이 직접 그린 캐릭터뿐이다."
-        }
-        return settings.animatesIcon
-            ? "한도가 차면 지치고, 조회가 끊기면 색이 빠진다. 끄면 평소 자세로 멈춘다."
-            : "지금은 멈춰 있다. 기분에 따른 색 변화는 그대로 보인다."
     }
 
     private func iconTile(_ style: ClaudeIconStyle) -> some View {

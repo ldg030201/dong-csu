@@ -593,8 +593,14 @@ final class HUDController {
     }
 
     /// 기본 위치: 주 화면 오른쪽 위.
+    /// 처음 자리이자 "위치 초기화"가 보내는 자리 — **주 모니터의 오른쪽 위**.
+    ///
+    /// `NSScreen.main` 을 쓰면 안 된다. 그건 주 모니터가 아니라 **키보드 포커스가 있는
+    /// 화면**이라, 초기화할 때마다 그때 쓰던 모니터로 간다. 모니터를 여러 대 쓰면
+    /// 매번 다른 데로 가서 "초기화"가 아니게 된다.
+    /// 주 모니터(메뉴 막대가 있는 화면)는 `NSScreen.screens` 의 첫 번째다.
     private func defaultOrigin() -> NSPoint {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else { return .zero }
+        guard let screen = NSScreen.screens.first ?? NSScreen.main else { return .zero }
         let area = screen.visibleFrame
         let size = panel.frame.size
         return NSPoint(

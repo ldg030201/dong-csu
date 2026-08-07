@@ -31,6 +31,16 @@ final class UsageStore: ObservableObject {
     /// 나머지는 멀쩡해 보인다.
     var isDisconnected: Bool { needsReauth || isStale }
 
+    /// 주간 한도를 다 썼다.
+    ///
+    /// **이러면 세션이 얼마 남았든 쓸 수 없다.** 세션 링만 초록으로 남아 있으면
+    /// 아직 여유가 있는 것처럼 보이므로, 화면에서도 마스코트에서도 같이 죽은 것으로
+    /// 다룬다. 여러 곳에서 따로 판단하면 어긋나므로 여기 한 곳에 둔다.
+    var isWeeklySpent: Bool {
+        guard let weekly = snapshot?.sevenDay?.utilization else { return false }
+        return weekly >= 100
+    }
+
     private var timer: Timer?
     private var backoffUntil: Date?
     private var consecutiveRateLimits = 0

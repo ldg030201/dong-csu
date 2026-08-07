@@ -54,6 +54,10 @@ struct HUDPalette {
 
     var ringTrack: Color { ink.opacity(isDark ? 0.15 : 0.13) }
 
+    /// 다 써서 더는 쓸 수 없는 링의 색. 사용률 색 대신 이걸 쓴다.
+    /// 트랙보다는 진해야 "0%"가 아니라 "다 찼는데 죽었다"로 읽힌다.
+    var ringSpent: Color { ink.opacity(isDark ? 0.38 : 0.32) }
+
     var controlIdle: Color { ink.opacity(0.45) }
     var controlActive: Color { ink.opacity(0.95) }
     var controlHoverFill: Color { ink.opacity(0.13) }
