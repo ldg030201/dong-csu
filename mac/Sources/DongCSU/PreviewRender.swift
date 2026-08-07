@@ -237,6 +237,31 @@ enum HUDPreviewRenderer {
 
     /// 설정 창을 PNG로 렌더한다. 탭마다 화면이 달라서 어느 탭을 그릴지 받는다.
     /// `update`를 주면 그 버전이 나와 있는 것처럼 그린다(버전 탭 확인용).
+    /// 측정 탭을 그릴 고정값. 재는 중이고, 세션 창을 한 번 넘긴 모습이다.
+    private static func meterState() -> UsageMeter.State {
+        var state = UsageMeter.State()
+        state.startedAt = Date().addingTimeInterval(-(5 * 3600 + 42 * 60))
+        state.samples = 34
+        state.lastSampledAt = Date().addingTimeInterval(-3 * 60)
+        state.order = ["session", "weekly_all", "weekly_scoped/Fable"]
+        state.tracks = [
+            "session": .init(title: "세션 (5시간)", accumulated: 118, lastPercent: 24, resets: 1),
+            "weekly_all": .init(title: "주간 (7일)", accumulated: 17, lastPercent: 90),
+            "weekly_scoped/Fable": .init(title: "주간 · Fable", accumulated: 3, lastPercent: 15),
+        ]
+        state.tokens = TokenTally(
+            responses: 536, input: 1_824, output: 1_145_375,
+            cacheCreation: 16_885_030, cacheRead: 452_846_994
+        )
+        state.tokensByModel = [
+            "Opus 5": TokenTally(responses: 412, input: 1_500, output: 980_000,
+                                 cacheCreation: 14_000_000, cacheRead: 400_000_000),
+            "Haiku 4.5": TokenTally(responses: 124, input: 324, output: 165_375,
+                                    cacheCreation: 2_885_030, cacheRead: 52_846_994),
+        ]
+        return state
+    }
+
     static func writeSettings(
         to path: String,
         isDark: Bool,
@@ -257,6 +282,7 @@ enum HUDPreviewRenderer {
                 preview: update,
                 lastCheckedAt: Date().addingTimeInterval(-40 * 60)
             ),
+            meter: UsageMeter(preview: meterState()),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
             version: AppInfo.displayVersion,
             initialTab: tab,

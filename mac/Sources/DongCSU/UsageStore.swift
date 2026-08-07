@@ -41,6 +41,12 @@ final class UsageStore: ObservableObject {
         return weekly >= 100
     }
 
+    /// 조회가 성공할 때마다 부른다. 측정 기록(`UsageMeter`)이 여기에 붙는다.
+    ///
+    /// 저장소가 측정 객체를 직접 알면 조회와 기록이 한 덩어리가 되어, 조회만 쓰는
+    /// 미리보기에서도 측정이 딸려 온다. 클로저로 끊어 둔다.
+    var onSnapshot: ((UsageSnapshot) -> Void)?
+
     private var timer: Timer?
     private var backoffUntil: Date?
     private var consecutiveRateLimits = 0
@@ -129,6 +135,7 @@ final class UsageStore: ObservableObject {
                 self.needsReauth = false
                 self.consecutiveRateLimits = 0
                 self.backoffUntil = nil
+                self.onSnapshot?(result)
             } catch {
                 self?.apply(error: error)
             }

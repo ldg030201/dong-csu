@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let store = UsageStore()
     private let settings = HUDSettings()
     private let updates = UpdateChecker()
+    private let meter = UsageMeter()
     private var hud: HUDController?
     private var statusItem: StatusItemController?
     private var settingsWindow: SettingsWindowController?
@@ -21,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings: settings,
             store: store,
             updates: updates,
+            meter: meter,
             actions: SettingsActions(
                 refresh: { [weak store] in store?.refresh(force: true) },
                 resetPosition: { [weak hud] in hud?.resetPosition() },
@@ -46,6 +48,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .receive(on: DispatchQueue.main)
             .sink { [weak store] interval in store?.setPollInterval(interval.seconds) }
             .store(in: &cancellables)
+
+        // 측정이 도는 동안 조회 결과를 기록에 붙인다.
+        store.onSnapshot = { [weak meter] snapshot in meter?.record(snapshot) }
 
         store.start()
 

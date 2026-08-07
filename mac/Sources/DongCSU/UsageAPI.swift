@@ -7,11 +7,39 @@ struct UsageWindow: Sendable {
     let resetsAt: Date?
 }
 
+/// 서버가 따로 내려주는 한도 하나.
+///
+/// `five_hour`·`seven_day` 두 개만 읽으면 **모델별로 갈린 한도를 놓친다.** 응답의
+/// `limits` 배열에는 그것까지 들어 있다(`weekly_scoped`). HUD는 두 개만 그리면 되지만
+/// 측정 기록은 이쪽을 센다 — 나중에 "오퍼스에 얼마 썼나"를 물을 수 있어야 한다.
+struct UsageLimit: Sendable, Hashable {
+    /// `session` · `weekly_all` · `weekly_scoped`
+    let kind: String
+    /// 모델별 한도일 때만 채워진다.
+    let modelName: String?
+    let percent: Double
+    let resetsAt: Date?
+
+    /// 창이 새로 열려도 같은 한도를 가리키는 이름. 기록을 이 값으로 묶는다.
+    var id: String { modelName.map { "\(kind)/\($0)" } ?? kind }
+
+    var title: String {
+        if let modelName { return "주간 · \(modelName)" }
+        switch kind {
+        case "session": return "세션 (5시간)"
+        case "weekly_all": return "주간 (7일)"
+        default: return kind
+        }
+    }
+}
+
 struct UsageSnapshot: Sendable {
     let planName: String?
     let fiveHour: UsageWindow?
     let sevenDay: UsageWindow?
     let fetchedAt: Date
+    /// 서버가 준 한도 전부. 옛 응답에는 없을 수 있어서 비어 있을 수 있다.
+    var limits: [UsageLimit] = []
 }
 
 enum UsageError: Error, CustomStringConvertible {
@@ -223,8 +251,27 @@ enum UsageAPI {
             planName: ClaudeKeychain.planName(for: credentials.subscriptionType),
             fiveHour: window(from: root["five_hour"]),
             sevenDay: window(from: root["seven_day"]),
-            fetchedAt: Date()
+            fetchedAt: Date(),
+            limits: limits(from: root["limits"])
         )
+    }
+
+    private static func limits(from value: Any?) -> [UsageLimit] {
+        guard let array = value as? [[String: Any]] else { return [] }
+        return array.compactMap { dict in
+            guard let kind = dict["kind"] as? String,
+                  let percent = (dict["percent"] as? NSNumber)?.doubleValue, percent.isFinite
+            else { return nil }
+
+            let scope = dict["scope"] as? [String: Any]
+            let model = (scope?["model"] as? [String: Any])?["display_name"] as? String
+            return UsageLimit(
+                kind: kind,
+                modelName: model,
+                percent: min(100, max(0, percent)),
+                resetsAt: (dict["resets_at"] as? String).flatMap(parseDate)
+            )
+        }
     }
 
     private static func window(from value: Any?) -> UsageWindow? {

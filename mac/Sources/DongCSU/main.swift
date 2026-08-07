@@ -51,6 +51,108 @@ if CommandLine.arguments.contains("--probe-login") {
     exit(0)
 }
 
+// 최근 몇 분 동안 Claude Code가 쓴 토큰을 센다: dong-csu --probe-tokens [분]
+//
+// 측정 탭이 쓰는 계산과 같은 코드다. 파일을 처음부터 훑고 시각으로만 걸러서,
+// 오프셋을 쓰는 실제 동작과 값이 맞는지 견줄 수 있다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--probe-tokens") {
+    let minutes = CommandLine.arguments.count > flagIndex + 1
+        ? Double(CommandLine.arguments[flagIndex + 1]) ?? 60
+        : 60
+    let since = Date().addingTimeInterval(-minutes * 60)
+
+    print("기록 폴더: \(ClaudeCodeUsage.projectsDirectory.path)")
+    guard ClaudeCodeUsage.isAvailable else {
+        print("찾지 못했다")
+        exit(1)
+    }
+    print("파일: \(ClaudeCodeUsage.transcripts().count)개")
+    // 대조 계산과 견주려면 기준 시각이 정확히 같아야 한다. 쓴 값을 그대로 찍는다.
+    let stamp = ISO8601DateFormatter()
+    stamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    print("기준: \(stamp.string(from: since)) (\(minutes)분 전)")
+
+    let result = TokenScan(since: since, offsets: [:], seenIDs: []).run()
+    print("응답: \(result.added.responses)")
+    print("input: \(result.added.input)")
+    print("output: \(result.added.output)")
+    print("cache_creation: \(result.added.cacheCreation)")
+    print("cache_read: \(result.added.cacheRead)")
+    for (model, tally) in result.addedByModel.sorted(by: { $0.value.output > $1.value.output }) {
+        print("  \(model): 응답 \(tally.responses) output \(tally.output)")
+    }
+    exit(0)
+}
+
+// 측정 기록을 확인한다: dong-csu --probe-meter [selftest]
+//
+// `selftest`는 리셋을 넘겨서도 계속 쌓는 계산이 맞는지 스스로 검사한다. 5시간 창이
+// 새로 열리는 걸 실제로 기다리면 확인에 다섯 시간이 걸린다.
+if CommandLine.arguments.contains("--probe-meter") {
+    if CommandLine.arguments.contains("selftest") {
+        let base = Date()
+        let first = base.addingTimeInterval(5 * 3600)
+        let second = base.addingTimeInterval(10 * 3600)
+
+        func limit(_ percent: Double, _ resetsAt: Date) -> UsageLimit {
+            UsageLimit(kind: "session", modelName: nil, percent: percent, resetsAt: resetsAt)
+        }
+
+        var track = UsageMeter.LimitTrack(title: "세션", lastPercent: 20, lastResetsAt: first)
+        let steps: [(Double, Date, String)] = [
+            (55, first, "그냥 늘었다"),
+            (92, first, "그냥 늘었다"),
+            (4, second, "창이 새로 열렸다"),
+            (30, second, "그냥 늘었다"),
+            (28, second, "서버 보정 — 더하지 않는다"),
+            (30, second.addingTimeInterval(5), "resets_at 지터 — 리셋이 아니다"),
+        ]
+        for (percent, resetsAt, note) in steps {
+            track = UsageMeter.advance(track, with: limit(percent, resetsAt))
+            print(String(format: "  %5.0f%% → 누적 %6.0f%%p  리셋 %d회   (%@)",
+                         percent, track.accumulated, track.resets, note))
+        }
+
+        let ok = track.accumulated == 104 && track.resets == 1
+        print(ok ? "통과 (누적 104%p, 리셋 1회)" : "실패: 누적 \(track.accumulated)%p, 리셋 \(track.resets)회")
+        exit(ok ? 0 : 1)
+    }
+
+    // 한 번 훑어서 기록에 얹는다. 앱이 1분마다 하는 것과 같은 일이다.
+    // 두 번 연달아 부르면 두 번째는 0이 더해져야 한다 — 그게 증분 읽기의 조건이다.
+    if CommandLine.arguments.contains("scan") {
+        let store = MeterStore()
+        guard let loaded = store.load(), let since = loaded.startedAt else {
+            print("기록 없음")
+            exit(1)
+        }
+        let result = TokenScan(since: since, offsets: loaded.offsets, seenIDs: loaded.seenIDs).run()
+        let updated = UsageMeter.applying(result, to: loaded)
+        store.save(updated)
+        print("더함: 응답 \(result.added.responses) output \(result.added.output) "
+              + "cache_read \(result.added.cacheRead)")
+        print("누적: 응답 \(updated.tokens.responses) output \(updated.tokens.output) "
+              + "cache_read \(updated.tokens.cacheRead)")
+        exit(0)
+    }
+
+    let state = MeterStore().load()
+    guard let state, let startedAt = state.startedAt else {
+        print("기록 없음")
+        exit(0)
+    }
+    print("시작: \(startedAt)")
+    print("중지: \(state.stoppedAt.map(String.init(describing:)) ?? "재는 중")")
+    print("표본: \(state.samples)회")
+    for id in state.order {
+        guard let track = state.tracks[id] else { continue }
+        print(String(format: "  %@: %.0f%%p (리셋 %d회)", track.title, track.accumulated, track.resets))
+    }
+    print("토큰: 응답 \(state.tokens.responses) output \(state.tokens.output) "
+          + "cache_read \(state.tokens.cacheRead)")
+    exit(0)
+}
+
 // 설정 창을 PNG로 그려서 확인: dong-csu --render-settings out.png [light] [status|display|icon|account]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
    flagIndex + 1 < CommandLine.arguments.count {

@@ -70,6 +70,20 @@ enum RemainingTime {
         return "\(elapsed / (24 * 3600))일 전 값"
     }
 
+    /// 잰 시간. 카운트다운(`clockText`)과 달리 자릿수를 맞추지 않는다 —
+    /// 측정 화면에서는 "얼마나 쟀나"가 한눈에 읽히는 편이 낫다.
+    static func elapsedText(_ seconds: TimeInterval) -> String {
+        let total = max(0, Int(seconds))
+        let days = total / (24 * 3600)
+        let hours = (total % (24 * 3600)) / 3600
+        let minutes = (total % 3600) / 60
+
+        if days > 0 { return "\(days)일 \(hours)시간" }
+        if hours > 0 { return "\(hours)시간 \(minutes)분" }
+        if minutes > 0 { return "\(minutes)분 \(total % 60)초" }
+        return "\(total)초"
+    }
+
     /// 초까지 보이는 카운트다운. 1시간 미만이면 `분:초`, 넘으면 `시:분:초`.
     static func clockText(until date: Date?, now: Date) -> String {
         guard let date else { return "--:--" }
@@ -81,4 +95,34 @@ enum RemainingTime {
         if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, seconds) }
         return String(format: "%d:%02d", minutes, seconds)
     }
+}
+
+/// 토큰 수를 사람이 읽는 형태로.
+enum TokenFormat {
+    /// 한눈에 크기를 잡는 용도. `452,846,994` 는 세어 봐야 알지만 `4.5억`은 안 세도 된다.
+    static func short(_ value: Int) -> String {
+        let magnitude = abs(value)
+        if magnitude >= 100_000_000 { return trim(Double(value) / 100_000_000) + "억" }
+        if magnitude >= 10_000 { return trim(Double(value) / 10_000) + "만" }
+        return exact(value)
+    }
+
+    /// 자릿점만 찍은 그대로의 값.
+    static func exact(_ value: Int) -> String {
+        grouping.string(from: NSNumber(value: value)) ?? "\(value)"
+    }
+
+    private static func trim(_ value: Double) -> String {
+        // 100을 넘으면 소수점이 의미가 없다(123.4만 → 123만).
+        let text = abs(value) >= 100
+            ? String(format: "%.0f", value)
+            : String(format: "%.1f", value)
+        return text.hasSuffix(".0") ? String(text.dropLast(2)) : text
+    }
+
+    private static let grouping: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        return formatter
+    }()
 }

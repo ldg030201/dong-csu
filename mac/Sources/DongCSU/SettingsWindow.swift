@@ -8,6 +8,7 @@ import SwiftUI
 /// 아이콘 탭만 길어진다.
 enum SettingsTab: String, CaseIterable, Identifiable {
     case status
+    case measure
     case display
     case icon
     case pet
@@ -19,6 +20,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .status: return "상태"
+        case .measure: return "측정"
         case .display: return "표시"
         case .icon: return "아이콘"
         case .pet: return "펫"
@@ -30,6 +32,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .status: return "gauge"
+        case .measure: return "stopwatch"
         case .display: return "slider.horizontal.3"
         case .icon: return "face.smiling"
         case .pet: return "pawprint"
@@ -58,6 +61,7 @@ struct SettingsView: View {
     @ObservedObject var settings: HUDSettings
     @ObservedObject var store: UsageStore
     @ObservedObject var updates: UpdateChecker
+    @ObservedObject var meter: UsageMeter
     let actions: SettingsActions
     let version: String
     /// 미리보기 렌더는 ScrollView 안을 그리지 못한다. 그럴 때는 스크롤을 벗겨서
@@ -75,6 +79,7 @@ struct SettingsView: View {
         settings: HUDSettings,
         store: UsageStore,
         updates: UpdateChecker,
+        meter: UsageMeter,
         actions: SettingsActions,
         version: String,
         initialTab: SettingsTab? = nil,
@@ -83,6 +88,7 @@ struct SettingsView: View {
         self.settings = settings
         self.store = store
         self.updates = updates
+        self.meter = meter
         self.actions = actions
         self.version = version
         self.isPreviewRender = isPreviewRender
@@ -174,6 +180,7 @@ struct SettingsView: View {
     private var tabBody: some View {
         switch tab {
         case .status: statusSection
+        case .measure: measureSection
         case .display: displaySection
         case .icon: iconSection
         case .pet: petSection
@@ -264,6 +271,174 @@ struct SettingsView: View {
         guard let next = store.nextPollDate else { return "멈춤" }
         guard next.timeIntervalSince(now) > 0 else { return "곧" }
         return "\(RemainingTime.clockText(until: next, now: now)) 뒤"
+    }
+
+    // MARK: - 측정
+
+    /// 시작~중지 사이에 얼마나 썼는지.
+    ///
+    /// **두 숫자가 재는 범위가 다르다.** 한도 %p는 클로드 앱·웹까지 포함한 계정 전체이고,
+    /// 토큰은 Claude Code 것뿐이다. 어느 쪽이 무엇을 재는지 밝혀 두지 않으면 두 값이
+    /// 안 맞는 것을 버그로 읽는다.
+    private var measureSection: some View {
+        // 재는 중에는 경과 시간이 초 단위로 움직인다.
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 14) {
+                measureHeader(now: context.date)
+
+                if meter.hasRecord {
+                    Divider()
+                    measureLimits
+                    Divider()
+                    measureTokens
+                }
+
+                Divider()
+                measureControls(now: context.date)
+            }
+        }
+        // 탭을 열자마자 최신 값을 보여준다. 타이머(1분)만 기다리면 멈춰 있는 것처럼 보인다.
+        .onAppear { meter.scanTokens() }
+    }
+
+    private func measureHeader(now: Date) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(meter.elapsed(now: now).map(RemainingTime.elapsedText) ?? "아직 안 쟀음")
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .monospacedDigit()
+
+            if meter.isRunning {
+                Label("재는 중", systemImage: "record.circle")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.red)
+            } else if meter.hasRecord {
+                Text("멈춤")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var measureLimits: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            measureLabel("한도 소모", note: "클로드 앱·웹 포함")
+
+            if meter.tracksInOrder.isEmpty {
+                Text("첫 조회를 기다리는 중…")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(Array(meter.tracksInOrder.enumerated()), id: \.offset) { _, track in
+                    HStack(spacing: 8) {
+                        Text(track.title)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 12)
+                        if track.resets > 0 {
+                            // 리셋을 넘겨서도 계속 쌓았다는 표시. 이게 없으면 창이 새로
+                            // 열린 뒤의 값이 왜 이렇게 큰지 알 수 없다.
+                            Text("리셋 \(track.resets)회 넘김")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.tertiary)
+                        }
+                        Text(String(format: "%.0f%%p", track.accumulated))
+                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
+                    }
+                }
+            }
+        }
+    }
+
+    private var measureTokens: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            measureLabel("토큰", note: "Claude Code만")
+
+            if !ClaudeCodeUsage.isAvailable {
+                Text("Claude Code 기록을 찾지 못했다")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else if meter.state.tokens.isEmpty {
+                Text("아직 없음")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                let tokens = meter.state.tokens
+                measureRow("응답", "\(TokenFormat.exact(tokens.responses))건")
+                measureRow("출력", TokenFormat.short(tokens.output))
+                measureRow("입력", TokenFormat.short(tokens.input))
+                measureRow("캐시 생성", TokenFormat.short(tokens.cacheCreation))
+                measureRow("캐시 읽기", TokenFormat.short(tokens.cacheRead))
+
+                if meter.state.tokensByModel.count > 1 {
+                    Divider().padding(.vertical, 2)
+                    measureLabel("모델별", note: "출력 토큰")
+                    ForEach(modelBreakdown, id: \.0) { model, tally in
+                        measureRow(model, TokenFormat.short(tally.output), emphasised: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// 모델별 출력 토큰. 많이 쓴 것부터.
+    private var modelBreakdown: [(String, TokenTally)] {
+        meter.state.tokensByModel
+            .sorted { $0.value.output > $1.value.output }
+            .map { ($0.key, $0.value) }
+    }
+
+    private func measureControls(now: Date) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                if meter.isRunning {
+                    Button("중지", action: meter.stop)
+                } else {
+                    Button(meter.hasRecord ? "다시 시작" : "시작", action: meter.start)
+                }
+                Button("초기화", action: meter.reset)
+                    .disabled(!meter.hasRecord)
+                Spacer(minLength: 0)
+                if meter.hasRecord {
+                    Text(measureSampleText(now: now))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            Text("한도는 조회할 때(\(settings.pollInterval.title)) 갱신된다. "
+                 + "서버가 정수 %로 줘서 1%p 아래는 안 잡힌다.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func measureSampleText(now: Date) -> String {
+        guard let last = meter.state.lastSampledAt else { return "표본 없음" }
+        return "표본 \(meter.state.samples)회 · \(RemainingTime.ageText(since: last, now: now))"
+    }
+
+    private func measureLabel(_ title: String, note: String) -> some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(note)
+                .font(.system(size: 10))
+                .foregroundStyle(.tertiary)
+        }
+    }
+
+    private func measureRow(_ title: String, _ value: String, emphasised: Bool = true) -> some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 11))
+                .foregroundStyle(emphasised ? Color.secondary : Color.secondary.opacity(0.75))
+            Spacer(minLength: 12)
+            Text(value)
+                .font(.system(size: 11.5, weight: emphasised ? .medium : .regular).monospacedDigit())
+        }
     }
 
     // MARK: - 표시 설정
@@ -678,6 +853,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let settings: HUDSettings
     private let store: UsageStore
     private let updates: UpdateChecker
+    private let meter: UsageMeter
     private let actions: SettingsActions
     /// 설정 창을 띄울 화면. HUD가 놓인 화면을 따라간다.
     private let preferredScreen: () -> NSScreen?
@@ -686,12 +862,14 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         settings: HUDSettings,
         store: UsageStore,
         updates: UpdateChecker,
+        meter: UsageMeter,
         actions: SettingsActions,
         preferredScreen: @escaping () -> NSScreen?
     ) {
         self.settings = settings
         self.store = store
         self.updates = updates
+        self.meter = meter
         self.actions = actions
         self.preferredScreen = preferredScreen
         super.init()
@@ -718,6 +896,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
                 settings: settings,
                 store: store,
                 updates: updates,
+                meter: meter,
                 actions: actions,
                 version: version
             )
