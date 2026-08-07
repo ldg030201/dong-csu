@@ -102,11 +102,13 @@ struct SettingsView: View {
         GeometryReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 content
-                    .frame(
-                        minWidth: max(Self.size.width, proxy.size.width),
-                        minHeight: max(Self.size.height, proxy.size.height),
-                        alignment: .topLeading
-                    )
+                    // **폭은 못 박는다.** 가로 스크롤이 열려 있으면 폭 제안이 무한이라,
+                    // `minWidth` 만 주면 긴 문장이 줄바꿈하지 않고 한 줄로 뻗는다.
+                    // 그러면 창을 열 때마다 가로 스크롤이 생긴다(2.1.3 에서 그랬다).
+                    // 창이 커지면 이 값도 같이 커져서 내용이 따라 늘어난다.
+                    .frame(width: max(Self.size.width, proxy.size.width), alignment: .topLeading)
+                    // 높이는 최소만 준다. 내용이 길면 넘쳐서 세로로 스크롤되어야 한다.
+                    .frame(minHeight: max(Self.size.height, proxy.size.height), alignment: .topLeading)
             }
         }
     }
