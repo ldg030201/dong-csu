@@ -12,6 +12,9 @@
 param(
     [switch]$Test,
     [switch]$Run,
+    # 시작 메뉴에 바로가기를 만든다. 테스트판은 설치본이 아니라 검색해도 안 나오는데,
+    # 개발하면서 띄울 때마다 폴더를 찾아 들어가는 것은 번거롭다.
+    [switch]$Shortcut,
     [string]$Configuration = 'Release'
 )
 
@@ -40,6 +43,24 @@ if ($LASTEXITCODE -ne 0) { throw "빌드 실패" }
 $exe = Join-Path $outDir $exeName
 if (-not (Test-Path $exe)) { throw "실행 파일이 없다: $exe" }
 Write-Host "만듦: $exe"
+
+if ($Shortcut) {
+    # 시작 메뉴의 사용자 영역. 관리자 권한이 필요 없다.
+    $programs = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'
+    $linkPath = Join-Path $programs "$([System.IO.Path]::GetFileNameWithoutExtension($exeName)).lnk"
+
+    $shell = New-Object -ComObject WScript.Shell
+    $link = $shell.CreateShortcut($linkPath)
+    $link.TargetPath = $exe
+    # 앱이 자기 폴더의 파일(아이콘 등)을 찾을 수 있게 해 둔다.
+    $link.WorkingDirectory = $outDir
+    $link.IconLocation = $exe
+    $link.Description = if ($Test) { 'DongCSU 테스트 빌드 (설치본 아님)' } else { 'DongCSU' }
+    $link.Save()
+
+    Write-Host "바로가기: $linkPath"
+    Write-Host "  시작 메뉴에서 검색해서 띄울 수 있다. 색인에 잡히는 데 잠깐 걸릴 수 있다."
+}
 
 if ($Run) {
     # 같은 판이 이미 떠 있으면 옛 바이너리다. 그것만 내린다 — 다른 판은 건드리지 않는다.

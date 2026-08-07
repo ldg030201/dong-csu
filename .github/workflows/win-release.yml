@@ -61,10 +61,13 @@ jobs:
           # 라이브러리(DongCSU.App.csproj 의 Velopack)와 **같은 번호**여야 한다.
           # 어긋나면 vpk 가 경고를 내고, 만든 설치본이 앱의 업데이트 코드와 안 맞을 수 있다.
           dotnet tool install -g vpk --version 1.2.0
+          # **--shortcuts 를 적어 둔다.** 기본값에 맡기면 vpk 판이 바뀔 때 조용히 달라지는데,
+          # 바로가기가 없으면 사용자는 깔고도 앱을 찾지 못한다(트레이에만 뜨는 앱이라 더 그렇다).
           vpk pack --packId DongCSU --packVersion ${{ steps.version.outputs.value }} `
             --packDir publish --mainExe DongCSU.exe `
             --packTitle DongCSU --packAuthors ldg030201 `
             --icon src/DongCSU.App/Resources/DongCSU.ico `
+            --shortcuts StartMenu,Desktop `
             --outputDir releases
 
       - name: 릴리스에 올리기

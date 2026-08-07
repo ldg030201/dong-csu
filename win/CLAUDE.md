@@ -8,10 +8,15 @@
 ## 테스트판과 정식판
 
 ```powershell
-./build.ps1              # 정식판   src/DongCSU.App/bin/Release/.../DongCSU.exe
-./build.ps1 -Test        # 테스트판 build/test/DongCSU-Test.exe
-./build.ps1 -Test -Run   # 만들고 바로 띄운다
+./build.ps1                    # 정식판   src/DongCSU.App/bin/Release/.../DongCSU.exe
+./build.ps1 -Test              # 테스트판 build/test/DongCSU-Test.exe
+./build.ps1 -Test -Run         # 만들고 바로 띄운다
+./build.ps1 -Test -Shortcut    # 시작 메뉴에 바로가기까지 만든다
 ```
+
+**개발 빌드는 검색해도 안 나온다.** 설치본이 아니라 폴더에 놓인 exe 라 시작 메뉴가 모른다.
+게다가 이 앱은 트레이에만 뜨고 작업 표시줄에 안 나와서, 한 번 끄면 다시 켤 곳을 찾기 어렵다.
+`-Shortcut` 이 그 바로가기를 만들어 준다. 정식판은 설치본이 알아서 만든다.
 
 **개발은 테스트판으로 하고, 정식판은 받아서 업데이트가 되는지 확인한다.** 맥의
 `VARIANT=test ./build.sh` 와 같은 자리다.
