@@ -43,7 +43,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "2.1.3", date: nil, notes: [
+        ChangelogEntry(version: "2.1.3", date: "2026-08-07", notes: [
             "주간 한도를 다 쓰면 마스코트·세션 링·세션 숫자를 회색으로 표시하도록 변경",
             "마스코트 움직이기를 캐릭터 애니메이션으로 이름 변경",
             "펫 모드가 꺼져 있으면 사용량 링·스스로 움직이기 설정을 잠그도록 변경",
