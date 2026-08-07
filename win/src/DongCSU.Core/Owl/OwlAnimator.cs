@@ -82,14 +82,88 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
     /// </summary>
     public OwlAnimation Animation => document.Animations.Single(a => a.Name == CurrentName);
 
-    private string CurrentName => gait switch
+    /// <summary>손에 잡혀 끌려가는 중인지. 다른 무엇보다 이게 먼저다.</summary>
+    public bool IsDragged
     {
-        DongCSU.Core.Pet.PetGait.Walk => "walk",
-        DongCSU.Core.Pet.PetGait.Run => "run",
-        _ => mood.Name(),
-    };
+        get => dragged;
+        set
+        {
+            if (dragged == value) return;
+            dragged = value;
+            frameIndex = 0;
+        }
+    }
 
-    public OwlFrame CurrentFrame => Animation.Frames[Math.Min(frameIndex, Animation.Frames.Count - 1)];
+    /// <summary>마구 흔들린 직후인지. 눈이 풀리고 비틀거린다.</summary>
+    public bool IsDizzy
+    {
+        get => dizzy;
+        set
+        {
+            if (dizzy == value) return;
+            dizzy = value;
+            frameIndex = 0;
+        }
+    }
+
+    private bool dragged;
+    private bool dizzy;
+
+    /// <summary>
+    /// 지금 보여줄 그림 이름.
+    ///
+    /// 차례가 정해져 있다 — **끌림 &gt; 어지러움 &gt; 걸음 &gt; 기분.** 손에 들려 있는데
+    /// 걷는 자세를 하면 허공에서 발을 놀리는 꼴이고, 어지러운데 기분 자세를 하면
+    /// 흔든 보람이 없다.
+    /// </summary>
+    private string CurrentName
+    {
+        get
+        {
+            if (dragged) return "dragged";
+            if (dizzy) return "dizzy";
+            return gait switch
+            {
+                DongCSU.Core.Pet.PetGait.Walk => "walk",
+                DongCSU.Core.Pet.PetGait.Run => "run",
+                _ => mood.Name(),
+            };
+        }
+    }
+
+    /// <summary>
+    /// 걷기·달리기 그림은 여덟 칸이지만 **다리 주기는 앞 네 칸**이다. 뒤 네 칸은 같은
+    /// 다리에 눈 깜빡임이 얹힌 것이고, 그중 실제로 눈이 감긴 것은 <c>여섯 번째 하나뿐</c>이다.
+    ///
+    /// 여덟 칸을 통째로 돌리면 **한 걸음마다(1.1초) 깜빡인다.** 맥은 다리와 눈을 따로
+    /// 돌려서 22~34틱(3~5초)에 한 번 깜빡인다. 여기서도 그렇게 센다.
+    /// </summary>
+    private const int GaitLegFrames = 4;
+    private const int GaitBlinkFrame = GaitLegFrames + 2;
+    private const int GaitBlinkLeg = GaitBlinkFrame - GaitLegFrames;
+    private const int BlinkInterval = 22;
+    private const int BlinkJitter = 12;
+
+    private int blinkCountdown = BlinkInterval;
+    private bool blinkQueued;
+
+    /// <summary>지금 걷는 그림을 쓰고 있는지. 끌림·어지러움이 걸음보다 먼저다.</summary>
+    private bool IsWalking => !dragged && !dizzy && gait is not null;
+
+    public OwlFrame CurrentFrame
+    {
+        get
+        {
+            var frames = Animation.Frames;
+            if (!IsWalking || frames.Count <= GaitBlinkFrame)
+            {
+                return frames[Math.Min(frameIndex, frames.Count - 1)];
+            }
+
+            var leg = frameIndex % GaitLegFrames;
+            return frames[blinkQueued && leg == GaitBlinkLeg ? GaitBlinkFrame : leg];
+        }
+    }
 
     /// <summary>지금 그려야 할 그림. <c>owl.json</c> 이 실어 온 합성 결과를 그대로 쓴다.</summary>
     public string[] CurrentGrid => CurrentFrame.Grid;
@@ -115,6 +189,23 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
     {
         var frames = Animation.Frames;
         if (frames.Count <= 1) return null;
+
+        if (IsWalking && frames.Count > GaitBlinkFrame)
+        {
+            // 깜빡임을 보여준 칸을 지나가면 내려놓는다.
+            if (blinkQueued && frameIndex % GaitLegFrames == GaitBlinkLeg) blinkQueued = false;
+
+            frameIndex = (frameIndex + 1) % GaitLegFrames;
+
+            // 깜빡일 차례가 되면 예약해 두고, 눈 감은 그림이 있는 다리 자세에서 쓴다.
+            if (!blinkQueued && --blinkCountdown <= 0)
+            {
+                blinkQueued = true;
+                blinkCountdown = BlinkInterval + random.Next(BlinkJitter + 1);
+            }
+
+            return DelayFor(CurrentFrame);
+        }
 
         frameIndex = (frameIndex + 1) % frames.Count;
         return DelayFor(frames[frameIndex]);

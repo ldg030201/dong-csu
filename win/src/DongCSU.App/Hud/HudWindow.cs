@@ -4,6 +4,7 @@ using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
 using DongCSU.Core;
+using DongCSU.Core.Pet;
 
 namespace DongCSU.App.Hud;
 
@@ -34,6 +35,12 @@ public sealed class HudWindow : Window
 
     /// <summary>잡혔다 놓였다. 그동안 스스로 움직이는 것을 멈춘다.</summary>
     public event Action? HeldChanged;
+
+    /// <summary>마구 흔들려서 어지러워졌다.</summary>
+    public event Action? DizzyStarted;
+
+    /// <summary>흔들림 점수. 끌 때마다 새로 센다.</summary>
+    public PetShake Shake { get; } = new();
 
     public event Action? ContextMenuRequested;
     public event Action? SettingsRequested;
@@ -78,7 +85,17 @@ public sealed class HudWindow : Window
         MouseLeftButtonUp += OnMouseUp;
         MouseDoubleClick += OnDoubleClick;
         MouseRightButtonUp += (_, _) => ContextMenuRequested?.Invoke();
-        LocationChanged += (_, _) => { if (!isDragging) Moved?.Invoke(); };
+        LocationChanged += (_, _) =>
+        {
+            if (isDragging)
+            {
+                // 끄는 동안 자리를 계속 넣어 준다. DragMove 는 자기 루프를 돌지만
+                // LocationChanged 는 그 안에서도 온다.
+                if (Shake.Sample(new PetPoint(Left, Top))) DizzyStarted?.Invoke();
+                return;
+            }
+            Moved?.Invoke();
+        };
         IsVisibleChanged += (_, _) => SyncTicker();
 
         tick.Tick += (_, _) => view.InvalidateVisual();
@@ -296,6 +313,7 @@ public sealed class HudWindow : Window
         try
         {
             isDragging = true;
+            Shake.Begin();
             HeldChanged?.Invoke();
             DragMove();
         }

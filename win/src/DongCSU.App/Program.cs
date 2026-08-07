@@ -125,8 +125,9 @@ public sealed class AppController : IDisposable
         stage = new PetStage(hud);
         hud.ModeToggled += ToggleCollapsed;
         hud.PetToggled += TogglePet;
-        // 손에 잡히면 멈추고, 놓으면 다시 걷는다.
-        hud.HeldChanged += SyncMotion;
+        // 손에 잡히면 멈추고, 놓으면 다시 걷는다. 잡혀 있는 동안은 끌리는 자세다.
+        hud.HeldChanged += OnHeldChanged;
+        hud.DizzyStarted += OnDizzyStarted;
         // 우클릭은 트레이와 **같은 메뉴**를 띄운다. 설정 창이 튀어나오면 놀란다.
         hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
         hud.SettingsRequested += () => OpenSettings();
@@ -153,6 +154,13 @@ public sealed class AppController : IDisposable
             hud.View.InvalidateVisual();
         };
         motionTimer.Tick += (_, _) => OnMotionTick();
+        dizzyTimer.Tick += (_, _) =>
+        {
+            dizzyTimer.Stop();
+            animator.IsDizzy = false;
+            StartFrameTimer();
+            RefreshHud();
+        };
 
         updateTimer.Interval = UpdateService.CheckInterval;
         updateTimer.Tick += async (_, _) =>
@@ -355,6 +363,33 @@ public sealed class AppController : IDisposable
         && !window.IsHeld
         && !screensAsleep
         && (settings.PetWanders || settings.PetDodgesCursor);
+
+    /// <summary>잡혔다 놓였다. 자세를 바꾸고 움직임을 멈췄다 다시 켠다.</summary>
+    private void OnHeldChanged()
+    {
+        if (hud is { } window)
+        {
+            animator.IsDragged = window.IsHeld;
+            // 놓는 순간 흔들려 있었으면 그 자리에서 어지러워한다.
+            animator.IsDizzy = !window.IsHeld && window.Shake.IsDizzy;
+            StartFrameTimer();
+            RefreshHud();
+        }
+        SyncMotion();
+    }
+
+    /// <summary>
+    /// 흔들어서 어지러워졌다. **놓을 때까지는 끌리는 자세 그대로다** —
+    /// 손에 들린 채로 비틀거리면 무엇이 흔들리는 건지 알 수 없다.
+    /// </summary>
+    private void OnDizzyStarted() => Dispatch(() =>
+    {
+        dizzyTimer.Stop();
+        dizzyTimer.Interval = PetShake.DizzyDuration;
+        dizzyTimer.Start();
+    });
+
+    private readonly DispatcherTimer dizzyTimer = new();
 
     private void SyncMotion()
     {
