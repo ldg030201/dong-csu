@@ -18,6 +18,13 @@ public enum HudHit
     Refresh,
     /// <summary>새 버전 표시. 누르면 버전 화면이 열린다.</summary>
     UpdateBadge,
+    /// <summary>
+    /// 마스코트. 더블클릭으로 펫 모드를 드나든다.
+    ///
+    /// **다른 자리와 달리 여기서는 드래그가 살아 있어야 한다** — 펫 모드에서는
+    /// 마스코트가 창의 거의 전부라, 여기서 못 끌면 창을 옮길 방법이 없다.
+    /// </summary>
+    Mascot,
 }
 
 /// <summary>
