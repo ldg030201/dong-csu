@@ -203,6 +203,8 @@ public sealed class AppController : IDisposable
 
         SyncStatsTimer();
         SyncMotion();
+        // 숨겼다 켰거나, 움직임·아이콘 설정이 바뀌었을 수 있다. 프레임 타이머를 다시 잡는다.
+        StartFrameTimer();
         RefreshHud();
     }
 
@@ -310,6 +312,9 @@ public sealed class AppController : IDisposable
     private void StartFrameTimer()
     {
         frameTimer.Stop();
+        // **아무도 안 보고 있으면 넘기지 않는다.** 애니메이션은 사용량 조회보다 훨씬 자주
+        // 깨어나서, 숨겨 뒀거나 화면이 잠긴 동안 계속 돌면 배터리만 먹는다.
+        if (screensAsleep || !settings.IsHudVisible) return;
         // 움직이지 않게 해 뒀으면 프레임을 넘기지 않는다. 기분에 따른 색은 그대로다 —
         // 자세만 멈출 뿐 지금 상태를 못 알리게 되는 것은 아니다.
         if (!settings.AnimatesMascot) return;

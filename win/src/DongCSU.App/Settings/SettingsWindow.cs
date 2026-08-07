@@ -295,9 +295,10 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(header);
 
         panel.Children.Add(Ui.Card(palette,
-            UsageRow(palette, "세션", store.Snapshot?.FiveHour, now),
+            // HUD 는 좁아서 "세션·주간"만 쓰지만, 여기서는 몇 시간짜리인지까지 밝힌다.
+            UsageRow(palette, "세션 (5시간)", store.Snapshot?.FiveHour, now),
             Ui.Divider(palette),
-            UsageRow(palette, "주간", store.Snapshot?.SevenDay, now)));
+            UsageRow(palette, "주간 (7일)", store.Snapshot?.SevenDay, now)));
 
         panel.Children.Add(Ui.Section(palette, "조회"));
         panel.Children.Add(Ui.Card(palette,
