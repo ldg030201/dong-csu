@@ -97,6 +97,19 @@ public sealed class HudView : FrameworkElement
     /// <summary>자원 사용량 줄을 붙일 때 늘어나는 높이.</summary>
     public const double BaseStatsRowHeight = 17;
 
+    /// <summary>
+    /// 펫 모습: 마스코트만. 창은 뒤에 두를 링을 담을 만큼이다.
+    ///
+    /// **마우스를 올렸다고 창을 키우지 않는다** — 커서가 창 밖으로 밀려나 호버가 끊기고
+    /// 그 자리에서 켜졌다 꺼졌다 한다.
+    /// </summary>
+    public const double BasePetSize = 128;
+
+    private const double BasePetRingDiameter = 124;
+    private const double BasePetOuterThickness = 5;
+    private const double BasePetInnerThickness = 4;
+    private const double BasePetOwlHeight = 84;
+
     private const double BaseRingDiameter = 62;
     private const double BaseOuterThickness = 6;
     private const double BaseInnerThickness = 5;
@@ -177,14 +190,29 @@ public sealed class HudView : FrameworkElement
         }
     }
 
-    /// <summary>접힌 카드에는 자원 줄을 붙일 자리가 없다.</summary>
-    private bool HasStatsRow => ShowsProcessStats && Mode != HudMode.Collapsed;
+    /// <summary>접힌 카드와 펫에는 자원 줄을 붙일 자리가 없다.</summary>
+    private bool HasStatsRow => ShowsProcessStats && Mode == HudMode.Expanded;
 
-    public Size DesiredHudSize => Mode == HudMode.Collapsed
-        ? new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale)
-        : new Size(
+    public Size DesiredHudSize => Mode switch
+    {
+        HudMode.Pet => new Size(BasePetSize * Scale, BasePetSize * Scale),
+        HudMode.Collapsed => new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale),
+        _ => new Size(
             BaseExpandedWidth * Scale,
-            (BaseExpandedHeight + (HasStatsRow ? BaseStatsRowHeight : 0)) * Scale);
+            (BaseExpandedHeight + (HasStatsRow ? BaseStatsRowHeight : 0)) * Scale),
+    };
+
+    /// <summary>펫에서 마우스가 마스코트 위에 있는지. 창이 넣어 준다.</summary>
+    public bool IsHovered { get; set; }
+
+    public PetRingDisplay PetRingDisplay { get; set; } = PetRingDisplay.Hover;
+
+    private bool ShowsPetRing => PetRingDisplay switch
+    {
+        PetRingDisplay.Always => true,
+        PetRingDisplay.Never => false,
+        _ => IsHovered,
+    };
 
     private HudPalette Palette => IsDark ? HudPalette.Dark : HudPalette.Light;
 
@@ -197,6 +225,10 @@ public sealed class HudView : FrameworkElement
     {
         var size = DesiredHudSize;
         var button = BaseButton * Scale;
+
+        // **펫에는 버튼이 없다.** 빈 사각형을 줘야 한다 — 자리를 돌려주면 그만큼이
+        // 클릭 통과 구멍이 되어 마스코트 귀퉁이를 눌러도 끌리지 않는다.
+        if (Mode == HudMode.Pet) return [Rect.Empty, Rect.Empty, Rect.Empty];
 
         if (Mode == HudMode.Collapsed)
         {
@@ -224,6 +256,8 @@ public sealed class HudView : FrameworkElement
     /// <summary>새 버전 표시. 버튼 묶음 **반대편** 위 모서리다.</summary>
     private Rect UpdateBadgeRect()
     {
+        if (Mode == HudMode.Pet) return Rect.Empty;
+
         var size = DesiredHudSize;
         var badge = BaseUpdateBadge * Scale;
         var inset = BaseInset * Scale;
@@ -231,9 +265,17 @@ public sealed class HudView : FrameworkElement
         return new Rect(x, inset, badge, badge);
     }
 
+    /// <summary>링이 놓인 자리. 펫에서는 창 가운데다.</summary>
     private Rect RingRect()
     {
         var size = DesiredHudSize;
+
+        if (Mode == HudMode.Pet)
+        {
+            var pet = BasePetRingDiameter * Scale;
+            return new Rect((size.Width - pet) / 2, (size.Height - pet) / 2, pet, pet);
+        }
+
         var ring = BaseRingDiameter * Scale;
         var rowHeight = Mode == HudMode.Collapsed ? size.Height : BaseExpandedHeight * Scale;
         var top = (rowHeight - ring) / 2;
@@ -281,24 +323,30 @@ public sealed class HudView : FrameworkElement
         var palette = Palette;
         var s = Scale;
 
-        var backdrop = new SolidColorBrush(palette.Backdrop)
+        if (Mode.ShowsBackdrop())
         {
-            Opacity = Math.Clamp(BackdropOpacity, AppSettings.MinBackdropOpacity, 1),
-        };
-        backdrop.Freeze();
-        var border = new Pen(Frozen(palette.Border), 1);
-        border.Freeze();
+            var backdrop = new SolidColorBrush(palette.Backdrop)
+            {
+                Opacity = Math.Clamp(BackdropOpacity, AppSettings.MinBackdropOpacity, 1),
+            };
+            backdrop.Freeze();
+            var border = new Pen(Frozen(palette.Border), 1);
+            border.Freeze();
 
-        var radius = (Mode == HudMode.Collapsed ? 26 : 20) * s;
-        context.DrawRoundedRectangle(
-            backdrop, border, new Rect(0.5, 0.5, size.Width - 1, size.Height - 1), radius, radius);
+            var radius = (Mode == HudMode.Collapsed ? 26 : 20) * s;
+            context.DrawRoundedRectangle(
+                backdrop, border, new Rect(0.5, 0.5, size.Width - 1, size.Height - 1), radius, radius);
+        }
 
         // 마지막 성공값을 보여주는 중이면 링과 숫자를 흐리게 해 지금 값이 아님을 드러낸다.
         var dim = IsStale;
         if (dim) context.PushOpacity(0.45);
         DrawRingAndOwl(context, palette, s);
-        if (Mode != HudMode.Collapsed) DrawMetrics(context, palette, s);
+        if (Mode == HudMode.Expanded) DrawMetrics(context, palette, s);
         if (dim) context.Pop();
+
+        // 펫에는 숫자도 버튼도 딱지도 없다. 마스코트만 남기는 것이 이 보기의 전부다.
+        if (Mode == HudMode.Pet) return;
 
         DrawStatsRow(context, size, palette, s);
         DrawCountdown(context, size, palette, s);
@@ -310,22 +358,51 @@ public sealed class HudView : FrameworkElement
     {
         var frame = RingRect();
         var center = new Point(frame.Left + frame.Width / 2, frame.Top + frame.Height / 2);
+        var isPet = Mode == HudMode.Pet;
 
-        RingRenderer.Draw(
-            context,
-            center,
-            frame.Width,
-            BaseOuterThickness * s,
-            BaseInnerThickness * s,
-            BaseRingGap * s,
-            Snapshot?.FiveHour?.Utilization,
-            Snapshot?.SevenDay?.Utilization,
-            palette.RingTrack,
-            grayscale: IsDisconnected);
+        // 펫의 링은 카드보다 얇다. 마스코트가 주인공이라 테두리처럼만 두른다.
+        var outer = (isPet ? BasePetOuterThickness : BaseOuterThickness) * s;
+        var innerThickness = (isPet ? BasePetInnerThickness : BaseInnerThickness) * s;
+
+        // 펫에서는 링을 감췄다 보였다 한다. 감춰도 창 크기는 그대로다.
+        var ringOpacity = isPet
+            ? (ShowsPetRing ? (IsDisconnected ? 0.4 : 0.95) : 0)
+            : 1;
+
+        if (ringOpacity > 0)
+        {
+            if (ringOpacity < 1) context.PushOpacity(ringOpacity);
+            RingRenderer.Draw(
+                context,
+                center,
+                frame.Width,
+                outer,
+                innerThickness,
+                BaseRingGap * s,
+                Snapshot?.FiveHour?.Utilization,
+                Snapshot?.SevenDay?.Utilization,
+                palette.RingTrack,
+                grayscale: IsDisconnected);
+            if (ringOpacity < 1) context.Pop();
+        }
+
+        if (isPet)
+        {
+            // 마스코트가 주인공이라 링 안지름과 무관하게 크게 잡는다.
+            DrawIcon(context, center, BasePetOwlHeight * s);
+            return;
+        }
 
         // 맥과 같은 산식 — 안지름에서 안쪽 링 두께 두 겹과 여유 4 를 뺀다.
-        var inner = frame.Width - BaseOuterThickness * s * 2 - BaseRingGap * s;
-        var available = inner - BaseInnerThickness * s * 2 - 4 * s;
+        var inner = frame.Width - outer * 2 - BaseRingGap * s;
+        var available = inner - innerThickness * 2 - 4 * s;
+        if (available <= 0) return;
+
+        DrawIcon(context, center, available);
+    }
+
+    private void DrawIcon(DrawingContext context, Point center, double available)
+    {
         if (available <= 0) return;
 
         switch (IconStyle)
