@@ -182,16 +182,17 @@ public sealed class AppController : IDisposable
 
         hud.View.ExpandSide = settings.ExpandSide;
         hud.ExpandsLeft = settings.ExpandSide == HudExpandSide.Left;
+        hud.View.Scale = settings.Scale.Factor();
+        hud.View.ShowsProcessStats = settings.ShowsProcessStats;
+        // **배율과 자원 줄을 정한 뒤에 부른다** — 그래야 옮겨갈 크기를 제대로 잰다.
         // 크기가 달라지는 보기 갈아타기는 창이 애니메이션으로 옮긴다.
         hud.SetMode(settings.Mode);
-        hud.View.Scale = settings.Scale.Factor();
         hud.View.BackdropOpacity = settings.Backdrop;
         hud.View.IsDark = IsDarkTheme();
         hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.BadgeText : null;
         hud.View.VersionBadgeIsTest = AppInfo.IsTestBuild;
         hud.View.HasUpdate = updates.HasUpdate;
 
-        hud.View.ShowsProcessStats = settings.ShowsProcessStats;
         hud.View.IconStyle = settings.IconStyle;
         hud.View.PetRingDisplay = settings.PetRingDisplay;
 
