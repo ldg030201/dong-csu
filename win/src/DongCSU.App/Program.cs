@@ -58,6 +58,19 @@ public sealed class AppController : IDisposable
     /// 달라고 알려 주고(쉴 때는 몇 초, 걸을 때는 0.1초), 깨울 것이 없으면 아예 안 건다.
     /// </summary>
     private readonly DispatcherTimer motionTimer = new();
+
+    /// <summary>
+    /// 커서를 피할지 보는 타이머. **걷기 타이머와 따로 돈다.**
+    ///
+    /// 걷기 타이머는 쉴 때 3~11초를 통째로 잔다. 거기에 얹으면 그동안 커서가 위에
+    /// 올라와 있어도 아무 일이 없어서, **한 번 비킨 뒤로는 안 비키는 것처럼 보인다.**
+    /// 맥도 회피는 제 타이머로 따로 건다.
+    /// </summary>
+    private readonly DispatcherTimer dodgeTimer = new()
+    {
+        Interval = TimeSpan.FromMilliseconds(100),
+    };
+
     private readonly PetMotion motion = new();
     private PetStage? stage;
     private readonly PetHoverTracker hover = new();
@@ -127,6 +140,8 @@ public sealed class AppController : IDisposable
         hud.PetToggled += TogglePet;
         // 손에 잡히면 멈추고, 놓으면 다시 걷는다. 잡혀 있는 동안은 끌리는 자세다.
         hud.HeldChanged += OnHeldChanged;
+        // 크기를 옮기는 동안에는 걸음을 멈춰 뒀다. 끝나면 다시 켠다.
+        hud.Settled += () => SyncMotion();
         hud.DizzyStarted += OnDizzyStarted;
         // 우클릭은 트레이와 **같은 메뉴**를 띄운다. 설정 창이 튀어나오면 놀란다.
         hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
@@ -154,6 +169,7 @@ public sealed class AppController : IDisposable
             hud.View.InvalidateVisual();
         };
         motionTimer.Tick += (_, _) => OnMotionTick();
+        dodgeTimer.Tick += (_, _) => OnDodgeTick();
         dizzyTimer.Tick += (_, _) =>
         {
             dizzyTimer.Stop();
@@ -373,6 +389,7 @@ public sealed class AppController : IDisposable
         && settings.IsHudVisible
         && settings.Mode == HudMode.Pet
         && !window.IsHeld
+        && !window.IsResizing
         && !screensAsleep
         && (settings.PetWanders || settings.PetDodgesCursor);
 
@@ -382,8 +399,7 @@ public sealed class AppController : IDisposable
         if (hud is { } window)
         {
             animator.IsDragged = window.IsHeld;
-            // 놓는 순간 흔들려 있었으면 그 자리에서 어지러워한다.
-            animator.IsDizzy = !window.IsHeld && window.Shake.IsDizzy;
+            animator.IsDizzy = window.Shake.IsDizzy;
             StartFrameTimer();
             RefreshHud();
         }
@@ -391,14 +407,21 @@ public sealed class AppController : IDisposable
     }
 
     /// <summary>
-    /// 흔들어서 어지러워졌다. **놓을 때까지는 끌리는 자세 그대로다** —
-    /// 손에 들린 채로 비틀거리면 무엇이 흔들리는 건지 알 수 없다.
+    /// 흔들어서 어지러워졌다. **놓을 때까지 기다리지 않는다** — 흔드는 그 자리에서
+    /// 바로 눈이 풀려야 흔든 보람이 있다.
+    ///
+    /// 손에 들려 있는 동안에는 몸이 매달린 자세 그대로고 눈만 바뀐다. 통째로 비틀거리는
+    /// 그림으로 갈아타면 허공에서 휘청이는 꼴이라 무엇이 흔들리는 건지 알 수 없다.
     /// </summary>
     private void OnDizzyStarted() => Dispatch(() =>
     {
         dizzyTimer.Stop();
         dizzyTimer.Interval = PetShake.DizzyDuration;
         dizzyTimer.Start();
+
+        animator.IsDizzy = true;
+        StartFrameTimer();
+        RefreshHud();
     });
 
     private readonly DispatcherTimer dizzyTimer = new();
@@ -408,6 +431,7 @@ public sealed class AppController : IDisposable
         if (!ShouldMove)
         {
             motionTimer.Stop();
+            dodgeTimer.Stop();
             hover.Reset();
             return;
         }
@@ -415,11 +439,39 @@ public sealed class AppController : IDisposable
         motion.Wanders = settings.PetWanders;
         motion.DodgesCursor = settings.PetDodgesCursor;
 
+        if (settings.PetDodgesCursor) dodgeTimer.Start(); else { dodgeTimer.Stop(); hover.Reset(); }
+
         if (!motionTimer.IsEnabled)
         {
             motion.Reset();
             ScheduleMotion(PetMotion.TickInterval);
         }
+    }
+
+    /// <summary>
+    /// 커서가 위에 머무는지 보고, 머물면 비켜선다.
+    ///
+    /// **판단은 좌표로 한다** — 비켜선 뒤 커서가 그 자리에 그대로 있으면 WPF 마우스
+    /// 이벤트가 다시 오지 않아서, 호버 상태에 기대면 한 번 비키고 굳는다.
+    /// </summary>
+    private void OnDodgeTick()
+    {
+        if (hud is not { } window || stage is null || !ShouldMove || !settings.PetDodgesCursor)
+        {
+            dodgeTimer.Stop();
+            hover.Reset();
+            return;
+        }
+
+        stage.SinceLastKey = window.SinceLastKey;
+
+        var now = DateTimeOffset.UtcNow;
+        if (!hover.Update(now, window.CursorWantsDodge(stage.Cursor))) return;
+
+        // **비키지 못했어도 다시 센다.** 글을 쓰는 중이거나 이미 비키는 중이면 실패하는데,
+        // 그때 그냥 두면 커서가 그대로 있는 동안 영영 다시 시도하지 않는다.
+        if (motion.RequestDodge(stage)) ScheduleMotion(PetMotion.TickInterval);
+        hover.Restart(now);
     }
 
     private void ScheduleMotion(TimeSpan? delay)
@@ -436,17 +488,8 @@ public sealed class AppController : IDisposable
         motionTimer.Stop();
         if (hud is not { } window || stage is null || !ShouldMove) return;
 
-        // 글을 쓰는 동안에는 새로 걷지도, 커서를 피하지도 않는다.
+        // 글을 쓰는 동안에는 새로 걷지 않는다. 커서 피하기는 dodgeTimer 가 따로 본다.
         stage.SinceLastKey = window.SinceLastKey;
-
-        // 커서가 마스코트 위에 머물면 비킨다. **버튼 위라면 안 비킨다** —
-        // 누르러 온 손에서 달아나면 영영 못 누른다.
-        var now = DateTimeOffset.UtcNow;
-        var inside = window.IsMascotHovered && !window.IsControlHovered;
-        if (hover.Update(now, inside) && motion.RequestDodge(stage))
-        {
-            hover.Restart(now);
-        }
 
         var tick = motion.Tick(stage);
 
@@ -611,6 +654,7 @@ public sealed class AppController : IDisposable
         updateTimer.Stop();
         statsTimer.Stop();
         motionTimer.Stop();
+        dodgeTimer.Stop();
         tray?.Dispose();
         http.Dispose();
     }

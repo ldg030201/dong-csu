@@ -24,11 +24,6 @@ public sealed class HudWindow : Window
     /// <summary>카운트다운이 초 단위로 움직여야 해서 1초마다 다시 그린다.</summary>
     private readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(1) };
 
-    /// <summary>보기를 갈아탈 때만 도는 타이머. 창 크기를 한 칸씩 민다.</summary>
-    private readonly DispatcherTimer resizeTimer = new()
-    {
-        Interval = TimeSpan.FromMilliseconds(16),
-    };
 
     private bool isDragging;
 
@@ -65,8 +60,16 @@ public sealed class HudWindow : Window
     /// </summary>
     public bool IsHeld => isDragging || pressed != HudHit.None;
 
-    /// <summary>마우스가 마스코트 위에 있는지. 커서 피하기가 이걸 센다.</summary>
+    /// <summary>마우스가 마스코트 위에 있는지. 링을 띄울지 정할 때 쓴다.</summary>
     public bool IsMascotHovered => view.Hover == HudHit.Mascot;
+
+    /// <summary>
+    /// 지금 커서가 **비켜야 할 자리**에 있는지. 창 좌표를 뷰 좌표로 옮겨서 직접 본다.
+    ///
+    /// 호버 이벤트에 기대지 않는 이유는 <see cref="HudView.PetDodgeZoneContains"/> 에 있다.
+    /// </summary>
+    public bool CursorWantsDodge(PetPoint cursor) =>
+        view.PetDodgeZoneContains(new Point(cursor.X - Left, cursor.Y - Top));
 
     /// <summary>펫 링이 향하는 값. 같은 목표로 애니메이션을 다시 걸지 않으려고 들고 있는다.</summary>
     private double petRingFadeTarget;
@@ -109,14 +112,17 @@ public sealed class HudWindow : Window
         IsVisibleChanged += (_, _) => SyncTicker();
 
         tick.Tick += (_, _) => view.InvalidateVisual();
-        resizeTimer.Tick += (_, _) => StepResize();
     }
 
     /// <summary>
-    /// 보기를 바꾼다. **창 크기를 0.22초에 걸쳐 옮긴다** — 곧바로 바꾸면 카드가 툭 튄다.
+    /// 보기를 바꾼다. **펼침 ↔ 접힘만 0.22초에 걸쳐 옮긴다.**
     ///
-    /// 작아질 때는 옛 내용을 그대로 둔 채 창만 줄여 **서랍이 밀려 들어가는 것처럼** 보이게 하고,
-    /// 커질 때는 새 내용을 먼저 깔아 두고 창을 키워 드러나게 한다. 맥과 같은 규칙이다.
+    /// 그 둘은 높이가 같고(88) 폭만 달라서, 옛 내용을 그대로 둔 채 창을 줄이면 서랍이
+    /// 밀려 들어가는 것처럼 보인다. 커질 때는 새 내용을 먼저 깔고 창을 키워 드러나게 한다.
+    ///
+    /// **펫은 곧바로 바꾼다.** 펫은 128×160 이고 카드는 240×88 이라 가로는 늘고 세로는
+    /// 주는데, 그 사이 프레임마다 어느 쪽에도 안 맞는 크기로 잘린 그림이 뜬다. 내용도
+    /// 통째로 다른 것이라 이어지는 느낌이 아니라 찌그러지는 느낌이 된다.
     ///
     /// <c>BeginAnimation</c> 을 쓰지 않는다 — 끝난 뒤에도 속성을 붙들고 있어서
     /// **펫이 스스로 걸을 때 <c>Left</c> 를 옮기지 못하게 된다.** 직접 한 칸씩 민다.
@@ -126,19 +132,32 @@ public sealed class HudWindow : Window
         if (view.Mode == next && pendingMode is null) return;
 
         var to = view.SizeFor(next);
-        var shrinking = to.Width < Width || double.IsNaN(Width);
+        var glides = view.Mode != HudMode.Pet && next != HudMode.Pet && !double.IsNaN(Width);
 
-        if (shrinking && !double.IsNaN(Width))
-        {
-            pendingMode = next;   // 다 줄어든 뒤에 갈아탄다
-        }
-        else
+        if (!glides)
         {
             view.Mode = next;
             pendingMode = null;
+            StopResize();
+            var wide = double.IsNaN(Width) ? to.Width : Width;
+            ApplyFrame(to, ExpandsLeft && !double.IsNaN(Left) ? Left + wide - to.Width : Left);
+            FinishResize();
+            return;
         }
 
+        // 작아질 때는 다 줄어든 뒤에 갈아탄다 — 옛 내용이 서랍처럼 밀려 들어간다.
+        if (to.Width < Width) pendingMode = next;
+        else { view.Mode = next; pendingMode = null; }
+
         StartResize(to);
+    }
+
+    private void StopResize()
+    {
+        if (!resizing) return;
+        CompositionTarget.Rendering -= OnResizeFrame;
+        resizeStartedAt = null;
+        resizing = false;
     }
 
     /// <summary>줄어드는 동안 미뤄 둔 보기. 다 줄어들면 이걸로 갈아탄다.</summary>
@@ -148,34 +167,42 @@ public sealed class HudWindow : Window
     private Size resizeTo;
     private double resizeLeftFrom;
     private double resizeLeftTo;
-    private TimeSpan resizeElapsed;
+
+    /// <summary>이번 애니메이션이 시작된 렌더 시각. 프레임을 세지 않고 **실제 시간**으로 센다.</summary>
+    private TimeSpan? resizeStartedAt;
 
     /// <summary>맥과 같은 시간. 더 길면 굼떠 보이고 짧으면 곧바로 바꾸는 것과 다름없다.</summary>
     private static readonly TimeSpan ResizeDuration = TimeSpan.FromSeconds(0.22);
 
     private void StartResize(Size to)
     {
-        // 아직 한 번도 안 뜬 창은 옮길 것이 없다. 그 자리에 바로 놓는다.
-        if (double.IsNaN(Width) || double.IsNaN(Left))
-        {
-            ApplyFrame(to, double.IsNaN(Left) ? Left : Left);
-            FinishResize();
-            return;
-        }
-
         resizeFrom = new Size(Width, Height);
         resizeTo = to;
         resizeLeftFrom = Left;
         // 왼쪽으로 펼치는 설정이면 오른쪽 위가 고정이라 왼쪽 변이 같이 움직인다.
         resizeLeftTo = ExpandsLeft ? Left + resizeFrom.Width - to.Width : Left;
-        resizeElapsed = TimeSpan.Zero;
-        resizeTimer.Start();
+
+        if (!resizing) CompositionTarget.Rendering += OnResizeFrame;
+        resizeStartedAt = null;   // 첫 프레임에서 시각을 잡는다
+        resizing = true;
     }
 
-    private void StepResize()
+    /// <summary>
+    /// 한 프레임 민다.
+    ///
+    /// <c>DispatcherTimer</c> 를 쓰지 않는다. 그건 화면 주사에 맞춰 돌지 않아서 어떤
+    /// 프레임은 건너뛰고 어떤 프레임은 두 번 그려져 **눈에 띄게 덜컹거린다.**
+    /// <c>CompositionTarget.Rendering</c> 은 합성 직전에 정확히 한 번씩 온다.
+    ///
+    /// 진행도는 프레임 수가 아니라 <see cref="RenderingEventArgs.RenderingTime"/> 으로
+    /// 잰다 — 프레임을 떨어뜨려도 걸리는 시간은 늘 0.22초다.
+    /// </summary>
+    private void OnResizeFrame(object? sender, EventArgs e)
     {
-        resizeElapsed += resizeTimer.Interval;
-        var t = Math.Clamp(resizeElapsed / ResizeDuration, 0, 1);
+        if (e is not RenderingEventArgs frame) return;
+
+        resizeStartedAt ??= frame.RenderingTime;
+        var t = Math.Clamp((frame.RenderingTime - resizeStartedAt.Value) / ResizeDuration, 0, 1);
         // 맥의 easeInEaseOut. 양 끝에서 느려져서 미끄러지듯 멈춘다.
         var eased = t < 0.5 ? 2 * t * t : 1 - Math.Pow(-2 * t + 2, 2) / 2;
 
@@ -187,12 +214,22 @@ public sealed class HudWindow : Window
 
         if (t < 1) return;
 
-        resizeTimer.Stop();
+        StopResize();
         FinishResize();
     }
 
+    /// <summary>
+    /// 옮기는 중인지. <see cref="Refresh"/> 가 크기를 도로 끌어당기지 않게 막고,
+    /// **그동안 펫이 스스로 걷지 않게** 막는다 — 둘 다 <c>Left</c> 를 쓰면 서로 밀어낸다.
+    /// </summary>
+    public bool IsResizing => resizing;
+
+    private bool resizing;
+
     private void FinishResize()
     {
+        resizing = false;
+
         // 줄이는 동안 붙들고 있던 보기를 이제 갈아 끼운다.
         if (pendingMode is { } mode)
         {
@@ -201,19 +238,73 @@ public sealed class HudWindow : Window
         }
 
         var size = view.DesiredHudSize;
+        view.RenderOffsetX = 0;
         ApplyFrame(size, Left);
         ClampIntoScreen();
         SyncPetRingFade();
         SyncTicker();
         view.InvalidateVisual();
+
+        // 옮기는 동안 멈춰 뒀던 걸음을 다시 켠다.
+        Settled?.Invoke();
     }
 
+    /// <summary>크기 옮기기가 끝났다. 걸음을 다시 켜라는 신호다.</summary>
+    public event Action? Settled;
+
+    /// <summary>
+    /// 그리는 자리를 창의 어느 모서리에 붙일지 정한다.
+    ///
+    /// 뷰는 늘 창의 **왼쪽 위**에 그린다. 오른쪽으로 펼치는 설정에서는 그게 맞다 —
+    /// 왼쪽 변이 고정이니 내용도 왼쪽에 붙어 있어야 한다.
+    ///
+    /// **왼쪽으로 펼치는 설정에서는 반대다.** 오른쪽 변이 고정이라, 그대로 두면 옮기는
+    /// 0.22초 동안 카드가 옆으로 미끄러진다. 그만큼 밀어서 오른쪽 변에 붙여 둔다.
+    /// </summary>
+    private void SyncRenderAnchor(double windowWidth)
+    {
+        view.RenderOffsetX = ExpandsLeft ? windowWidth - view.DesiredHudSize.Width : 0;
+    }
+
+    /// <summary>
+    /// 창의 자리와 크기를 한 번에 맞춘다.
+    ///
+    /// **<c>Width</c>·<c>Height</c>·<c>Left</c> 를 따로 대입하면 창이 그때마다 움직인다.**
+    /// 펫(128×160)에서 카드(240×88)로 갈 때는 그 사이에 240×160 이라는 아무 데도 없는
+    /// 크기가 한 프레임 뜬다 — 넓고 텅 빈 창이 번쩍인다. 실제로 그랬다.
+    /// <c>SetWindowPos</c> 로 한 번에 옮기면 그 프레임이 없다.
+    /// </summary>
     private void ApplyFrame(Size size, double left)
     {
-        Width = size.Width;
-        Height = size.Height;
+        SyncRenderAnchor(size.Width);
         view.Width = size.Width;
         view.Height = size.Height;
+
+        var handle = new WindowInteropHelper(this).Handle;
+        var target = double.IsNaN(left) ? Left : left;
+
+        if (handle != IntPtr.Zero && !double.IsNaN(target) && !double.IsNaN(Top))
+        {
+            var scale = PresentationSource.FromVisual(this)?.CompositionTarget?.TransformToDevice;
+            var x = scale is { } m ? m.M11 : 1;
+            var y = scale is { } n ? n.M22 : 1;
+
+            NativeMethods.SetWindowPos(
+                handle, IntPtr.Zero,
+                (int)Math.Round(target * x), (int)Math.Round(Top * y),
+                (int)Math.Round(size.Width * x), (int)Math.Round(size.Height * y),
+                NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate
+                    | NativeMethods.SwpNoSendChanging);
+
+            // WPF 쪽 값도 맞춰 둔다. 펫 무대가 이걸 읽어서 걸어 다닌다.
+            Width = size.Width;
+            Height = size.Height;
+            Left = target;
+            return;
+        }
+
+        Width = size.Width;
+        Height = size.Height;
         if (!double.IsNaN(left)) Left = left;
     }
 
@@ -221,7 +312,7 @@ public sealed class HudWindow : Window
     public void Refresh()
     {
         // 보기를 옮기는 중에는 크기를 건드리지 않는다 — 매 프레임 도로 끌어당긴다.
-        if (resizeTimer.IsEnabled)
+        if (resizing)
         {
             view.InvalidateVisual();
             return;
@@ -389,7 +480,8 @@ public sealed class HudWindow : Window
         // 버튼 줄도 포함해야 한다. 링을 스쳐 버튼으로 내려가는 동안 사라져 버리면
         // 누르려던 것이 눈앞에서 없어진다.
         var hovering = view.Mode == HudMode.Pet
-            && hit is HudHit.Mascot or HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge;
+            && hit is HudHit.Mascot or HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge
+                or HudHit.PetRow;
         if (hovering != view.IsHovered)
         {
             view.IsHovered = hovering;
@@ -402,7 +494,7 @@ public sealed class HudWindow : Window
         view.Hover = hit;
         // 마스코트는 끄는 자리다. 손가락 커서를 띄우면 눌러야 할 것처럼 보인다.
         // 카운트다운·자원 줄·버전 딱지는 **읽는 자리**라 마찬가지다.
-        Cursor = hit is HudHit.None or HudHit.Mascot
+        Cursor = hit is HudHit.None or HudHit.Mascot or HudHit.PetRow
             or HudHit.Countdown or HudHit.StatsRow or HudHit.VersionBadge
             ? Cursors.Arrow
             : Cursors.Hand;
@@ -557,4 +649,15 @@ internal static partial class NativeMethods
 
     [System.Runtime.InteropServices.LibraryImport("user32.dll", EntryPoint = "SetWindowLongW")]
     public static partial int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+
+    /// <summary>자리와 크기를 **한 번에** 옮긴다. 따로 대입하면 창이 두 번 움직여 한 프레임 튄다.</summary>
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(
+        System.Runtime.InteropServices.UnmanagedType.Bool)]
+    public static partial bool SetWindowPos(
+        IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    public const uint SwpNoZOrder = 0x0004;
+    public const uint SwpNoActivate = 0x0010;
+    public const uint SwpNoSendChanging = 0x0400;
 }

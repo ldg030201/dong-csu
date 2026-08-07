@@ -31,6 +31,13 @@ public enum HudHit
     StatsRow,
     /// <summary>왼쪽 위 버전 딱지.</summary>
     VersionBadge,
+    /// <summary>
+    /// 펫의 버튼 줄 — 버튼이 아닌 빈 자리.
+    ///
+    /// 여기서도 링과 버튼이 떠 있어야 한다. 안 그러면 버튼을 누르러 내려오는 도중에
+    /// 눈앞에서 사라진다. 맥도 줄 전체를 한 영역으로 잡는다.
+    /// </summary>
+    PetRow,
 }
 
 /// <summary>
@@ -229,19 +236,26 @@ public sealed class HudView : FrameworkElement
     }
 
     /// <summary>접힌 카드와 펫에는 자원 줄을 붙일 자리가 없다.</summary>
-    private bool HasStatsRow => ShowsProcessStats && Mode == HudMode.Expanded;
+    private bool HasStatsRow => StatsRowIn(Mode);
+
+    private bool StatsRowIn(HudMode mode) => ShowsProcessStats && mode == HudMode.Expanded;
 
     public Size DesiredHudSize => SizeFor(Mode);
 
-    /// <summary>어떤 보기의 창 크기. 아직 갈아타지 않은 보기의 크기도 물어볼 수 있어야 한다.</summary>
+    /// <summary>
+    /// 어떤 보기의 창 크기. 아직 갈아타지 않은 보기의 크기도 물어볼 수 있어야 한다.
+    ///
+    /// **자원 줄이 붙는지는 <paramref name="mode"/> 로 따진다.** 지금 보기(<see cref="Mode"/>)로
+    /// 따지면 아직 갈아타기 전이라 답이 틀린다 — 접힘에서 펼침으로 갈 때 17 이 모자란
+    /// 크기로 옮겨가다 마지막 프레임에 툭 튄다.
+    /// </summary>
     public Size SizeFor(HudMode mode) => mode switch
     {
         HudMode.Pet => new Size(BasePetWidth * Scale, (BasePetWidth + BasePetButtonRow) * Scale),
         HudMode.Collapsed => new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale),
         _ => new Size(
             BaseExpandedWidth * Scale,
-            // 접은 상태에는 자리가 없어서 자원 사용량을 붙이지 않는다.
-            (BaseExpandedHeight + (HasStatsRow ? BaseStatsRowHeight : 0)) * Scale),
+            (BaseExpandedHeight + (StatsRowIn(mode) ? BaseStatsRowHeight : 0)) * Scale),
     };
 
     /// <summary>펫에서 마우스가 마스코트 위에 있는지. 창이 넣어 준다.</summary>
@@ -274,6 +288,22 @@ public sealed class HudView : FrameworkElement
 
     /// <summary>맥과 같은 시간. 더 길면 굼떠 보이고 짧으면 곧바로 켜는 것과 다름없다.</summary>
     public static readonly TimeSpan PetRingFadeDuration = TimeSpan.FromSeconds(0.18);
+
+    /// <summary>
+    /// 그림을 가로로 이만큼 밀어서 그린다. **창이 넣어 준다.**
+    ///
+    /// 왼쪽으로 펼치는 설정에서 보기를 갈아탈 때만 0 이 아니다 — 그때는 오른쪽 변이
+    /// 고정이라 내용도 오른쪽에 붙어 있어야 미끄러지지 않는다.
+    /// </summary>
+    public static readonly DependencyProperty RenderOffsetXProperty = DependencyProperty.Register(
+        nameof(RenderOffsetX), typeof(double), typeof(HudView),
+        new FrameworkPropertyMetadata(0.0, FrameworkPropertyMetadataOptions.AffectsRender));
+
+    public double RenderOffsetX
+    {
+        get => (double)GetValue(RenderOffsetXProperty);
+        set => SetValue(RenderOffsetXProperty, value);
+    }
 
     private HudPalette Palette => IsDark ? HudPalette.Dark : HudPalette.Light;
 
@@ -383,6 +413,37 @@ public sealed class HudView : FrameworkElement
         return new Rect(leading, top, ring, ring);
     }
 
+    /// <summary>
+    /// 펫에서 **커서를 피해 비켜야 할 자리.**
+    ///
+    /// <see cref="HitTest"/> 를 쓰지 않는다. 두 가지 이유가 있다.
+    ///
+    /// 하나는 **넓이**다. 히트 테스트에서 마스코트로 치는 것은 링(위 128)뿐인데, 창은
+    /// 아래로 32 가 더 있고 그 대부분이 빈 자리다. 아래에서 다가오는 커서는 영영
+    /// 안 잡혀서 "안 도망간다"가 된다. 여기서는 **창 전체**를 본다.
+    ///
+    /// 다른 하나는 **좌표로 본다**는 것이다. 히트 테스트 결과(<c>Hover</c>)는 WPF 의
+    /// 마우스 이벤트로만 바뀌는데, 비켜선 뒤 커서가 그 자리에 그대로 있으면 새 이벤트가
+    /// 오지 않아 한 번 비키고 굳는다. 창이 움직여도 커서 좌표는 늘 지금 값이다.
+    ///
+    /// **누를 것 위에서는 비키지 않는다** — 누르러 온 손에서 달아나면 영영 못 누른다.
+    /// </summary>
+    public bool PetDodgeZoneContains(Point point)
+    {
+        if (Mode != HudMode.Pet) return false;
+
+        var size = DesiredHudSize;
+        if (point.X < 0 || point.Y < 0 || point.X >= size.Width || point.Y >= size.Height) return false;
+
+        if (HasUpdate && UpdateBadgeRect().Contains(point)) return false;
+
+        // 버튼 자리는 **보이든 안 보이든** 뺀다. 보이는지로 가르면 그 판단이 다시
+        // 호버 상태에 매이는데, 그게 늦게 따라오면 누르려는 순간 달아난다.
+        // 24×24 두 개뿐이라 빼도 아쉬울 것이 없다.
+        var buttons = ButtonRects();
+        return !buttons[1].Contains(point) && !buttons[2].Contains(point);
+    }
+
     /// <summary>이 자리에 무엇이 있나. 창이 클릭·호버를 나눠 줄 때 쓴다.</summary>
     public HudHit HitTest(Point point)
     {
@@ -401,6 +462,9 @@ public sealed class HudView : FrameworkElement
         if (VersionBadgeStrip() is { } version && version.Contains(point)) return HudHit.VersionBadge;
         if (StatsStrip() is { } stats && stats.Contains(point)) return HudHit.StatsRow;
         if (CountdownStrip() is { } countdown && countdown.Contains(point)) return HudHit.Countdown;
+
+        // 펫 버튼 줄의 빈 자리. 누를 것은 없지만 **링과 버튼은 떠 있어야 한다.**
+        if (Mode == HudMode.Pet && PetButtonRowRect().Contains(point)) return HudHit.PetRow;
 
         return HudHit.None;
     }
@@ -493,6 +557,10 @@ public sealed class HudView : FrameworkElement
         var palette = Palette;
         var s = Scale;
 
+        // 보기를 갈아타는 동안 왼쪽으로 펼치는 설정이면 내용을 오른쪽 변에 붙여 둔다.
+        var shifted = Math.Abs(RenderOffsetX) > 0.01;
+        if (shifted) context.PushTransform(new TranslateTransform(RenderOffsetX, 0));
+
         if (Mode.ShowsBackdrop())
         {
             var backdrop = new SolidColorBrush(palette.Backdrop)
@@ -539,6 +607,7 @@ public sealed class HudView : FrameworkElement
         {
             DrawPetButtons(context, palette, s);
             if (HasUpdate) DrawUpdateBadge(context, UpdateBadgeRect(), palette, s);
+            if (shifted) context.Pop();
             return;
         }
 
@@ -546,6 +615,8 @@ public sealed class HudView : FrameworkElement
         DrawCountdown(context, size, palette, s);
         DrawCornerBadges(context, palette, s);
         DrawButtons(context, palette, s);
+
+        if (shifted) context.Pop();
     }
 
     private void DrawRingAndOwl(DrawingContext context, HudPalette palette, double s)

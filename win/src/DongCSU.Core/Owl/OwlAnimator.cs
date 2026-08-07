@@ -105,7 +105,12 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
         }
     }
 
-    /// <summary>마구 흔들린 직후인지. 눈이 풀리고 비틀거린다.</summary>
+    /// <summary>
+    /// 마구 흔들린 직후인지. 눈이 풀리고 비틀거린다.
+    ///
+    /// **손에 들려 있는 동안에는 되감지 않는다** — 그때는 매달린 자세 그대로 두고 눈만
+    /// 바뀌므로, 되감으면 흔드는 도중에 몸이 툭 튄다.
+    /// </summary>
     public bool IsDizzy
     {
         get => dizzy;
@@ -113,7 +118,7 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
         {
             if (dizzy == value) return;
             dizzy = value;
-            frameIndex = 0;
+            if (!dragged) frameIndex = 0;
         }
     }
 
@@ -176,8 +181,30 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
         }
     }
 
-    /// <summary>지금 그려야 할 그림. <c>owl.json</c> 이 실어 온 합성 결과를 그대로 쓴다.</summary>
-    public string[] CurrentGrid => CurrentFrame.Grid;
+    /// <summary>
+    /// 지금 그려야 할 그림. <c>owl.json</c> 이 실어 온 합성 결과를 그대로 쓴다.
+    ///
+    /// **한 가지만 예외다** — 손에 들린 채로 어지러우면 매달린 자세에 풀린 눈만 얹는다.
+    /// </summary>
+    public string[] CurrentGrid
+    {
+        get
+        {
+            var frame = CurrentFrame;
+            if (!dragged || !dizzy) return frame.Grid;
+
+            // 통째로 dizzy 그림으로 갈아타면 **허공에서 비틀거리는 꼴**이라 무엇이
+            // 흔들리는 건지 알 수 없다. 맥도 몸은 carried 그대로 두고 눈만 바꾼다.
+            if (dizzyDrag.TryGetValue(frame, out var made)) return made;
+
+            made = OwlComposer.Compose(document, frame.Pose with { Eyes = OwlEyes.Dizzy });
+            dizzyDrag[frame] = made;
+            return made;
+        }
+    }
+
+    /// <summary>끌린 자세 + 풀린 눈. 프레임마다 한 번만 합성하고 재사용한다.</summary>
+    private readonly Dictionary<OwlFrame, string[]> dizzyDrag = [];
 
     /// <summary>
     /// 다 써서 쓸 수 없는 상태. 켜면 **자세는 그대로 두고 색만 뺀다.**
