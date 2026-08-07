@@ -110,12 +110,22 @@ public sealed class HudView : FrameworkElement
     /// **마우스를 올렸다고 창을 키우지 않는다** — 커서가 창 밖으로 밀려나 호버가 끊기고
     /// 그 자리에서 켜졌다 꺼졌다 한다.
     /// </summary>
-    public const double BasePetSize = 128;
+    public const double BasePetWidth = 128;
+
+    /// <summary>
+    /// 링 아래에 붙는 버튼 줄의 높이.
+    ///
+    /// **링 영역과 자리를 갈라 둔다.** 커서 피하기를 켜 두면 마스코트가 커서를 피해
+    /// 달아나는데, 버튼이 그 안에 있으면 **누르러 다가갈 때마다 도망가서 영영 못 누른다.**
+    /// 자리를 나눠 두면 예외 규칙 없이도 그 일이 안 생긴다.
+    /// </summary>
+    public const double BasePetButtonRow = 32;
 
     private const double BasePetRingDiameter = 124;
     private const double BasePetOuterThickness = 5;
     private const double BasePetInnerThickness = 4;
     private const double BasePetOwlHeight = 84;
+    private const double BasePetButton = 24;
 
     private const double BaseRingDiameter = 62;
     private const double BaseOuterThickness = 6;
@@ -189,8 +199,14 @@ public sealed class HudView : FrameworkElement
 
     public HudView()
     {
-        // 픽셀 아트라 가장자리를 부드럽게 하면 안 된다. 뭉개진다.
-        RenderOptions.SetEdgeMode(this, EdgeMode.Aliased);
+        // **뷰 전체에 EdgeMode.Aliased 를 걸지 않는다.**
+        //
+        // 예전에는 그렇게 했다. 픽셀 아트(부엉이·Clawd)를 부드럽게 하면 뭉개지기
+        // 때문인데, 그 설정이 **링과 배경 모서리에까지 걸려서** 원이 계단처럼 각지게
+        // 그려졌다. 이 화면에서 곡선이 대부분이라 잃는 쪽이 훨씬 컸다.
+        //
+        // 그래서 기본은 부드럽게 두고, 픽셀 아트만 <see cref="DrawPixelated"/> 안에서
+        // 각지게 그린다. 지켜야 할 것이 좁은 쪽이니 그쪽을 감싸는 것이 맞다.
         foreach (var (name, palette) in Document.Palettes)
         {
             owlBrushes[name] = OwlRenderer.Brushes(palette);
@@ -202,7 +218,7 @@ public sealed class HudView : FrameworkElement
 
     public Size DesiredHudSize => Mode switch
     {
-        HudMode.Pet => new Size(BasePetSize * Scale, BasePetSize * Scale),
+        HudMode.Pet => new Size(BasePetWidth * Scale, (BasePetWidth + BasePetButtonRow) * Scale),
         HudMode.Collapsed => new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale),
         _ => new Size(
             BaseExpandedWidth * Scale,
@@ -233,9 +249,23 @@ public sealed class HudView : FrameworkElement
         var size = DesiredHudSize;
         var button = BaseButton * Scale;
 
-        // **펫에는 버튼이 없다.** 빈 사각형을 줘야 한다 — 자리를 돌려주면 그만큼이
-        // 클릭 통과 구멍이 되어 마스코트 귀퉁이를 눌러도 끌리지 않는다.
-        if (Mode == HudMode.Pet) return [Rect.Empty, Rect.Empty, Rect.Empty];
+        // 펫은 링 **아래 줄**에 설정·새로고침 둘만 둔다. 접기 자리는 없다 —
+        // 나가는 길은 마스코트를 두 번 누르는 것이다.
+        if (Mode == HudMode.Pet)
+        {
+            var petButton = BasePetButton * Scale;
+            var gap = 8 * Scale;
+            var row = BasePetButtonRow * Scale;
+            var petLeft = (size.Width - (petButton * 2 + gap)) / 2;
+            var petTop = size.Height - row + (row - petButton) / 2;
+
+            return
+            [
+                Rect.Empty,
+                new Rect(petLeft, petTop, petButton, petButton),
+                new Rect(petLeft + petButton + gap, petTop, petButton, petButton),
+            ];
+        }
 
         if (Mode == HudMode.Collapsed)
         {
@@ -263,24 +293,40 @@ public sealed class HudView : FrameworkElement
     /// <summary>새 버전 표시. 버튼 묶음 **반대편** 위 모서리다.</summary>
     private Rect UpdateBadgeRect()
     {
-        if (Mode == HudMode.Pet) return Rect.Empty;
-
         var size = DesiredHudSize;
         var badge = BaseUpdateBadge * Scale;
+
+        // 펫에서는 **오른쪽 위**다. 링(원)의 바깥 모서리라 마스코트를 안 가린다.
+        if (Mode == HudMode.Pet)
+        {
+            var petInset = 2 * Scale;
+            return new Rect(size.Width - badge - petInset, petInset, badge, badge);
+        }
+
         var inset = BaseInset * Scale;
         var x = ToRight ? inset : size.Width - inset - badge;
         return new Rect(x, inset, badge, badge);
     }
 
-    /// <summary>링이 놓인 자리. 펫에서는 창 가운데다.</summary>
+    /// <summary>펫의 버튼 줄이 차지하는 자리. 링 영역과 겹치지 않는다.</summary>
+    private Rect PetButtonRowRect()
+    {
+        var size = DesiredHudSize;
+        var row = BasePetButtonRow * Scale;
+        return new Rect(0, size.Height - row, size.Width, row);
+    }
+
+    /// <summary>링이 놓인 자리. 펫에서는 버튼 줄을 뺀 위쪽 가운데다.</summary>
     private Rect RingRect()
     {
         var size = DesiredHudSize;
 
+        // 펫의 링은 버튼 줄을 뺀 **위쪽 영역**의 가운데다.
         if (Mode == HudMode.Pet)
         {
             var pet = BasePetRingDiameter * Scale;
-            return new Rect((size.Width - pet) / 2, (size.Height - pet) / 2, pet, pet);
+            var area = BasePetWidth * Scale;
+            return new Rect((size.Width - pet) / 2, (area - pet) / 2, pet, pet);
         }
 
         var ring = BaseRingDiameter * Scale;
@@ -356,6 +402,25 @@ public sealed class HudView : FrameworkElement
                 backdrop, border, new Rect(0.5, 0.5, size.Width - 1, size.Height - 1), radius, radius);
         }
 
+        // **보이지 않지만 마우스를 받는 바닥.**
+        //
+        // WPF 는 *그린 자리*에만 마우스를 준다. 펫에는 배경이 없어서, 버튼 줄에 아무것도
+        // 안 그려진 동안에는 그 위로 커서를 옮겨도 호버가 안 잡힌다 — 그런데 버튼은
+        // 호버해야 나타난다. 닭과 달걀이 되어 **영영 안 나타난다.**
+        //
+        // **알파 0 으로는 안 된다.** 이 창은 `AllowsTransparency` 라 레이어드 창이고,
+        // 히트테스트를 WPF 가 아니라 **OS 가 픽셀 알파로** 한다. 완전 투명하게 그리면
+        // 그려도 마우스가 그냥 통과한다. 알파를 1 만 줘도 잡히고, 눈에는 안 보인다.
+        //
+        // 맥이 `liveRects` 로 하는 일을 여기서는 이렇게 한다. 아무것도 안 그린 나머지
+        // 자리는 그대로 클릭이 통과하므로, 뒤에 있는 창을 누를 수 있다.
+        if (Mode == HudMode.Pet)
+        {
+            var live = Frozen(Color.FromArgb(1, 0, 0, 0));
+            context.DrawRectangle(live, null, RingRect());
+            context.DrawRectangle(live, null, PetButtonRowRect());
+        }
+
         // 마지막 성공값을 보여주는 중이면 링과 숫자를 흐리게 해 지금 값이 아님을 드러낸다.
         var dim = IsStale;
         if (dim) context.PushOpacity(0.45);
@@ -363,8 +428,13 @@ public sealed class HudView : FrameworkElement
         if (Mode == HudMode.Expanded) DrawMetrics(context, palette, s);
         if (dim) context.Pop();
 
-        // 펫에는 숫자도 버튼도 딱지도 없다. 마스코트만 남기는 것이 이 보기의 전부다.
-        if (Mode == HudMode.Pet) return;
+        // 펫에는 숫자도 버전 딱지도 없다. 링 아래 버튼 둘과 새 버전 표시만 얹는다.
+        if (Mode == HudMode.Pet)
+        {
+            DrawPetButtons(context, palette, s);
+            if (HasUpdate) DrawUpdateBadge(context, UpdateBadgeRect(), palette, s);
+            return;
+        }
 
         DrawStatsRow(context, size, palette, s);
         DrawCountdown(context, size, palette, s);
@@ -426,25 +496,22 @@ public sealed class HudView : FrameworkElement
         switch (IconStyle)
         {
             case IconStyle.Owl:
-                DrawOwl(context, center, available);
+                DrawPixelated(context, ctx => DrawOwl(ctx, center, available));
                 break;
 
             case IconStyle.Clawd:
                 // 11×8 이라 **폭을 기준으로** 맞춘다. 높이로 맞추면 옆으로 삐져나온다.
-                DrawClawdCentered(context, center, available);
+                DrawPixelated(context, ctx => DrawClawdCentered(ctx, center, available));
                 break;
 
             case IconStyle.AppIcon:
                 var box = Square(center, available);
                 // 그림이 없으면(뽑기 실패) 마크로 떨어진다 — 가운데가 비면 안 된다.
-                DrawSmooth(context, ctx =>
-                {
-                    if (!IconRenderer.DrawAppIcon(ctx, box)) IconRenderer.DrawMark(ctx, box);
-                });
+                if (!IconRenderer.DrawAppIcon(context, box)) IconRenderer.DrawMark(context, box);
                 break;
 
             default:
-                DrawSmooth(context, ctx => IconRenderer.DrawMark(ctx, Square(center, available)));
+                IconRenderer.DrawMark(context, Square(center, available));
                 break;
         }
     }
@@ -480,18 +547,15 @@ public sealed class HudView : FrameworkElement
         new(center.X - side / 2, center.Y - side / 2, side, side);
 
     /// <summary>
-    /// 이 안에서만 부드럽게 그린다.
+    /// 이 안에서만 각지게 그린다.
     ///
-    /// 뷰 전체에는 <see cref="EdgeMode.Aliased"/> 가 걸려 있다 — 픽셀 아트(부엉이·Clawd)를
-    /// 부드럽게 하면 뭉개지기 때문이다. 그런데 **벡터 마크와 비트맵 아이콘은 정반대로**
-    /// 안티에일리어싱이 있어야 한다. 한 방식으로 뭉뚱그리면 셋 중 둘이 망가지므로,
-    /// 이 둘만 설정을 뒤집은 묶음 안에서 그린다.
+    /// 픽셀 아트(부엉이·Clawd)는 가장자리를 부드럽게 하면 뭉개진다. **딱 그것만**
+    /// 감싼다 — 뷰 전체에 걸면 링과 배경 모서리까지 계단처럼 각져 버린다.
     /// </summary>
-    private static void DrawSmooth(DrawingContext context, Action<DrawingContext> body)
+    private static void DrawPixelated(DrawingContext context, Action<DrawingContext> body)
     {
         var group = new DrawingGroup();
-        RenderOptions.SetEdgeMode(group, EdgeMode.Unspecified);
-        RenderOptions.SetBitmapScalingMode(group, BitmapScalingMode.HighQuality);
+        RenderOptions.SetEdgeMode(group, EdgeMode.Aliased);
         using (var ctx = group.Open()) body(ctx);
         group.Freeze();
         context.DrawDrawing(group);
@@ -755,6 +819,43 @@ public sealed class HudView : FrameworkElement
         }
         arrow.Freeze();
         context.DrawGeometry(white, null, arrow);
+    }
+
+    /// <summary>
+    /// 링 밖 아래에 붙는 동그란 버튼 둘.
+    ///
+    /// **링과 같은 조건으로만 보인다** — 펫은 마스코트만 띄우는 보기라, 버튼이 늘
+    /// 떠 있으면 그 뜻이 사라진다. 다만 자리는 늘 살아 있어서, 다가가면 뜨고 눌린다.
+    /// </summary>
+    private void DrawPetButtons(DrawingContext context, HudPalette palette, double s)
+    {
+        if (!ShowsPetRing) return;
+
+        var rects = ButtonRects();
+        DrawPetButton(context, rects[1], GlyphSettings, HudHit.Settings, palette, s);
+        DrawPetButton(context, rects[2], GlyphRefresh, HudHit.Refresh, palette, s);
+    }
+
+    private void DrawPetButton(
+        DrawingContext context, Rect rect, string glyph, HudHit target, HudPalette palette, double s)
+    {
+        var center = new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
+
+        // 투명한 배경 위에 뜨는 버튼이라 **제 바탕이 있어야 읽힌다.**
+        var fill = new SolidColorBrush(palette.Backdrop) { Opacity = 0.92 };
+        fill.Freeze();
+        var border = new Pen(Frozen(palette.RingTrack), Math.Max(1, s));
+        border.Freeze();
+        context.DrawEllipse(fill, border, center, rect.Width / 2, rect.Height / 2);
+
+        var color = Hover == target ? palette.ControlActive : palette.ControlIdle;
+        if (target == HudHit.Refresh && IsRefreshing)
+        {
+            color = Color.FromArgb((byte)(color.A * 0.35), color.R, color.G, color.B);
+        }
+
+        var text = Text(glyph, 11 * s, Icons, color);
+        context.DrawText(text, new Point(center.X - text.Width / 2, center.Y - text.Height / 2));
     }
 
     private void DrawButtons(DrawingContext context, HudPalette palette, double s)

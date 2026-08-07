@@ -44,37 +44,34 @@ internal sealed class IconPreview : FrameworkElement
             case IconStyle.Owl:
                 var cell = OwlRenderer.CellSize(side, Document.Grid.Lines);
                 var size = OwlRenderer.MeasuredSize(cell, Document.Grid);
-                OwlRenderer.Draw(context, IdleGrid, OwlBrushes, new Point(
+                Pixelated(context, ctx => OwlRenderer.Draw(ctx, IdleGrid, OwlBrushes, new Point(
                     Math.Round(center.X - size.Width / 2),
-                    Math.Round(center.Y - size.Height / 2)), cell);
+                    Math.Round(center.Y - size.Height / 2)), cell));
                 break;
 
             case IconStyle.Clawd:
                 var height = side * ClawdMark.Lines / ClawdMark.Columns;
-                IconRenderer.DrawClawd(
-                    context,
+                Pixelated(context, ctx => IconRenderer.DrawClawd(
+                    ctx,
                     new Rect(center.X - side / 2, center.Y - height / 2, side, height),
-                    Color.FromArgb((byte)(IsDark ? 0xE0 : 0xBF), 0, 0, 0));
+                    Color.FromArgb((byte)(IsDark ? 0xE0 : 0xBF), 0, 0, 0)));
                 break;
 
             case IconStyle.AppIcon:
-                Smooth(context, ctx =>
-                {
-                    if (!IconRenderer.DrawAppIcon(ctx, box)) IconRenderer.DrawMark(ctx, box);
-                });
+                if (!IconRenderer.DrawAppIcon(context, box)) IconRenderer.DrawMark(context, box);
                 break;
 
             default:
-                Smooth(context, ctx => IconRenderer.DrawMark(ctx, box));
+                IconRenderer.DrawMark(context, box);
                 break;
         }
     }
 
-    private static void Smooth(DrawingContext context, Action<DrawingContext> body)
+    /// <summary>픽셀 아트만 각지게. 나머지는 부드러운 기본값 그대로 둔다.</summary>
+    private static void Pixelated(DrawingContext context, Action<DrawingContext> body)
     {
         var group = new DrawingGroup();
-        RenderOptions.SetEdgeMode(group, EdgeMode.Unspecified);
-        RenderOptions.SetBitmapScalingMode(group, BitmapScalingMode.HighQuality);
+        RenderOptions.SetEdgeMode(group, EdgeMode.Aliased);
         using (var ctx = group.Open()) body(ctx);
         group.Freeze();
         context.DrawDrawing(group);

@@ -194,9 +194,13 @@ public sealed class HudWindow : Window
     {
         var hit = view.HitTest(e.GetPosition(view));
 
-        // 펫에서 링을 띄우는 조건. 창이 128 이라도 **마스코트 위일 때만** 이다 —
-        // 창 전체로 잡으면 투명한 네 귀퉁이에서도 링이 뜬다.
-        var hovering = view.Mode == HudMode.Pet && hit == HudHit.Mascot;
+        // 펫에서 링과 버튼을 띄우는 조건. **마스코트나 그 아래 버튼 줄 위일 때만** 이다 —
+        // 창 전체로 잡으면 투명한 네 귀퉁이에서도 뜬다.
+        //
+        // 버튼 줄도 포함해야 한다. 링을 스쳐 버튼으로 내려가는 동안 사라져 버리면
+        // 누르려던 것이 눈앞에서 없어진다.
+        var hovering = view.Mode == HudMode.Pet
+            && hit is HudHit.Mascot or HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge;
         if (hovering != view.IsHovered)
         {
             view.IsHovered = hovering;
