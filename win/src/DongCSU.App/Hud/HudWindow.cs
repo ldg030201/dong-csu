@@ -28,6 +28,10 @@ public sealed class HudWindow : Window
     private HudHit pressed = HudHit.None;
 
     public event Action? ModeToggled;
+
+    /// <summary>마스코트를 두 번 눌렀다. 펫 모드를 드나든다.</summary>
+    public event Action? PetToggled;
+
     public event Action? ContextMenuRequested;
     public event Action? SettingsRequested;
     public event Action? RefreshRequested;
@@ -189,19 +193,31 @@ public sealed class HudWindow : Window
     private void OnMouseMove(object sender, MouseEventArgs e)
     {
         var hit = view.HitTest(e.GetPosition(view));
+
+        // 펫에서 링을 띄우는 조건. 창이 128 이라도 **마스코트 위일 때만** 이다 —
+        // 창 전체로 잡으면 투명한 네 귀퉁이에서도 링이 뜬다.
+        var hovering = view.Mode == HudMode.Pet && hit == HudHit.Mascot;
+        if (hovering != view.IsHovered)
+        {
+            view.IsHovered = hovering;
+            view.InvalidateVisual();
+        }
+
         if (hit == view.Hover) return;
 
         view.Hover = hit;
-        Cursor = hit == HudHit.None ? Cursors.Arrow : Cursors.Hand;
+        // 마스코트는 끄는 자리다. 손가락 커서를 띄우면 눌러야 할 것처럼 보인다.
+        Cursor = hit is HudHit.None or HudHit.Mascot ? Cursors.Arrow : Cursors.Hand;
         ToolTip = view.TooltipFor(hit);
         view.InvalidateVisual();
     }
 
     private void OnMouseLeave(object sender, MouseEventArgs e)
     {
-        if (view.Hover == HudHit.None) return;
+        if (view.Hover == HudHit.None && !view.IsHovered) return;
 
         view.Hover = HudHit.None;
+        view.IsHovered = false;
         pressed = HudHit.None;
         Cursor = Cursors.Arrow;
         ToolTip = null;
@@ -214,8 +230,11 @@ public sealed class HudWindow : Window
 
         // 버튼 위에서 시작한 클릭은 창을 끌지 않는다. 누르자마자 실행하지도 않는다 —
         // 밖으로 끌어내면 취소되는 것이 버튼의 상식이다.
+        //
+        // **마스코트는 예외다.** 펫 모드에서는 그것이 창의 거의 전부라, 여기서 못 끌면
+        // 창을 옮길 방법이 아예 없어진다. 마스코트에서는 드래그를 그대로 살린다.
         var hit = view.HitTest(e.GetPosition(view));
-        if (hit != HudHit.None)
+        if (hit is not HudHit.None and not HudHit.Mascot)
         {
             pressed = hit;
             e.Handled = true;
@@ -261,10 +280,14 @@ public sealed class HudWindow : Window
     private void OnDoubleClick(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Left) return;
-        // 버튼을 두 번 누른 것은 접기가 아니다. 이미 버튼이 두 번 실행됐다.
-        if (view.HitTest(e.GetPosition(view)) != HudHit.None) return;
 
-        ModeToggled?.Invoke();
+        switch (view.HitTest(e.GetPosition(view)))
+        {
+            // 마스코트를 두 번 누르면 펫으로 드나든다. 맥과 같은 자리다.
+            case HudHit.Mascot: PetToggled?.Invoke(); break;
+            case HudHit.None: ModeToggled?.Invoke(); break;
+            // 버튼을 두 번 누른 것은 접기가 아니다. 이미 버튼이 두 번 실행됐다.
+        }
     }
 
     /// <summary>

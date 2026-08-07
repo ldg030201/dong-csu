@@ -13,7 +13,7 @@ namespace DongCSU.App.Settings;
 /// <summary>
 /// 설정 창. 왼쪽에 탭, 오른쪽에 내용, 아래에 버전과 종료.
 ///
-/// 맥판과 같은 구성이되 **펫 탭이 없다** — 윈도우에는 아직 펫 모드가 없다.
+/// 맥판과 같은 여섯 탭이다. 펫은 아직 만드는 중이라 링 표시까지만 열려 있다.
 ///
 /// **크기를 고정하지 않는다.** 고DPI 나 큰 글꼴에서 항목이 잘리고, 창을 키워 편하게
 /// 볼 수도 없다. 내용은 늘어나고, 좁히면 스크롤이 생긴다.
@@ -27,6 +27,9 @@ public sealed class SettingsWindow : Window
 
     /// <summary>HUD 를 기본 자리로 되돌린다. 창을 들고 있는 쪽만 할 수 있는 일이다.</summary>
     private readonly Action onResetPosition;
+
+    /// <summary>펫 모드를 드나든다. 복귀 지점을 챙겨야 해서 화면 쪽이 직접 하지 않는다.</summary>
+    private readonly Action onTogglePet;
 
     private readonly Border root = new();
 
@@ -49,6 +52,7 @@ public sealed class SettingsWindow : Window
         ("status", "상태"),
         ("display", "표시"),
         ("icon", "아이콘"),
+        ("pet", "펫"),
         ("account", "계정"),
         ("version", "버전"),
     ];
@@ -60,13 +64,15 @@ public sealed class SettingsWindow : Window
         UsageStore store,
         UpdateService updates,
         Action onChanged,
-        Action onResetPosition)
+        Action onResetPosition,
+        Action onTogglePet)
     {
         this.settings = settings;
         this.store = store;
         this.updates = updates;
         this.onChanged = onChanged;
         this.onResetPosition = onResetPosition;
+        this.onTogglePet = onTogglePet;
 
         Title = $"{AppInfo.Name} 설정";
         Width = 720;
@@ -243,6 +249,7 @@ public sealed class SettingsWindow : Window
         {
             "display" => DisplayTab(palette),
             "icon" => IconTab(palette),
+            "pet" => PetTab(palette),
             "account" => AccountTab(palette),
             "version" => VersionTab(palette),
             _ => StatusTab(palette),
@@ -369,7 +376,9 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Ui.Title(palette, "표시"));
 
         var visible = settings.IsHudVisible;
-        var expanded = settings.Mode != HudMode.Collapsed;
+        // 펫에 들어가 있으면 복귀 지점이 기준이다.
+        var effective = settings.Mode == HudMode.Pet ? settings.ModeBeforePet : settings.Mode;
+        var expanded = effective != HudMode.Collapsed;
 
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "HUD 표시", Ui.Toggle(palette, visible, value =>
@@ -378,11 +387,16 @@ public sealed class SettingsWindow : Window
                 ApplyAndRedraw();   // 아래 항목들의 활성 상태가 함께 바뀐다
             })),
             Ui.Divider(palette),
+            // 펫에 들어가 있으면 **복귀 지점**을 바꾼다. 지금 모드를 바꾸면 펫에서
+            // 튕겨 나오고, 나중에 나올 때 돌아갈 자리도 어긋난다.
             Ui.Row(palette, "접어서 링만 보기", Ui.Toggle(palette, !expanded, value =>
             {
-                settings.Mode = value ? HudMode.Collapsed : HudMode.Expanded;
+                var target = value ? HudMode.Collapsed : HudMode.Expanded;
+                if (settings.Mode == HudMode.Pet) settings.ModeBeforePet = target;
+                else settings.Mode = target;
                 ApplyAndRedraw();
-            }), enabled: visible),
+            }), hint: settings.Mode == HudMode.Pet ? "펫에서 나왔을 때의 모습입니다." : null,
+                enabled: visible),
             Ui.Divider(palette),
             Ui.Row(palette, "펼침 방향", Ui.Segmented(palette, ["오른쪽", "왼쪽"],
                 (int)settings.ExpandSide,
@@ -476,6 +490,10 @@ public sealed class SettingsWindow : Window
         settings.ShowsProcessStats = fresh.ShowsProcessStats;
         settings.AnimatesMascot = fresh.AnimatesMascot;
         settings.BackdropOpacity = fresh.BackdropOpacity;
+        settings.ModeBeforePet = fresh.ModeBeforePet;
+        settings.PetRingDisplay = fresh.PetRingDisplay;
+        settings.PetWanders = fresh.PetWanders;
+        settings.PetDodgesCursor = fresh.PetDodgesCursor;
         settings.WindowLeft = null;
         settings.WindowTop = null;
 
@@ -567,6 +585,34 @@ public sealed class SettingsWindow : Window
             ApplyAndRedraw();
         };
         return tile;
+    }
+
+    // ── 펫 ──────────────────────────────────────────────────────────
+
+    private UIElement PetTab(SettingsPalette palette)
+    {
+        var panel = Stack();
+        panel.Children.Add(Ui.Title(palette, "펫"));
+
+        var visible = settings.IsHudVisible;
+        var isPet = settings.Mode == HudMode.Pet;
+
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "펫 모드", Ui.Toggle(palette, isPet, _ => { onTogglePet(); Rebuild(); }),
+                hint: "배경도 숫자도 없이 마스코트만 남깁니다. 마스코트를 두 번 눌러도 됩니다.",
+                enabled: visible),
+            Ui.Divider(palette),
+            Ui.Row(palette, "사용량 링", Ui.Segmented(palette,
+                [.. Enum.GetValues<PetRingDisplay>().Select(d => d.Title())],
+                (int)settings.PetRingDisplay,
+                index => { settings.PetRingDisplay = (PetRingDisplay)index; Apply(); }),
+                hint: "마스코트 뒤에 두르는 링입니다.",
+                enabled: visible)));
+
+        panel.Children.Add(Ui.Hint(palette,
+            "혼자 돌아다니기와 커서 피하기는 아직 만드는 중입니다."));
+
+        return panel;
     }
 
     // ── 계정 ────────────────────────────────────────────────────────

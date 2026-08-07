@@ -112,12 +112,8 @@ public sealed class AppController : IDisposable
         tray.Activated += ToggleHudVisible;
 
         hud = new HudWindow(settings);
-        hud.ModeToggled += () =>
-        {
-            settings.Mode = settings.Mode == HudMode.Collapsed ? HudMode.Expanded : HudMode.Collapsed;
-            settings.Save();
-            ApplySettings();
-        };
+        hud.ModeToggled += ToggleCollapsed;
+        hud.PetToggled += TogglePet;
         // 우클릭은 트레이와 **같은 메뉴**를 띄운다. 설정 창이 튀어나오면 놀란다.
         hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
         hud.SettingsRequested += () => OpenSettings();
@@ -171,6 +167,7 @@ public sealed class AppController : IDisposable
 
         hud.View.ShowsProcessStats = settings.ShowsProcessStats;
         hud.View.IconStyle = settings.IconStyle;
+        hud.View.PetRingDisplay = settings.PetRingDisplay;
 
         store.PollInterval = settings.PollInterval;
         pollTimer.Interval = store.NextPollDelay();
@@ -251,6 +248,8 @@ public sealed class AppController : IDisposable
         hud.View.OwlGrid = animator.CurrentGrid;
         hud.View.OwlPaletteName = MascotPalette();
         hud.View.HasUpdate = updates.HasUpdate;
+        // 펫에는 숫자를 안 그린다. 마스코트에 올리면 이게 뜬다.
+        hud.View.SummaryText = store.SummaryText();
         hud.Refresh();
 
         tray?.UpdateOwl(animator.CurrentGrid, OwlDocument.Embedded.Palettes[MascotPalette()]);
@@ -323,6 +322,45 @@ public sealed class AppController : IDisposable
     /// <summary>HUD 를 주 모니터 오른쪽 위로. 설정 창의 "위치 초기화" 가 부른다.</summary>
     private void ResetHudPosition() => hud?.ResetPosition();
 
+    /// <summary>
+    /// 접었다 폈다.
+    ///
+    /// **펫에서는 접기가 아니라 나가기다.** 셋을 한 줄로 순환시키지 않는다 — 접으려다
+    /// 펫으로 넘어가면 이 동작이 무엇을 할지 예측할 수 없어진다.
+    /// </summary>
+    private void ToggleCollapsed()
+    {
+        settings.Mode = settings.Mode switch
+        {
+            HudMode.Pet => settings.ModeBeforePet,
+            HudMode.Collapsed => HudMode.Expanded,
+            _ => HudMode.Collapsed,
+        };
+        settings.Save();
+        ApplySettings();
+    }
+
+    /// <summary>
+    /// 펫 모드를 드나든다.
+    ///
+    /// 나갈 때는 **들어오기 전 보기**로 돌아간다. 접어 둔 채로 펫에 들렀다 나왔는데
+    /// 펼쳐져 있으면, 사용자가 해 둔 것을 앱이 되돌린 셈이 된다.
+    /// </summary>
+    private void TogglePet()
+    {
+        if (settings.Mode == HudMode.Pet)
+        {
+            settings.Mode = settings.ModeBeforePet;
+        }
+        else
+        {
+            settings.ModeBeforePet = settings.Mode;
+            settings.Mode = HudMode.Pet;
+        }
+        settings.Save();
+        ApplySettings();
+    }
+
     private void ToggleHudVisible()
     {
         settings.IsHudVisible = !settings.IsHudVisible;
@@ -334,7 +372,7 @@ public sealed class AppController : IDisposable
     {
         if (settingsWindow is null)
         {
-            settingsWindow = new SettingsWindow(settings, store, updates, ApplySettings, ResetHudPosition);
+            settingsWindow = new SettingsWindow(settings, store, updates, ApplySettings, ResetHudPosition, TogglePet);
             settingsWindow.Closed += (_, _) => settingsWindow = null;
         }
 

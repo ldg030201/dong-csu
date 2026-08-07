@@ -309,6 +309,10 @@ public sealed class HudView : FrameworkElement
         if (buttons[1].Contains(point)) return HudHit.Settings;
         if (buttons[2].Contains(point)) return HudHit.Refresh;
 
+        // 마스코트는 **버튼 다음**이다. 펫에서는 링이 창의 거의 전부라 먼저 보면
+        // 다른 것을 다 덮는다. 링과 마스코트가 겹쳐 있으므로 링 전체를 잡는다.
+        if (RingRect().Contains(point)) return HudHit.Mascot;
+
         return HudHit.None;
     }
 
@@ -319,8 +323,15 @@ public sealed class HudView : FrameworkElement
         HudHit.Settings => "설정",
         HudHit.Refresh => ErrorText is { } error ? $"갱신 실패: {error} — 눌러서 다시 시도" : "새로고침",
         HudHit.UpdateBadge => "새 버전이 나왔다 — 눌러서 확인",
+        // 펫에는 숫자를 안 그린다. 올려서 읽는 것이 그 자리를 대신한다.
+        HudHit.Mascot => Mode == HudMode.Pet
+            ? SummaryText ?? "두 번 눌러 원래 보기로"
+            : "두 번 눌러 마스코트만 보기",
         _ => null,
     };
+
+    /// <summary>펫에서 마스코트에 올렸을 때 띄울 요약. 창이 넣어 준다.</summary>
+    public string? SummaryText { get; set; }
 
     // ── 그리기 ──────────────────────────────────────────────────────
 
