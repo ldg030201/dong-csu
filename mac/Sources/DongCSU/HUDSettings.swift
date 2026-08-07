@@ -238,7 +238,11 @@ final class HUDSettings: ObservableObject {
 
     static let minOpacity = 0.35
     static let maxOpacity = 1.0
-    static let defaultOpacity = 0.92
+    /// 배경 불투명도 기본값.
+    ///
+    /// **이미 쓰던 사람에게는 적용되지 않는다** — 저장된 값이 있으면 그걸 쓴다.
+    /// 새로 깔거나 설정을 초기화했을 때의 값이다.
+    static let defaultOpacity = 1.0
 
     private let defaults: UserDefaults
 
