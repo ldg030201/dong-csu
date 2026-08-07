@@ -421,7 +421,7 @@ public sealed class SettingsWindow : Window
                     settings.BackdropOpacity = value;
                     Apply();
                 }),
-                hint: "너무 투명하면 글자가 안 읽혀 아래를 막아 뒀습니다.", enabled: visible)));
+                hint: "너무 투명하면 글자가 안 읽혀 아래를 막아 뒀다.", enabled: visible)));
 
         panel.Children.Add(Ui.Section(palette, "곁들이"));
         panel.Children.Add(Ui.Card(palette,
@@ -431,9 +431,9 @@ public sealed class SettingsWindow : Window
                 Ui.Toggle(palette, settings.ShowsVersionBadge,
                 value => { settings.ShowsVersionBadge = value; Apply(); }), enabled: visible),
             Ui.Divider(palette),
-            Ui.Row(palette, "아래 줄에 CPU · 메모리 표시", Ui.Toggle(palette, settings.ShowsProcessStats,
+            Ui.Row(palette, "아래 줄에 CPU·메모리 표시", Ui.Toggle(palette, settings.ShowsProcessStats,
                 value => { settings.ShowsProcessStats = value; Apply(); }),
-                hint: "이 앱 자신이 쓰는 자원입니다. 켜면 카드가 한 줄 길어집니다.",
+                hint: "dong-csu 자신이 쓰는 자원이다. 켜면 카드가 한 줄 길어진다.",
                 enabled: visible && expanded)));
 
         panel.Children.Add(Ui.Section(palette, "조회"));
@@ -442,7 +442,7 @@ public sealed class SettingsWindow : Window
                 ["1분", "3분", "5분", "10분", "30분"],
                 Math.Max(0, Array.IndexOf(PollChoices, settings.PollIntervalSeconds)),
                 index => { settings.PollIntervalSeconds = PollChoices[index]; ApplyAndRedraw(); }),
-                hint: "너무 조이면 서버가 요청을 제한합니다."),
+                hint: "너무 조이면 서버가 요청을 제한한다."),
             Ui.Divider(palette),
             Ui.Row(palette, "로그인할 때 자동 시작", Ui.Toggle(palette, StartupService.IsEnabled, value =>
             {
@@ -456,9 +456,13 @@ public sealed class SettingsWindow : Window
             Ui.Button(palette, "모든 설정 초기화", ResetEverything, Ui.ButtonKind.Danger)));
 
         panel.Children.Add(Ui.Hint(palette,
-            "HUD는 드래그로 옮길 수 있고, 더블클릭하면 접었다 펴집니다. "
-            + "화면 밖으로 보냈거나 모니터를 빼서 안 보이면 위치 초기화를 누르세요 — "
-            + "주 모니터 오른쪽 위로 돌아옵니다."));
+            "창 위치·크기·아이콘·펫 설정을 전부 처음 상태로 되돌린다."));
+
+        panel.Children.Add(Ui.Hint(palette,
+            "HUD는 드래그로 옮길 수 있고, 더블클릭하면 보기가 넘어간다. "
+            // 화면 구성이 바뀌어 안 보이게 되는 것은 윈도우에서 더 흔하다. 그래서 한 줄 더 붙인다.
+            + "화면 밖으로 보냈거나 모니터를 빼서 안 보이면 위치 초기화를 누르면 된다 — "
+            + "주 모니터 오른쪽 위로 돌아온다."));
 
         return panel;
     }
@@ -475,8 +479,8 @@ public sealed class SettingsWindow : Window
     {
         var answer = MessageBox.Show(
             this,
-            "모든 설정을 처음 상태로 되돌립니다. 되돌릴 수 없습니다.\n로그인할 때 자동 시작도 함께 꺼집니다.",
-            $"{AppInfo.Name} 설정 초기화",
+            "되돌릴 수 없습니다. 로그인할 때 자동 시작도 함께 꺼집니다.",
+            "모든 설정을 초기화할까요?",
             MessageBoxButton.OKCancel,
             MessageBoxImage.Warning);
         if (answer != MessageBoxResult.OK) return;
@@ -516,6 +520,7 @@ public sealed class SettingsWindow : Window
     {
         var panel = Stack();
         panel.Children.Add(Ui.Title(palette, "아이콘"));
+        panel.Children.Add(Ui.Hint(palette, "HUD 링 가운데에 그릴 그림이다."));
 
         foreach (var group in Enum.GetValues<IconStyleGroup>())
         {
@@ -532,11 +537,10 @@ public sealed class SettingsWindow : Window
         var animated = settings.IconStyle.IsAnimated();
         panel.Children.Add(Ui.Section(palette, "움직임"));
         panel.Children.Add(Ui.Card(palette,
-            Ui.Row(palette, "마스코트 움직이기", Ui.Toggle(palette, settings.AnimatesMascot,
+            Ui.Row(palette, "캐릭터 애니메이션", Ui.Toggle(palette, settings.AnimatesMascot,
                 value => { settings.AnimatesMascot = value; Apply(); }),
-                hint: animated
-                    ? "끄면 평소 자세로 멈추고, 기분에 따른 색은 그대로입니다."
-                    : $"{settings.IconStyle.ShortTitle()}은(는) 정지 그림이라 움직이지 않습니다.",
+                // 정지 그림(Claude 쪽)을 골라 두면 켤 것이 없어서 잠긴다.
+                hint: animated ? null : $"{settings.IconStyle.ShortTitle()}은(는) 정지 그림이다.",
                 enabled: animated)));
 
         panel.Children.Add(Ui.Hint(palette,
@@ -603,14 +607,14 @@ public sealed class SettingsWindow : Window
 
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "펫 모드", Ui.Toggle(palette, isPet, _ => { onTogglePet(); Rebuild(); }),
-                hint: "배경도 숫자도 없이 마스코트만 남깁니다. 마스코트를 두 번 눌러도 됩니다.",
+                hint: "배경과 숫자를 걷어내고 마스코트만 띄운다. HUD의 마스코트를 더블클릭해도 들어간다.",
                 enabled: visible),
             Ui.Divider(palette),
             Ui.Row(palette, "사용량 링", Ui.Segmented(palette,
                 [.. Enum.GetValues<PetRingDisplay>().Select(d => d.Title())],
                 (int)settings.PetRingDisplay,
                 index => { settings.PetRingDisplay = (PetRingDisplay)index; Apply(); }),
-                hint: "마스코트 뒤에 두르는 링입니다.",
+                hint: "펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간.",
                 enabled: visible)));
 
         // 펫 모드에서만 도는 것들이라 제목에 적어 둔다. 안 그러면 왜 잠겼는지 알 수 없다.
@@ -618,16 +622,16 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "혼자 돌아다니기", Ui.Toggle(palette, settings.PetWanders,
                 value => { settings.PetWanders = value; Apply(); }),
-                hint: "가끔 옆으로 걸어갑니다. 글을 쓰는 동안에는 멈춥니다.",
+                hint: "가만히 두면 화면을 천천히 걸어다닌다. 글을 쓰는 동안에는 멈춘다.",
                 enabled: visible && isPet),
             Ui.Divider(palette),
             Ui.Row(palette, "커서 피하기", Ui.Toggle(palette, settings.PetDodgesCursor,
                 value => { settings.PetDodgesCursor = value; Apply(); }),
-                hint: "마우스를 잠깐 올려 두면 옆으로 비켜섭니다. 버튼을 누르러 갈 때는 안 비킵니다.",
+                hint: "커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.",
                 enabled: visible && isPet)));
 
         panel.Children.Add(Ui.Hint(palette,
-            "잡고 있는 동안, 글을 쓰는 동안, 화면이 잠긴 동안에는 움직이지 않습니다."));
+            "잡고 있는 동안, 글을 쓰는 동안, 화면이 잠긴 동안, 조회가 끊긴 동안에는 움직이지 않는다."));
 
         return panel;
     }
@@ -822,7 +826,7 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "하루에 한 번 새 버전 확인", Ui.Toggle(palette, settings.ChecksForUpdates,
                 value => { settings.ChecksForUpdates = value; Apply(); }),
-                hint: AppInfo.IsTestBuild ? "테스트 빌드는 업데이트를 걸지 않습니다." : null,
+                hint: AppInfo.IsTestBuild ? "테스트판은 새 버전을 확인하지 않습니다" : null,
                 enabled: !AppInfo.IsTestBuild)));
 
         panel.Children.Add(Ui.Section(palette, "변경 내역"));
@@ -839,11 +843,12 @@ public sealed class SettingsWindow : Window
 
     private string StatusLine()
     {
-        if (AppInfo.IsTestBuild) return "테스트 빌드라 자동 업데이트를 쓰지 않습니다.";
-        if (!updates.IsInstalled) return "설치본이 아니라 자동 업데이트를 쓸 수 없습니다.";
-        if (updates.HasUpdate) return $"새 버전 {updates.LatestVersion} 이 나와 있습니다.";
-        if (updates.LastChecked is not null) return "최신 버전입니다.";
-        return "아직 확인하지 않았습니다.";
+        if (AppInfo.IsTestBuild) return "테스트판은 새 버전을 확인하지 않습니다";
+        // 맥은 brew 로 깔려서 이 경우가 없다. 윈도우는 폴더에 놓인 exe 로도 돌 수 있다.
+        if (!updates.IsInstalled) return "설치본이 아니라 자동 업데이트를 쓸 수 없습니다";
+        if (updates.HasUpdate) return $"새 버전 {updates.LatestVersion}";
+        if (updates.LastChecked is not null) return "최신 버전입니다";
+        return "아직 확인하지 않았습니다";
     }
 
     private UIElement ChangelogEntryView(SettingsPalette palette, ChangelogEntry entry)
