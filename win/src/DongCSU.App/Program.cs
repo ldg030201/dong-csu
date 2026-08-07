@@ -66,14 +66,16 @@ public sealed class AppController : IDisposable
         // 업데이트하면 앱 경로가 바뀐다. 옛 경로가 남아 있으면 로그인할 때 아무것도 안 뜬다.
         StartupService.RepairIfEnabled();
 
-        // 자격 증명을 어디서 찾았는지 남긴다. "사용량이 안 나온다"의 대부분이 여기서 갈린다.
-        foreach (var candidate in FileCredentialSource.DefaultPaths())
+        // 자격 증명을 어디서 찾았고 **왜 못 읽었는지** 남긴다. "사용량이 안 나온다"의
+        // 대부분이 여기서 갈린다. 있음/없음만 적어 두면 파일이 있는데 실패한 경우에
+        // 사용자가 보낸 기록만으로는 원인을 짚을 수 없다.
+        var source = new FileCredentialSource(fallbackPaths: WslCredentialPaths.All);
+        foreach (var attempt in source.Inspect())
         {
-            AppLog.Write($"자격 증명 후보: {candidate} · {(File.Exists(candidate) ? "있음" : "없음")}");
+            AppLog.Write($"자격 증명 {attempt.Path} · {attempt.Describe()}");
         }
 
-        var credentials = new CredentialStore(
-            new FileCredentialSource(), refreshedTokens: new RefreshedTokenStore());
+        var credentials = new CredentialStore(source, refreshedTokens: new RefreshedTokenStore());
         if (credentials.Current() is { } credential)
         {
             // 토큰 자체는 절대 남기지 않는다. 길이와 만료 시각만으로 충분히 갈린다.
@@ -334,14 +336,13 @@ public sealed class AppController : IDisposable
         {
             settingsWindow = new SettingsWindow(settings, store, updates, ApplySettings, ResetHudPosition);
             settingsWindow.Closed += (_, _) => settingsWindow = null;
-            settingsWindow.Show();
-        }
-        else
-        {
-            settingsWindow.Activate();
         }
 
         if (tab is not null) settingsWindow.SelectTab(tab);
+
+        // **처음 열든 이미 열려 있든 앞으로 끌어낸다.** HUD 가 포커스를 안 받는 창이라
+        // 그냥 Show 만 하면 다른 창 뒤에 깔려서, 사용자 눈에는 안 열린 것으로 보인다.
+        settingsWindow.BringToFront();
     }
 
     /// <summary>업데이트 직전 정리. 창을 닫고 트레이 아이콘을 내린다.</summary>

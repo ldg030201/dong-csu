@@ -1,4 +1,5 @@
 using System.IO;
+using DongCSU.App.Services;
 using DongCSU.Core;
 using DongCSU.Core.Owl;
 using DongCSU.Core.Usage;
@@ -37,6 +38,16 @@ public static partial class Diagnostics
                 Console.WriteLine($"settings: {AppSettings.DefaultPath}");
                 Console.WriteLine($"log:      {AppLog.DefaultPath}");
                 Console.WriteLine($"token:    {RefreshedTokenStore.DefaultPath}");
+
+                Console.WriteLine("credential candidates:");
+                foreach (var path in FileCredentialSource.DefaultPaths()) Console.WriteLine($"  {path}");
+
+                // 윈도우 쪽에서 못 찾았을 때만 실제로 들여다보는 자리. 여기 찍는 것만으로도
+                // 배포판이 깨어날 수 있어서 진단 통로에서만 훑는다.
+                Console.WriteLine("  (wsl fallback)");
+                var wsl = WslCredentialPaths.All().ToList();
+                if (wsl.Count == 0) Console.WriteLine("    없음 (WSL 이 없거나 닿지 않음)");
+                foreach (var path in wsl) Console.WriteLine($"    {path}");
                 return true;
 
             case "--dump-changelog":
@@ -135,13 +146,22 @@ public static partial class Diagnostics
     private static async Task<int> Probe()
     {
         using var http = UsageApi.CreateHttpClient();
-        var credentials = new CredentialStore(
-            new FileCredentialSource(), refreshedTokens: new RefreshedTokenStore());
+        var source = new FileCredentialSource(fallbackPaths: WslCredentialPaths.All);
+
+        // **찾아본 자리를 전부 찍는다.** "못 읽었다" 한 줄만으로는 사용자가 보낸
+        // 기록에서 원인을 짚을 수 없다 — 파일이 없는 것과, 있는데 Claude 로그인이
+        // 안 들어 있는 것은 할 일이 전혀 다르다.
+        foreach (var attempt in source.Inspect())
+        {
+            Console.WriteLine($"  {attempt.Path}");
+            Console.WriteLine($"    → {attempt.Describe()}");
+        }
+
+        var credentials = new CredentialStore(source, refreshedTokens: new RefreshedTokenStore());
 
         if (credentials.Current() is not { } credential)
         {
             Console.WriteLine("credentials: not found");
-            foreach (var path in FileCredentialSource.DefaultPaths()) Console.WriteLine($"  looked at: {path}");
             return 1;
         }
         Console.WriteLine("credentials: found");

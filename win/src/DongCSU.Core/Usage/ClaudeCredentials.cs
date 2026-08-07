@@ -43,16 +43,45 @@ public sealed record ClaudeCredentials
     ///
     /// 맥은 keychain 에, 윈도우는 **파일**에 들어 있다. 담긴 JSON 모양은 같다.
     /// </summary>
-    public static ClaudeCredentials? Parse(string json)
+    public static ClaudeCredentials? Parse(string json) => Examine(json).Credentials;
+
+    /// <summary>
+    /// 읽어 보고 **안 되면 왜 안 되는지**까지 돌려준다.
+    ///
+    /// 돌려주는 <c>Keys</c> 는 최상위 키 **이름**뿐이다. 값은 담지 않는다 — 그대로
+    /// 기록 파일로 나가는 값이라 토큰이 섞이면 안 된다.
+    /// </summary>
+    public static (ClaudeCredentials? Credentials, CredentialProblem Problem, string? Keys) Examine(string json)
     {
         try
         {
             using var document = JsonDocument.Parse(json);
-            if (!document.RootElement.TryGetProperty("claudeAiOauth", out var oauth)) return null;
-            if (!oauth.TryGetProperty("accessToken", out var tokenElement)) return null;
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                return (null, CredentialProblem.NotJson, null);
+            }
+
+            var keys = string.Join(", ", document.RootElement
+                .EnumerateObject()
+                .Select(property => property.Name)
+                .Take(8));
+
+            if (!document.RootElement.TryGetProperty("claudeAiOauth", out var oauth))
+            {
+                // MCP 토큰만 든 파일이 이렇다 — 파일은 있는데 Claude 로그인은 없다.
+                return (null, CredentialProblem.NoClaudeLogin, keys);
+            }
+
+            if (!oauth.TryGetProperty("accessToken", out var tokenElement))
+            {
+                return (null, CredentialProblem.NoAccessToken, keys);
+            }
 
             var token = tokenElement.GetString();
-            if (string.IsNullOrEmpty(token)) return null;
+            if (string.IsNullOrEmpty(token))
+            {
+                return (null, CredentialProblem.NoAccessToken, keys);
+            }
 
             // 밀리초다. 초로 읽으면 1970년대가 나와서 항상 만료로 판정된다.
             // 정수로만 받으면 안 된다 — 맥 쪽은 Double 로 읽고 있어서, 소수점이 붙어
@@ -79,7 +108,7 @@ public sealed record ClaudeCredentials
                 }
             }
 
-            return new ClaudeCredentials
+            var credentials = new ClaudeCredentials
             {
                 AccessToken = token,
                 SubscriptionType = oauth.TryGetProperty("subscriptionType", out var sub)
@@ -90,12 +119,59 @@ public sealed record ClaudeCredentials
                     ? refresh.GetString()
                     : null,
             };
+            return (credentials, CredentialProblem.None, keys);
         }
         catch (JsonException)
         {
-            return null;
+            return (null, CredentialProblem.NotJson, null);
         }
     }
+}
+
+/// <summary>
+/// 자격 증명 파일 하나를 살펴본 결과.
+///
+/// **왜 실패했는지를 들고 다닌다.** 예전에는 못 읽으면 그냥 null 이라, 사용자가 보낸
+/// 기록에 "자격 증명 읽기 실패" 한 줄만 남았다. 파일이 없는 것과, 있는데 Claude 로그인이
+/// 안 들어 있는 것과, 형식이 깨진 것은 사용자가 할 일이 전혀 다르다.
+/// </summary>
+public enum CredentialProblem
+{
+    None,
+    /// <summary>그 자리에 파일이 없다.</summary>
+    NotFound,
+    /// <summary>열지 못했다(권한·잠김). WSL 이 꺼져 있을 때도 여기로 온다.</summary>
+    Unreadable,
+    /// <summary>JSON 이 아니다.</summary>
+    NotJson,
+    /// <summary>JSON 이긴 한데 <c>claudeAiOauth</c> 가 없다. MCP 토큰만 든 파일이 이렇다.</summary>
+    NoClaudeLogin,
+    /// <summary><c>claudeAiOauth</c> 는 있는데 <c>accessToken</c> 이 비어 있다.</summary>
+    NoAccessToken,
+}
+
+/// <param name="Path">살펴본 자리.</param>
+/// <param name="Keys">파일에 있던 최상위 키 이름들. **값은 절대 담지 않는다.**</param>
+public sealed record CredentialAttempt(
+    string Path,
+    CredentialProblem Problem,
+    ClaudeCredentials? Credentials = null,
+    string? Keys = null)
+{
+    public bool Found => Credentials is not null;
+
+    /// <summary>사용자에게 보여줄 한마디.</summary>
+    public string Describe() => Problem switch
+    {
+        CredentialProblem.None => "읽었습니다",
+        CredentialProblem.NotFound => "파일이 없습니다",
+        CredentialProblem.Unreadable => "파일을 열지 못했습니다",
+        CredentialProblem.NotJson => "형식이 JSON 이 아닙니다",
+        CredentialProblem.NoClaudeLogin => Keys is { Length: > 0 }
+            ? $"Claude 로그인이 안 들어 있습니다 (있는 항목: {Keys})"
+            : "Claude 로그인이 안 들어 있습니다",
+        _ => "로그인 정보가 비어 있습니다",
+    };
 }
 
 /// <summary>
@@ -107,14 +183,35 @@ public sealed record ClaudeCredentials
 public interface ICredentialSource
 {
     ClaudeCredentials? Read();
+
+    /// <summary>살펴본 자리를 전부 돌려준다. 기록과 계정 화면이 이걸 쓴다.</summary>
+    IReadOnlyList<CredentialAttempt> Inspect() => [];
 }
 
-/// <summary>Claude Code 설정 폴더의 <c>.credentials.json</c> 을 읽는다.</summary>
-public sealed class FileCredentialSource(IEnumerable<string>? searchPaths = null) : ICredentialSource
+/// <summary>
+/// Claude Code 설정 폴더의 <c>.credentials.json</c> 을 읽는다.
+///
+/// **한 자리만 보지 않는다.** 같은 앱을 쓰는 방식이 사람마다 달라서 파일이 사는 곳도
+/// 갈린다 — 윈도우 홈, <c>CLAUDE_CONFIG_DIR</c> 로 옮긴 자리, 그리고 **WSL 안의 리눅스 홈**.
+/// WSL 에서 Claude Code 를 쓰는 사람은 윈도우 홈에 아무것도 없다.
+/// </summary>
+/// <param name="searchPaths">먼저 볼 자리. 안 주면 <see cref="FileCredentialSource.DefaultPaths"/>.</param>
+/// <param name="fallbackPaths">
+/// 앞에서 못 찾았을 때만 볼 자리. WSL 처럼 **들여다보는 것 자체가 비싼** 곳을 여기 둔다.
+/// Core 는 WSL 배포판 이름을 알 방법이 없어서(레지스트리는 윈도우 전용) 화면 쪽이 넣어 준다.
+/// </param>
+public sealed class FileCredentialSource(
+    IEnumerable<string>? searchPaths = null,
+    Func<IEnumerable<string>>? fallbackPaths = null) : ICredentialSource
 {
-    private readonly string[] paths = (searchPaths ?? DefaultPaths()).ToArray();
+    private readonly string[]? fixedPaths = searchPaths?.ToArray();
 
-    /// <summary>찾아볼 자리. 앞에 있는 것이 이긴다.</summary>
+    /// <summary>
+    /// 찾아볼 자리. 앞에 있는 것이 이긴다.
+    ///
+    /// WSL 은 **맨 뒤**다. <c>\\wsl.localhost</c> 를 건드리면 꺼져 있던 배포판이 깨어나므로,
+    /// 윈도우 쪽에서 찾으면 아예 들여다보지 않는다.
+    /// </summary>
     public static IEnumerable<string> DefaultPaths()
     {
         // CLAUDE_CONFIG_DIR 을 쓰면 설정 폴더 자체가 옮겨진다. 그쪽이 우선이다.
@@ -131,22 +228,88 @@ public sealed class FileCredentialSource(IEnumerable<string>? searchPaths = null
         }
     }
 
-    public ClaudeCredentials? Read()
+    /// <summary>
+    /// WSL 배포판 하나(<c>\\wsl.localhost\Ubuntu</c>) 안에서 찾아볼 자리들.
+    ///
+    /// **배포판 이름은 여기서 알아낼 수 없다.** <c>\\wsl.localhost\</c> 는 디렉터리로
+    /// 나열되지 않아서(이름을 알아야만 열린다) 목록은 레지스트리에 있고, 그건 윈도우
+    /// 전용이라 화면 쪽이 넘겨준다.
+    ///
+    /// 리눅스 쪽 사용자 이름도 모르므로 <c>/root</c> 와 <c>/home</c> 아래를 다 본다.
+    /// </summary>
+    public static IEnumerable<string> WslPathsUnder(string distroRoot)
     {
-        foreach (var path in paths)
-        {
-            string json;
-            try
-            {
-                if (!File.Exists(path)) continue;
-                json = File.ReadAllText(path);
-            }
-            catch (IOException) { continue; }
-            catch (UnauthorizedAccessException) { continue; }
+        yield return Path.Combine(distroRoot, "root", ".claude", ".credentials.json");
 
-            if (ClaudeCredentials.Parse(json) is { } credentials) return credentials;
+        foreach (var userHome in Subdirectories(Path.Combine(distroRoot, "home")))
+        {
+            yield return Path.Combine(userHome, ".claude", ".credentials.json");
         }
-        return null;
+    }
+
+    /// <summary>없거나 못 들어가면 빈 목록. WSL 이 안 깔린 기계에서 던지면 안 된다.</summary>
+    private static string[] Subdirectories(string path)
+    {
+        try
+        {
+            return Directory.Exists(path) ? Directory.GetDirectories(path) : [];
+        }
+        catch (Exception error) when (error is IOException
+                                          or UnauthorizedAccessException
+                                          or ArgumentException)
+        {
+            return [];
+        }
+    }
+
+    public ClaudeCredentials? Read() =>
+        Inspect().FirstOrDefault(attempt => attempt.Found)?.Credentials;
+
+    public IReadOnlyList<CredentialAttempt> Inspect()
+    {
+        var attempts = new List<CredentialAttempt>();
+
+        foreach (var path in fixedPaths ?? [.. DefaultPaths()])
+        {
+            var attempt = Look(path);
+            attempts.Add(attempt);
+            if (attempt.Found) return attempts;
+        }
+
+        // 여기까지 못 찾았을 때만 뒷자리(WSL)를 들여다본다. 그쪽은 꺼져 있던 배포판을
+        // 깨우기 때문에, 윈도우 쪽에서 찾으면 아예 건드리지 않는다.
+        if (fallbackPaths is null) return attempts;
+
+        foreach (var path in fallbackPaths())
+        {
+            var attempt = Look(path);
+            // 홈이 여러 개일 수 있다. 없는 자리까지 다 적으면 기록이 지저분해진다.
+            if (attempt.Problem == CredentialProblem.NotFound) continue;
+
+            attempts.Add(attempt);
+            if (attempt.Found) return attempts;
+        }
+
+        return attempts;
+    }
+
+    private static CredentialAttempt Look(string path)
+    {
+        string json;
+        try
+        {
+            if (!File.Exists(path)) return new CredentialAttempt(path, CredentialProblem.NotFound);
+            json = File.ReadAllText(path);
+        }
+        catch (Exception error) when (error is IOException
+                                          or UnauthorizedAccessException
+                                          or ArgumentException)
+        {
+            return new CredentialAttempt(path, CredentialProblem.Unreadable);
+        }
+
+        var (credentials, problem, keys) = ClaudeCredentials.Examine(json);
+        return new CredentialAttempt(path, problem, credentials, keys);
     }
 }
 

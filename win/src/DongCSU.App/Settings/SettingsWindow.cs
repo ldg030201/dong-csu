@@ -576,36 +576,67 @@ public sealed class SettingsWindow : Window
         var panel = Stack();
         panel.Children.Add(Ui.Title(palette, "계정"));
 
-        // 자격 증명 파일이 실제로 있는지부터 보여준다.
+        // 자격 증명을 어디서 찾았고 왜 못 읽었는지 그대로 보여준다.
         //
         // **터미널을 안 쓰는 사람이 있다.** 그 사람한테 "claude auth login 을 치세요"만
         // 내밀면 막다른 길이다. 무엇이 없는지, 어디를 봐야 하는지를 화면에서 알려준다.
-        var found = FileCredentialSource.DefaultPaths().FirstOrDefault(File.Exists);
+        var attempts = new FileCredentialSource(fallbackPaths: WslCredentialPaths.All).Inspect();
+        var success = attempts.FirstOrDefault(a => a.Found);
 
         var header = new StackPanel { Orientation = Orientation.Horizontal };
         header.Children.Add(new TextBlock
         {
-            Text = found is null ? "로그인 정보를 찾지 못했습니다" : "로그인 정보를 찾았습니다",
+            Text = success is null ? "로그인 정보를 찾지 못했습니다" : "로그인 정보를 찾았습니다",
             FontSize = 14,
             FontWeight = FontWeights.SemiBold,
             Foreground = palette.Brush(palette.Primary),
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(0, 0, 8, 0),
         });
-        if (found is not null && store.NeedsReauth)
+        if (success is not null && store.NeedsReauth)
         {
             header.Children.Add(Ui.Pill(palette, "만료", palette.Warning));
         }
         panel.Children.Add(header);
 
-        panel.Children.Add(Ui.Hint(palette, found ?? string.Join("\n", FileCredentialSource.DefaultPaths())));
+        // 살펴본 자리를 전부 늘어놓는다 — 왜 안 됐는지가 여기서 갈린다.
+        panel.Children.Add(Ui.Section(palette, "찾아본 자리"));
+        var looked = new StackPanel();
+        foreach (var attempt in attempts)
+        {
+            var row = new StackPanel { Margin = new Thickness(0, 5, 0, 5) };
+            row.Children.Add(new TextBlock
+            {
+                Text = attempt.Path,
+                FontSize = 11.5,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = palette.Brush(attempt.Found ? palette.Primary : palette.Secondary),
+            });
+            row.Children.Add(new TextBlock
+            {
+                Text = attempt.Describe(),
+                FontSize = 11,
+                Foreground = palette.Brush(attempt.Found ? palette.Accent : palette.Tertiary),
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 1, 0, 0),
+            });
+            looked.Children.Add(row);
+        }
+        if (attempts.Count == 0)
+        {
+            looked.Children.Add(Ui.Hint(palette, "찾아본 자리가 없습니다."));
+        }
+        panel.Children.Add(Ui.Card(palette, looked));
 
         panel.Children.Add(Ui.Section(palette, "안내"));
         panel.Children.Add(Ui.Card(palette, new TextBlock
         {
-            Text = found is null
-                ? "Claude 앱(또는 Claude Code)에서 한 번 로그인하면 이 파일이 만들어집니다. "
-                  + "터미널은 필요 없습니다 — Claude 앱을 열고 Claude Code로 아무 대화나 시작해 보세요."
+            Text = success is null
+                ? attempts.Any(a => a.Problem == CredentialProblem.NoClaudeLogin)
+                    ? "파일은 있는데 Claude 로그인이 안 들어 있습니다. Claude 앱이나 Claude Code에서 "
+                      + "한 번 로그인하면 채워집니다. WSL 안에서 쓰신다면 그쪽 홈도 찾아봅니다."
+                    : "Claude 앱(또는 Claude Code)에서 한 번 로그인하면 이 파일이 만들어집니다. "
+                      + "터미널은 필요 없습니다 — Claude 앱을 열고 Claude Code로 아무 대화나 시작해 보세요."
                 : store.NeedsReauth
                     ? "토큰이 만료됐고 갱신도 실패했습니다. Claude 앱에서 다시 로그인하면 조회가 재개됩니다."
                     : "만료된 토큰은 앱이 스스로 갱신합니다. Claude Code를 켜 두지 않아도 사용량이 계속 들어옵니다. "
@@ -805,9 +836,68 @@ public sealed class SettingsWindow : Window
         };
     }
 
+    /// <summary>
+    /// 앞으로 끌어낸다.
+    ///
+    /// **HUD 는 <c>WS_EX_NOACTIVATE</c> 라 포커스를 받지 않는다.** 그래서 HUD 의 설정
+    /// 버튼으로 이 창을 열면 우리 프로세스가 전면이 아닌 상태이고, 그냥 <c>Show()</c> 만
+    /// 하면 창은 떴는데 **다른 창 뒤에 깔린다.** 사용자 눈에는 최소화된 것처럼 보인다.
+    ///
+    /// <c>SetForegroundWindow</c> 는 전면이 아닌 프로세스가 부르면 윈도우가 거절하고
+    /// 작업 표시줄만 깜빡이게 한다. 전면 창의 입력 큐에 잠깐 붙었다 떼면 그 제한이 풀린다.
+    /// </summary>
+    public void BringToFront()
+    {
+        if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
+
+        Show();
+        Activate();
+
+        var self = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+        if (self == IntPtr.Zero) return;
+
+        var foreground = NativeWindow.GetForegroundWindow();
+        var us = NativeWindow.GetCurrentThreadId();
+        var them = foreground == IntPtr.Zero
+            ? 0
+            : NativeWindow.GetWindowThreadProcessId(foreground, IntPtr.Zero);
+
+        var attached = them != 0 && them != us && NativeWindow.AttachThreadInput(us, them, true);
+        try
+        {
+            NativeWindow.SetForegroundWindow(self);
+        }
+        finally
+        {
+            if (attached) NativeWindow.AttachThreadInput(us, them, false);
+        }
+
+        Focus();
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         tick.Stop();
         base.OnClosed(e);
     }
+}
+
+internal static partial class NativeWindow
+{
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    public static partial IntPtr GetForegroundWindow();
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    public static partial uint GetWindowThreadProcessId(IntPtr hWnd, IntPtr processId);
+
+    [System.Runtime.InteropServices.LibraryImport("kernel32.dll")]
+    public static partial uint GetCurrentThreadId();
+
+    [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    public static partial bool AttachThreadInput(uint attach, uint attachTo, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool join);
 }
