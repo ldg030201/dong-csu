@@ -100,7 +100,7 @@ winget install ldg030201.DongCSU
 
 | | macOS | Windows |
 | --- | --- | --- |
-| 버전 | 2.1.2 | 2.0.0 (**따로 셉니다**) |
+| 버전 | 2.1.3 | 2.0.1 (**따로 셉니다**) |
 | 설치 | Homebrew | WinGet · 설치 exe |
 | 업데이트 | 터미널에서 `brew upgrade` | **앱이 스스로** |
 | 자격 증명 | keychain | Claude Code 설정 파일 (+ 만료되면 스스로 갱신) |

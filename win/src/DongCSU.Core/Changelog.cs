@@ -36,7 +36,7 @@ public static class Changelog
         new ChangelogEntry
         {
             Version = "2.0.1",
-            Date = null,
+            Date = "2026-08-07",
             Notes =
             [
                 "설정 창이 다른 창 뒤에 열리던 문제 수정",
