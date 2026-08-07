@@ -70,14 +70,43 @@ public sealed class HudWindow : Window
     public void Refresh()
     {
         var size = view.DesiredHudSize;
+
+        // **크기가 실제로 바뀐 호출에서만 자리를 잡는다.**
+        //
+        // Refresh 는 부엉이 프레임을 넘길 때마다도 불린다. 매번 보정하면 나중에 펫이
+        // 스스로 걷기 시작했을 때 매 프레임 창을 도로 끌어당긴다.
+        var changed = Math.Abs(Width - size.Width) > 0.5 || Math.Abs(Height - size.Height) > 0.5;
+        var oldWidth = Width;
+
         Width = size.Width;
         Height = size.Height;
         view.Width = size.Width;
         view.Height = size.Height;
-        view.InvalidateVisual();
 
+        if (changed && !double.IsNaN(oldWidth)) AnchorAfterResize(oldWidth, size.Width);
+
+        view.InvalidateVisual();
         SyncTicker();
     }
+
+    /// <summary>
+    /// 크기가 바뀔 때 붙잡을 모서리.
+    ///
+    /// 그냥 두면 창이 **늘 오른쪽·아래로 자란다.** 오른쪽으로 펼치도록 해 뒀으면
+    /// 왼쪽 위가 고정이라 그게 맞지만, 왼쪽으로 펼치도록 해 뒀으면 반대로 오른쪽 위가
+    /// 고정이어야 한다 — 안 그러면 접었다 펼 때마다 링이 옆으로 미끄러진다.
+    /// 펫(128)과 펼침(240)을 오갈 때는 그 차이가 커서 더 티가 난다.
+    /// </summary>
+    private void AnchorAfterResize(double oldWidth, double newWidth)
+    {
+        if (ExpandsLeft) Left += oldWidth - newWidth;
+
+        // 커진 쪽이 화면 밖으로 나갈 수 있다.
+        ClampIntoScreen();
+    }
+
+    /// <summary>왼쪽으로 펼치는 설정인지. 창이 그 방향으로 자란다.</summary>
+    public bool ExpandsLeft { get; set; }
 
     /// <summary>
     /// 초 단위로 움직일 것이 있을 때만 타이머를 돌린다.

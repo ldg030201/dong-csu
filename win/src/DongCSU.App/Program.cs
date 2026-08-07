@@ -158,6 +158,7 @@ public sealed class AppController : IDisposable
 
         hud.View.Mode = settings.Mode;
         hud.View.ExpandSide = settings.ExpandSide;
+        hud.ExpandsLeft = settings.ExpandSide == HudExpandSide.Left;
         hud.View.Scale = settings.Scale.Factor();
         hud.View.BackdropOpacity = settings.Backdrop;
         hud.View.IsDark = IsDarkTheme();
