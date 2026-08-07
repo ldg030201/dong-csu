@@ -53,11 +53,41 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
 {
     private readonly Random random = random ?? Random.Shared;
     private OwlMood mood = OwlMood.Idle;
+    private DongCSU.Core.Pet.PetGait? gait;
     private int frameIndex;
 
     public OwlMood Mood => mood;
 
-    public OwlAnimation Animation => document.Animations.Single(a => a.Name == mood.Name());
+    /// <summary>
+    /// 걷는 자세로 바꾼다. null 이면 기분에 따른 자세로 돌아간다.
+    ///
+    /// **서 있다 → 걷는다 로 바뀔 때만 처음 프레임으로 되돌린다.** 걷기 → 달리기는
+    /// 그대로 이어간다 — 다리 위치는 같고 박자만 빨라지는 것이라, 되감으면 발이 튄다.
+    /// </summary>
+    public bool SetGait(DongCSU.Core.Pet.PetGait? next)
+    {
+        if (gait == next) return false;
+
+        var wasStill = gait is null;
+        gait = next;
+        if (wasStill) frameIndex = 0;
+        return true;
+    }
+
+    /// <summary>
+    /// 지금 보여줄 애니메이션.
+    ///
+    /// 걷는 중이면 기분보다 걸음이 이긴다 — 걸어가면서 서 있는 자세를 하면 미끄러진다.
+    /// 그림은 <c>owl.json</c> 에 이미 다 들어 있다.
+    /// </summary>
+    public OwlAnimation Animation => document.Animations.Single(a => a.Name == CurrentName);
+
+    private string CurrentName => gait switch
+    {
+        DongCSU.Core.Pet.PetGait.Walk => "walk",
+        DongCSU.Core.Pet.PetGait.Run => "run",
+        _ => mood.Name(),
+    };
 
     public OwlFrame CurrentFrame => Animation.Frames[Math.Min(frameIndex, Animation.Frames.Count - 1)];
 

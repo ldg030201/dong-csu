@@ -609,8 +609,20 @@ public sealed class SettingsWindow : Window
                 hint: "마스코트 뒤에 두르는 링입니다.",
                 enabled: visible)));
 
+        panel.Children.Add(Ui.Section(palette, "움직임"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "혼자 돌아다니기", Ui.Toggle(palette, settings.PetWanders,
+                value => { settings.PetWanders = value; Apply(); }),
+                hint: "가끔 옆으로 걸어갑니다. 글을 쓰는 동안에는 멈춥니다.",
+                enabled: visible && isPet),
+            Ui.Divider(palette),
+            Ui.Row(palette, "커서 피하기", Ui.Toggle(palette, settings.PetDodgesCursor,
+                value => { settings.PetDodgesCursor = value; Apply(); }),
+                hint: "마우스를 잠깐 올려 두면 옆으로 비켜섭니다. 버튼을 누르러 갈 때는 안 비킵니다.",
+                enabled: visible && isPet)));
+
         panel.Children.Add(Ui.Hint(palette,
-            "혼자 돌아다니기와 커서 피하기는 아직 만드는 중입니다."));
+            "잡고 있는 동안, 글을 쓰는 동안, 화면이 잠긴 동안에는 움직이지 않습니다."));
 
         return panel;
     }

@@ -32,6 +32,9 @@ public sealed class HudWindow : Window
     /// <summary>마스코트를 두 번 눌렀다. 펫 모드를 드나든다.</summary>
     public event Action? PetToggled;
 
+    /// <summary>잡혔다 놓였다. 그동안 스스로 움직이는 것을 멈춘다.</summary>
+    public event Action? HeldChanged;
+
     public event Action? ContextMenuRequested;
     public event Action? SettingsRequested;
     public event Action? RefreshRequested;
@@ -39,6 +42,21 @@ public sealed class HudWindow : Window
     public event Action? Moved;
 
     public HudView View => view;
+
+    /// <summary>
+    /// 지금 손에 잡혀 있는지(끌거나 버튼을 누르고 있는지).
+    ///
+    /// 그동안에는 스스로 움직이지 않는다 — 손에 잡힌 채로 걸어나가면 잡은 자리에서
+    /// 미끄러진다.
+    /// </summary>
+    public bool IsHeld => isDragging || pressed != HudHit.None;
+
+    /// <summary>마우스가 마스코트 위에 있는지. 커서 피하기가 이걸 센다.</summary>
+    public bool IsMascotHovered => view.Hover == HudHit.Mascot;
+
+    /// <summary>버튼 줄이나 새 버전 표시 위에 있는지. **여기서는 절대 비키지 않는다.**</summary>
+    public bool IsControlHovered =>
+        view.Hover is HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge;
 
     public HudWindow(AppSettings settings)
     {
@@ -270,6 +288,7 @@ public sealed class HudWindow : Window
         if (hit is not HudHit.None and not HudHit.Mascot)
         {
             pressed = hit;
+            HeldChanged?.Invoke();
             e.Handled = true;
             return;
         }
@@ -277,6 +296,7 @@ public sealed class HudWindow : Window
         try
         {
             isDragging = true;
+            HeldChanged?.Invoke();
             DragMove();
         }
         catch (InvalidOperationException)
@@ -287,6 +307,7 @@ public sealed class HudWindow : Window
         {
             isDragging = false;
             SavePosition();
+            HeldChanged?.Invoke();
             Moved?.Invoke();
         }
     }
@@ -296,6 +317,8 @@ public sealed class HudWindow : Window
         var target = pressed;
         pressed = HudHit.None;
         if (target == HudHit.None) return;
+
+        HeldChanged?.Invoke();
 
         // 누른 자리에서 뗐을 때만 실행한다.
         if (view.HitTest(e.GetPosition(view)) != target) return;

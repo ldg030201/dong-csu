@@ -8,6 +8,7 @@ using DongCSU.App.Settings;
 using DongCSU.App.Tray;
 using DongCSU.Core;
 using DongCSU.Core.Owl;
+using DongCSU.Core.Pet;
 using DongCSU.Core.Usage;
 using Microsoft.Win32;
 using Velopack;
@@ -51,6 +52,15 @@ public sealed class AppController : IDisposable
     /// <summary>2초면 눈으로 보기 충분하고, 표본 자체는 거의 공짜다.</summary>
     private readonly DispatcherTimer statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly ProcessUsageSampler sampler = new(new CurrentProcessSource());
+
+    /// <summary>
+    /// 펫이 걷는 타이머. **반복이 아니라 한 번씩** 건다 — 엔진이 다음에 언제 깨워
+    /// 달라고 알려 주고(쉴 때는 몇 초, 걸을 때는 0.1초), 깨울 것이 없으면 아예 안 건다.
+    /// </summary>
+    private readonly DispatcherTimer motionTimer = new();
+    private readonly PetMotion motion = new();
+    private PetStage? stage;
+    private readonly PetHoverTracker hover = new();
 
     private UsageStore store = null!;
     private UpdateService updates = null!;
@@ -112,8 +122,11 @@ public sealed class AppController : IDisposable
         tray.Activated += ToggleHudVisible;
 
         hud = new HudWindow(settings);
+        stage = new PetStage(hud);
         hud.ModeToggled += ToggleCollapsed;
         hud.PetToggled += TogglePet;
+        // 손에 잡히면 멈추고, 놓으면 다시 걷는다.
+        hud.HeldChanged += SyncMotion;
         // 우클릭은 트레이와 **같은 메뉴**를 띄운다. 설정 창이 튀어나오면 놀란다.
         hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
         hud.SettingsRequested += () => OpenSettings();
@@ -124,6 +137,8 @@ public sealed class AppController : IDisposable
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
         // 모니터를 빼면 기억해 둔 자리가 보이지 않는 곳이 된다.
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        // 잠그거나 사용자를 바꾸면 아무도 안 본다. 그동안 움직임을 멈춘다.
+        SystemEvents.SessionSwitch += OnSessionSwitch;
 
         ApplySettings();
         hud.RestorePosition();
@@ -137,6 +152,7 @@ public sealed class AppController : IDisposable
             hud.View.Stats = sampler.Sample();
             hud.View.InvalidateVisual();
         };
+        motionTimer.Tick += (_, _) => OnMotionTick();
 
         updateTimer.Interval = UpdateService.CheckInterval;
         updateTimer.Tick += async (_, _) =>
@@ -177,6 +193,7 @@ public sealed class AppController : IDisposable
         if (settings.IsHudVisible) hud.Show(); else hud.Hide();
 
         SyncStatsTimer();
+        SyncMotion();
         RefreshHud();
     }
 
@@ -323,6 +340,121 @@ public sealed class AppController : IDisposable
     /// <summary>HUD 를 주 모니터 오른쪽 위로. 설정 창의 "위치 초기화" 가 부른다.</summary>
     private void ResetHudPosition() => hud?.ResetPosition();
 
+    // ── 펫이 스스로 움직이는 것 ─────────────────────────────────────
+
+    /// <summary>
+    /// 지금 펫을 움직여도 되는지.
+    ///
+    /// 하나라도 아니면 타이머를 끈다. 보이지도 않는 것을 0.1초마다 옮기는 것은
+    /// 배터리만 먹는다.
+    /// </summary>
+    private bool ShouldMove =>
+        hud is { } window
+        && settings.IsHudVisible
+        && settings.Mode == HudMode.Pet
+        && !window.IsHeld
+        && !screensAsleep
+        && (settings.PetWanders || settings.PetDodgesCursor);
+
+    private void SyncMotion()
+    {
+        if (!ShouldMove)
+        {
+            motionTimer.Stop();
+            hover.Reset();
+            return;
+        }
+
+        motion.Wanders = settings.PetWanders;
+        motion.DodgesCursor = settings.PetDodgesCursor;
+
+        if (!motionTimer.IsEnabled)
+        {
+            motion.Reset();
+            ScheduleMotion(PetMotion.TickInterval);
+        }
+    }
+
+    private void ScheduleMotion(TimeSpan? delay)
+    {
+        motionTimer.Stop();
+        if (delay is not { } wait) return;
+
+        motionTimer.Interval = wait < TimeSpan.FromMilliseconds(16) ? TimeSpan.FromMilliseconds(16) : wait;
+        motionTimer.Start();
+    }
+
+    private void OnMotionTick()
+    {
+        motionTimer.Stop();
+        if (hud is not { } window || stage is null || !ShouldMove) return;
+
+        // 커서가 마스코트 위에 머물면 비킨다. **버튼 위라면 안 비킨다** —
+        // 누르러 온 손에서 달아나면 영영 못 누른다.
+        var now = DateTimeOffset.UtcNow;
+        var inside = window.IsMascotHovered && !window.IsControlHovered;
+        if (hover.Update(now, inside) && motion.RequestDodge(stage))
+        {
+            hover.Restart(now);
+        }
+
+        var tick = motion.Tick(stage);
+
+        if (tick.MoveTo is { } to)
+        {
+            window.Left = to.X;
+            window.Top = to.Y;
+        }
+
+        // **도착했을 때만 저장한다.** 매 틱 부르면 초당 열 번 설정 파일을 다시 쓴다.
+        if (tick.Settled) window.SavePosition();
+
+        if (tick.Gait != lastGait)
+        {
+            lastGait = tick.Gait;
+            animator.SetGait(tick.Gait);
+            StartFrameTimer();
+            RefreshHud();
+        }
+
+        ScheduleMotion(tick.NextWakeup);
+    }
+
+    private PetGait? lastGait;
+
+    /// <summary>
+    /// 아무도 화면을 안 보고 있는 상태(잠금·사용자 전환).
+    ///
+    /// 그동안 펫을 움직이지 않는다. 애니메이션은 사용량 조회보다 훨씬 자주 깨어나므로,
+    /// 보이지도 않는 그림을 0.1초마다 옮기는 것은 배터리만 먹는다.
+    /// </summary>
+    private bool screensAsleep;
+
+    private void OnSessionSwitch(object sender, SessionSwitchEventArgs e)
+    {
+        var asleep = e.Reason is SessionSwitchReason.SessionLock
+            or SessionSwitchReason.ConsoleDisconnect
+            or SessionSwitchReason.RemoteDisconnect;
+
+        // 잠금 해제·연결은 되돌린다.
+        var awake = e.Reason is SessionSwitchReason.SessionUnlock
+            or SessionSwitchReason.ConsoleConnect
+            or SessionSwitchReason.RemoteConnect;
+
+        if (!asleep && !awake) return;
+
+        Dispatch(() =>
+        {
+            screensAsleep = asleep;
+            AppLog.Write(asleep ? "화면이 잠겨 펫을 멈춘다" : "화면이 돌아와 펫을 다시 움직인다");
+
+            // 멈추기 전에 지금 자리를 남긴다.
+            if (asleep) hud?.SavePosition();
+            SyncMotion();
+            StartFrameTimer();
+        });
+    }
+
     /// <summary>
     /// 접었다 폈다.
     ///
@@ -422,11 +554,13 @@ public sealed class AppController : IDisposable
         // 전역 이벤트라 끊지 않으면 앱이 끝난 뒤에도 이 객체가 잡혀 있는다.
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        SystemEvents.SessionSwitch -= OnSessionSwitch;
 
         pollTimer.Stop();
         frameTimer.Stop();
         updateTimer.Stop();
         statsTimer.Stop();
+        motionTimer.Stop();
         tray?.Dispose();
         http.Dispose();
     }
