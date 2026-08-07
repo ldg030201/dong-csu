@@ -66,17 +66,51 @@ internal sealed class KeyboardIdleWatch
 
         source.AddHook(OnMessage);
         listening = true;
+        AppLog.Write("키 입력 감시를 걸었다 — 마우스 움직임은 '입력'으로 세지 않는다");
     }
 
+    /// <summary>
+    /// <c>WM_INPUT</c> 이 왔다. **키보드 것일 때만** 시각을 갱신한다.
+    ///
+    /// 온 것만으로 갱신하면 안 된다 — 이 창에는 우리 말고도 raw input 을 등록하는 것이
+    /// 있다(WPF 의 스타일러스·터치). 그러면 **마우스를 움직이는 내내 시각이 갱신돼서**
+    /// 키보드만 듣겠다고 만든 이 클래스가 <c>GetLastInputInfo</c> 와 똑같아진다.
+    /// 실제로 그랬고, 그래서 펫이 커서를 영영 안 피했다.
+    ///
+    /// **머리말만 읽는다**(<c>RID_HEADER</c>). 거기에는 장치 종류만 있고 눌린 키는
+    /// 들어 있지도 않다 — 읽지 않는 게 아니라 **가져오지도 않는다.**
+    /// </summary>
     private IntPtr OnMessage(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
     {
-        // **내용은 보지 않는다.** 왔다는 사실만으로 충분하다.
-        if (message == WmInput) since.Restart();
+        if (message == WmInput && IsKeyboard(lParam)) since.Restart();
         return IntPtr.Zero;
+    }
+
+    private static bool IsKeyboard(IntPtr rawInput)
+    {
+        var size = (uint)Marshal.SizeOf<RawInputHeader>();
+        var header = default(RawInputHeader);
+
+        var read = GetRawInputData(rawInput, RidHeader, ref header, ref size,
+            (uint)Marshal.SizeOf<RawInputHeader>());
+
+        // 못 읽었으면 **키보드가 아닌 것으로 본다.** 여기서 실수하면 펫이 안 움직인다.
+        return read != unchecked((uint)-1) && header.Type == RimTypeKeyboard;
     }
 
     private const int WmInput = 0x00FF;
     private const uint RawInputSink = 0x00000100;   // RIDEV_INPUTSINK
+    private const uint RidHeader = 0x10000005;      // RID_HEADER
+    private const uint RimTypeKeyboard = 1;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RawInputHeader
+    {
+        public uint Type;
+        public uint Size;
+        public IntPtr Device;
+        public IntPtr Extra;
+    }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct RawInputDevice
@@ -102,4 +136,8 @@ internal sealed class KeyboardIdleWatch
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool GetLastInputInfo(ref LastInput info);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetRawInputData(
+        IntPtr rawInput, uint command, ref RawInputHeader data, ref uint size, uint headerSize);
 }
