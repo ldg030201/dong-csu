@@ -20,6 +20,18 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     public TimeSpan PollInterval { get; set; } = DefaultPollInterval;
 
     public UsageSnapshot? Snapshot { get; private set; }
+
+    /// <summary>
+    /// 값을 직접 꽂아 넣는다. **테스트와 렌더 확인 전용** — 네트워크 없이 화면을 채운다.
+    /// 맥의 <c>init(preview:)</c> 와 같은 자리다.
+    /// </summary>
+    public void Preview(UsageSnapshot? snapshot, string? error = null, bool needsReauth = false)
+    {
+        Snapshot = snapshot;
+        ErrorText = error;
+        NeedsReauth = needsReauth;
+        Changed?.Invoke();
+    }
     public string? ErrorText { get; private set; }
     public bool IsRefreshing { get; private set; }
 
@@ -36,6 +48,15 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     /// 캐릭터만 회색이고 숫자는 멀쩡해 보이는 일이 생기므로 여기 한 곳에 둔다.
     /// </summary>
     public bool IsDisconnected => NeedsReauth || IsStale;
+
+    /// <summary>
+    /// 주간 한도를 다 썼다.
+    ///
+    /// **이러면 세션이 얼마 남았든 쓸 수 없다.** 세션 링만 초록으로 남아 있으면
+    /// 아직 여유가 있는 것처럼 보이므로, 화면에서도 마스코트에서도 같이 죽은 것으로
+    /// 다룬다. 여러 곳에서 따로 판단하면 어긋나므로 여기 한 곳에 둔다.
+    /// </summary>
+    public bool IsWeeklySpent => Snapshot?.SevenDay?.Utilization >= 100;
 
     /// <summary>값이 바뀔 때마다 부른다. 화면이 여기 붙어서 다시 그린다.</summary>
     public event Action? Changed;

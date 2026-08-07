@@ -250,7 +250,11 @@ public sealed class AppController : IDisposable
         pollTimer.Interval = store.NextPollDelay();
 
         var session = store.Snapshot?.FiveHour?.Utilization;
-        if (animator.SetMood(OwlMoodResolver.Resolve(OwlDocument.Embedded, session, store.IsDisconnected)))
+        var mood = OwlMoodResolver.Resolve(
+            OwlDocument.Embedded, session, store.IsDisconnected, store.IsWeeklySpent);
+        // 주간을 다 썼으면 자세는 탈진 그대로 두고 색을 뺀다. 링·숫자와 같은 규칙이다.
+        animator.IsUnusable = store.IsWeeklySpent;
+        if (animator.SetMood(mood))
         {
             StartFrameTimer();
         }
@@ -266,6 +270,7 @@ public sealed class AppController : IDisposable
 
         hud.View.Snapshot = store.Snapshot;
         hud.View.IsDisconnected = store.IsDisconnected;
+        hud.View.IsWeeklySpent = store.IsWeeklySpent;
         hud.View.IsStale = store.IsStale;
         hud.View.NeedsReauth = store.NeedsReauth;
         hud.View.IsRefreshing = store.IsRefreshing;
@@ -290,7 +295,7 @@ public sealed class AppController : IDisposable
     /// </summary>
     private string MascotPalette()
     {
-        var name = animator.Animation.Palette;
+        var name = animator.PaletteName;
         return AppInfo.IsTestBuild && name == "normal" ? "test" : name;
     }
 

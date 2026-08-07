@@ -34,14 +34,16 @@ public static class RingRenderer
         double? sessionPercent,
         double? weeklyPercent,
         Color trackColor,
-        bool grayscale)
+        bool grayscale,
+        Color? sessionSpentColor = null)
     {
         // 선이 지름 밖으로 삐져나가지 않게 두께의 절반만큼 안으로 넣는다.
         var outerRadius = (outerDiameter - outerThickness) / 2;
         var innerDiameter = outerDiameter - outerThickness * 2 - gap;
         var innerRadius = (innerDiameter - innerThickness) / 2;
 
-        DrawOne(context, center, outerRadius, outerThickness, sessionPercent, trackColor, grayscale);
+        DrawOne(context, center, outerRadius, outerThickness, sessionPercent, trackColor, grayscale,
+            sessionSpentColor);
         if (innerRadius > innerThickness)
         {
             DrawOne(context, center, innerRadius, innerThickness, weeklyPercent, trackColor, grayscale);
@@ -55,7 +57,8 @@ public static class RingRenderer
         double thickness,
         double? percent,
         Color trackColor,
-        bool grayscale)
+        bool grayscale,
+        Color? spentColor = null)
     {
         var track = new Pen(Frozen(trackColor), thickness)
         {
@@ -68,8 +71,11 @@ public static class RingRenderer
         // **값이 없는 것과 0%는 다르다.** 없으면 진행선을 아예 그리지 않는다.
         if (percent is not { } value) return;
 
+        // 다 쓴 링은 사용률 색 대신 회색이다. **숫자는 그대로 두고 색만 뺀다** —
+        // 얼마나 썼는지는 여전히 알아야 하고, 쓸 수 없다는 것만 더 알려주면 된다.
         var rgb = UsageColor.For(value);
-        var color = grayscale ? Desaturate(rgb) : Color.FromRgb(rgb.R, rgb.G, rgb.B);
+        var color = spentColor
+            ?? (grayscale ? Desaturate(rgb) : Color.FromRgb(rgb.R, rgb.G, rgb.B));
         var fraction = Math.Max(MinimumFraction, Math.Clamp(value, 0, 100) / 100.0);
         var arc = ArcGeometry(center, radius, fraction);
 

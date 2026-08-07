@@ -31,10 +31,21 @@ public static class OwlMoodResolver
     ///
     /// **끊김이 지침보다 세다.** 숫자가 지금 값이 아닌데 그 숫자로 지친 표정을 지으면,
     /// 옛 값을 보고 현재 상태인 것처럼 오해하게 된다.
+    ///
+    /// 지쳐 가는 정도는 세션(5시간)으로 본다 — 주간은 며칠에 걸쳐 천천히 차서,
+    /// 그걸로 지치면 한 주 내내 지친 얼굴로 있게 된다.
+    ///
+    /// **다만 주간을 다 쓴 것은 다르다.** 그때는 세션이 얼마 남았든 쓸 수 없으므로,
+    /// 세션 숫자를 보지 않고 곧바로 탈진이다. "천천히 지쳐 간다"가 아니라 "끝났다"다.
     /// </summary>
-    public static OwlMood Resolve(OwlDocument document, double? sessionUtilization, bool isDisconnected)
+    public static OwlMood Resolve(
+        OwlDocument document,
+        double? sessionUtilization,
+        bool isDisconnected,
+        bool isWeeklySpent = false)
     {
         if (isDisconnected) return OwlMood.Offline;
+        if (isWeeklySpent) return OwlMood.Exhausted;
         if (sessionUtilization is not { } utilization) return OwlMood.Idle;
 
         if (utilization >= document.MoodThresholds["exhausted"]) return OwlMood.Exhausted;
@@ -168,7 +179,20 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null)
     /// <summary>지금 그려야 할 그림. <c>owl.json</c> 이 실어 온 합성 결과를 그대로 쓴다.</summary>
     public string[] CurrentGrid => CurrentFrame.Grid;
 
-    public IReadOnlyDictionary<string, string> CurrentPalette => document.Palettes[Animation.Palette];
+    /// <summary>
+    /// 다 써서 쓸 수 없는 상태. 켜면 **자세는 그대로 두고 색만 뺀다.**
+    ///
+    /// 기분을 따로 만들지 않는 이유: <c>owl.json</c> 에 애니메이션이 하나 더 생긴다.
+    /// 자세는 탈진과 똑같고 색만 다른 것이라 여기서 팔레트만 바꾸는 편이 싸다.
+    /// </summary>
+    public bool IsUnusable { get; set; }
+
+    /// <summary>지금 칠할 팔레트 이름. 다 썼으면 색이 빠진다.</summary>
+    public string PaletteName =>
+        // 끊김의 회색은 색 자체가 정보라 덮어쓰지 않는다 — 이미 회색이다.
+        IsUnusable && mood != OwlMood.Offline ? "offline" : Animation.Palette;
+
+    public IReadOnlyDictionary<string, string> CurrentPalette => document.Palettes[PaletteName];
 
     /// <summary>기분이 바뀌면 처음 프레임부터 다시 시작한다. 바뀌었으면 true.</summary>
     public bool SetMood(OwlMood next)

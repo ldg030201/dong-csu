@@ -60,6 +60,9 @@ public sealed class HudPalette
 
     public Color RingTrack => Fade(IsDark ? 0.15 : 0.13);
 
+    /// <summary>주간을 다 써서 세션도 못 쓸 때의 링·색점. 사용률 색을 대신한다.</summary>
+    public Color RingSpent => Fade(IsDark ? 0.38 : 0.32);
+
     public Color ControlIdle => Fade(0.45);
     public Color ControlActive => Fade(0.95);
     public Color ControlHoverFill => Fade(0.13);
@@ -172,6 +175,12 @@ public sealed class HudView : FrameworkElement
 
     public UsageSnapshot? Snapshot { get; set; }
     public bool IsDisconnected { get; set; }
+
+    /// <summary>
+    /// 주간을 다 썼다. 세션 링과 세션 숫자의 색을 뺀다 — 세션만 초록으로 남아 있으면
+    /// 아직 여유가 있는 것처럼 보인다.
+    /// </summary>
+    public bool IsWeeklySpent { get; set; }
 
     /// <summary>마지막 성공값을 보여주는 중. 링과 숫자를 흐리게 한다.</summary>
     public bool IsStale { get; set; }
@@ -470,7 +479,10 @@ public sealed class HudView : FrameworkElement
                 Snapshot?.FiveHour?.Utilization,
                 Snapshot?.SevenDay?.Utilization,
                 palette.RingTrack,
-                grayscale: IsDisconnected);
+                grayscale: IsDisconnected,
+                // 주간을 다 썼으면 세션은 쓸 수 없다. 초록으로 남겨 두면 여유가
+                // 있는 것처럼 보이므로 색을 빼서 죽은 것으로 그린다.
+                sessionSpentColor: IsWeeklySpent && !IsDisconnected ? palette.RingSpent : null);
             if (ringOpacity < 1) context.Pop();
         }
 
@@ -565,7 +577,8 @@ public sealed class HudView : FrameworkElement
     private void DrawMetrics(DrawingContext context, HudPalette palette, double s)
     {
         var now = DateTimeOffset.Now;
-        var session = MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s);
+        // 링과 같은 규칙이다. 링만 회색이고 점은 초록이면 앞뒤가 안 맞는다.
+        var session = MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s, IsWeeklySpent);
         var weekly = MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s);
 
         var totalHeight = session.Height + 8 * s + weekly.Height;
@@ -600,7 +613,8 @@ public sealed class HudView : FrameworkElement
         double Height);
 
     private Block MeasureBlock(
-        string title, UsageWindow? window, DateTimeOffset now, HudPalette palette, double s)
+        string title, UsageWindow? window, DateTimeOffset now, HudPalette palette, double s,
+        bool isSpent = false)
     {
         var titleText = Text(title, 10 * s, Semibold, palette.Secondary);
         var percentText = Text(
@@ -610,9 +624,9 @@ public sealed class HudView : FrameworkElement
             RemainingTime.Text(window?.ResetsAt, now), 9.5 * s, Regular, palette.Tertiary);
 
         // 점 색이 곧 그 창의 링 색이다. 이게 바깥 링 = 세션, 안쪽 링 = 주간을 이어 준다.
-        var dot = window is { } filled
-            ? ToColor(UsageColor.For(filled.Utilization))
-            : palette.MutedDot;
+        var dot = window is not { } filled ? palette.MutedDot
+            : isSpent ? palette.RingSpent
+            : ToColor(UsageColor.For(filled.Utilization));
 
         var firstLine = 5 * s + 5 * s + titleText.Width + 5 * s + percentText.Width;
         var firstHeight = Math.Max(titleText.Height, percentText.Height);

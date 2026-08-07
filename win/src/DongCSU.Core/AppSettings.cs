@@ -105,7 +105,7 @@ public sealed class AppSettings
     /// </summary>
     public double BackdropOpacity { get; set; } = DefaultBackdropOpacity;
 
-    public const double DefaultBackdropOpacity = 0.92;
+    public const double DefaultBackdropOpacity = 1.0;
     public const double MinBackdropOpacity = 0.35;
 
     // ── 펫 모드 ───────────────────────────────────────────────────
