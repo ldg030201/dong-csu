@@ -17,41 +17,43 @@
 > [!NOTE]
 > **여기는 Windows 판입니다.** 맥을 쓰신다면 → [**macOS 판**](../mac/README.md)
 
-## 이런 앱
+## ✨ 이런 앱
 
-Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁금해진다. 확인하려면
-하던 걸 멈추고 `/usage`를 쳐야 한다. 그 숫자를 화면 구석에 그냥 띄워둔다.
+Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁금해진다.
+확인하려면 하던 걸 멈추고 `/usage`를 쳐야 한다. 그 숫자를 화면 구석에 그냥 띄워둔다.
 
 - 🔵 **이중 링** — 바깥이 5시간 세션, 안쪽이 7일 주간
 - 🎨 사용률이 오를수록 **초록 → 노랑 → 빨강**으로 연속해서 변한다. 숫자 앞의 색점이
   어느 링 얘기인지 이어준다
 - ⏱️ 초기화까지 남은 시간, 다음 조회까지 남은 시간
-- 🦉 **[픽셀 마스코트](../docs/characters/README.md)** — 맥 판과 **같은 그림**을 쓴다.
-  한도를 쓸수록 지쳐 가고, 다 쓰면 색이 빠진다.
+- 🔔 새 버전이 나오면 알려주고, **앱이 스스로 받아서 갈아 끼운다**
+- 🦉 **[픽셀 마스코트](../docs/characters/README.md)** — 한도가 차면 지치고, 조회가 끊기면 색이 빠진다.
   Clawd · Claude 아이콘 · 버스트 마크로 바꿀 수도 있다
 - 🔑 **토큰이 만료되면 스스로 갱신한다** — Claude Code를 켜 두지 않아도 계속 들어온다
 - 🖥️ 항상 위에. 작업 표시줄 없이 트레이에만
+- ⚙️ **로그인할 때 자동 시작** — 관리자 권한을 묻지 않는다
 
-## 진행 상황
+더블클릭하면 접었다 펴지고, **마스코트를 더블클릭하면** 펫 모드로 들어간다.
+크기는 4단계, 배경 불투명도도 고를 수 있다.
 
-| | 상태 |
-| --- | --- |
-| HUD (이중 링 · 사용률 · 남은 시간 · 다음 조회) | 만듦 |
-| HUD 위 버튼 (접기 · 설정 · 새로고침) | 만듦 |
-| 부엉이 마스코트 (기분 4가지 · 걷기 · 끌림 · 어지러움) | 만듦 |
-| 가운데 아이콘 고르기 (부엉이 · Clawd · Claude 아이콘 · 버스트 마크) | 만듦 |
-| 트레이 아이콘과 메뉴 | 만듦 |
-| 사용량 조회 · 자격 증명 읽기 · **토큰 자동 갱신** | 만듦 |
-| 설정 창 (상태 · 표시 · 아이콘 · 펫 · 계정 · 버전) | 만듦 |
-| 이 앱이 쓰는 CPU · 메모리 표시 | 만듦 |
-| 로그인할 때 자동 시작 | 만듦 |
-| 자체 업데이트 | 만듦 |
-| 펫 모드 (혼자 돌아다니기 · 커서 피하기) | 만듦 |
+가운데 마스코트는 상태에 따라 움직인다. **그림은 맥 판과 같은 것을 쓴다** —
+자세한 건 **[캐릭터](../docs/characters/README.md)**.
 
-맥 판을 기준으로 옮겼습니다. **마스코트를 두 번 누르면 펫 모드**로 들어갑니다 —
-배경도 숫자도 없이 마스코트만 남고, 켜 두면 혼자 돌아다니거나 커서를 피해 비켜섭니다.
-끌면 손에 매달린 채 방향을 따라 처지고, 마구 흔들면 어지러워합니다.
-글을 쓰는 동안, 화면이 잠긴 동안, 조회가 끊긴 동안에는 가만히 있습니다.
+<table>
+<tr>
+<td align="center" width="20%"><img src="../docs/characters/owl/idle.gif" width="96" alt="평소"><br><sub><b>평소</b></sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 80%↑</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 95%↑</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/offline.gif" width="96" alt="끊김"><br><sub><b>끊김</b><br>조회 실패</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/dragged.gif" width="96" alt="끌림"><br><sub><b>끌림</b><br>드래그 중</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="../docs/characters/owl/dizzy.gif" width="96" alt="어지러움"><br><sub><b>어지러움</b><br>마구 흔들면</sub></td>
+<td align="center"><img src="../docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
+<td align="center"><img src="../docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>커서가 쫓아올 때</sub></td>
+<td colspan="2" align="left"><sub>펫 모드에서는 <b>혼자 돌아다닌다.</b><br>커서를 올려두면 비켜주고, 계속 쫓아가면 <b>뛰어서</b> 달아난다.<br><b>타이핑 중에는 가만히 있는다.</b> 설정 창의 <b>펫</b> 탭에서 끌 수 있다.</sub></td>
+</tr>
+</table>
 
 ## 설치
 
