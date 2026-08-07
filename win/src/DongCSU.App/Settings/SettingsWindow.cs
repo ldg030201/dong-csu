@@ -396,7 +396,7 @@ public sealed class SettingsWindow : Window
                 if (settings.Mode == HudMode.Pet) settings.ModeBeforePet = target;
                 else settings.Mode = target;
                 ApplyAndRedraw();
-            }), hint: settings.Mode == HudMode.Pet ? "펫에서 나왔을 때의 모습입니다." : null,
+            }), hint: settings.Mode == HudMode.Pet ? "펫에서 나왔을 때의 모습이다." : null,
                 enabled: visible),
             Ui.Divider(palette),
             Ui.Row(palette, "펼침 방향", Ui.Segmented(palette, ["오른쪽", "왼쪽"],

@@ -91,25 +91,33 @@ internal static class Ui
             text.Children.Add(note);
         }
 
-        var grid = new Grid { Margin = new Thickness(0, 10, 0, 10) };
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-
-        Grid.SetColumn(text, 0);
-        grid.Children.Add(text);
+        // **`Grid` 의 별(*) + 자동 열을 쓰지 않는다.**
+        //
+        // 그러면 줄바꿈하는 글이 조작부 밑으로 깔린다. 별 열의 자식을 잴 때는 아직
+        // 자동 열의 너비가 안 정해져서 **넓은 폭으로 줄을 나눠 놓고**, 나중에 열만
+        // 좁아지기 때문이다. 칸은 제대로 좁아지는데 글자만 밖으로 넘친다.
+        //
+        // `DockPanel` 은 한 번에 잰다 — 오른쪽에 붙인 것을 먼저 재고, 남은 폭을 마지막
+        // 자식에게 준다. 그래서 글이 조작부 자리를 침범할 수 없다.
+        var row = new DockPanel { Margin = new Thickness(0, 10, 0, 10), LastChildFill = true };
 
         control.VerticalAlignment = VerticalAlignment.Center;
-        Grid.SetColumn(control, 1);
-        grid.Children.Add(control);
+        // 글과 맞닿으면 읽기 힘들다.
+        control.Margin = new Thickness(14, 0, 0, 0);
+        DockPanel.SetDock(control, Dock.Right);
+        row.Children.Add(control);
+
+        // **마지막에 넣어야** 남은 자리를 채운다.
+        row.Children.Add(text);
 
         // **못 누르는 것은 흐리게.** 눌러도 화면에 아무 변화가 없는 항목이 멀쩡히
         // 열려 있으면, 사용자는 앱이 고장 났다고 본다.
         if (!enabled)
         {
-            grid.IsEnabled = false;
-            grid.Opacity = 0.45;
+            row.IsEnabled = false;
+            row.Opacity = 0.45;
         }
-        return grid;
+        return row;
     }
 
     public static Border Divider(SettingsPalette palette) => new()
