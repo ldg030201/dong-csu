@@ -398,6 +398,9 @@ public sealed class AppController : IDisposable
         // 조회가 끊긴 동안에는 멈춰 있는다. 회색으로 굳은 채 걸어다니면
         // "멈췄다"는 표시가 무색해진다.
         && !store.IsDisconnected
+        // **주간을 다 썼을 때도 같다.** 그때는 아예 죽은 것으로 다루므로 스스로 걷지도,
+        // 커서를 피하지도 않는다. 색만 빼고 계속 돌아다니면 살아 있는 것으로 보인다.
+        && !store.IsWeeklySpent
         && (settings.PetWanders || settings.PetDodgesCursor);
 
     /// <summary>잡혔다 놓였다. 자세를 바꾸고 움직임을 멈췄다 다시 켠다.</summary>
