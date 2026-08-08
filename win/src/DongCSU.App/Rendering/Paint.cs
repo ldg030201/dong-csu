@@ -14,14 +14,26 @@ namespace DongCSU.App.Rendering;
 /// </summary>
 internal static class Paint
 {
+    /// <summary>
+    /// 캐시 상한. 넘으면 통째로 비운다.
+    ///
+    /// **하루 종일 떠 있는 앱이라 한없이 자라게 두면 안 된다.** 사용률 그라데이션과
+    /// 불투명도 막대가 색을 계속 새로 만들어 낸다. 아끼려고 둔 것이 새는 곳이 되면
+    /// 앞뒤가 안 맞는다. 하나씩 골라 버리는 것보다 비우고 다시 채우는 편이 싸다 —
+    /// 지금 쓰는 색은 몇 프레임 안에 도로 들어온다.
+    /// </summary>
+    private const int Limit = 512;
+
     private static readonly Dictionary<uint, SolidColorBrush> Brushes = [];
     private static readonly Dictionary<(uint Color, double Thickness, bool Round), Pen> Pens = [];
 
-    /// <summary>같은 색이면 같은 브러시를 돌려준다.</summary>
+    /// <summary>같은 색이면 같은 브러시를 돌려준다. **화면 스레드에서만 부른다.**</summary>
     public static SolidColorBrush Brush(Color color)
     {
         var key = Key(color);
         if (Brushes.TryGetValue(key, out var found)) return found;
+
+        if (Brushes.Count >= Limit) Brushes.Clear();
 
         var made = new SolidColorBrush(color);
         made.Freeze();
@@ -29,7 +41,7 @@ internal static class Paint
         return made;
     }
 
-    /// <summary>같은 색·굵기·마감이면 같은 펜을 돌려준다.</summary>
+    /// <summary>같은 색·굵기·마감이면 같은 펜을 돌려준다. **화면 스레드에서만 부른다.**</summary>
     public static Pen Pen(Color color, double thickness, bool round = false)
     {
         // 굵기는 배율에서 나와 소수점이 붙는다. 그대로 열쇠로 쓰면 캐시가 계속 자란다.
@@ -37,6 +49,8 @@ internal static class Paint
 
         var key = (Key(color), thickness, round);
         if (Pens.TryGetValue(key, out var found)) return found;
+
+        if (Pens.Count >= Limit) Pens.Clear();
 
         var made = new Pen(Brush(color), thickness);
         if (round)

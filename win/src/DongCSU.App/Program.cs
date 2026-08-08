@@ -68,8 +68,14 @@ public sealed class AppController : IDisposable
     /// </summary>
     private readonly DispatcherTimer dodgeTimer = new()
     {
-        Interval = TimeSpan.FromMilliseconds(100),
+        Interval = DodgeWatchFar,
     };
+
+    /// <summary>커서가 펫 근처에 있을 때. 0.5초 머무름을 재려면 이만큼은 촘촘해야 한다.</summary>
+    private static readonly TimeSpan DodgeWatchClose = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>멀리 있을 때. 다가오는 것만 알아채면 되므로 드문드문 봐도 된다.</summary>
+    private static readonly TimeSpan DodgeWatchFar = TimeSpan.FromMilliseconds(400);
 
     private readonly PetMotion motion = new();
     private PetStage? stage;
@@ -479,10 +485,25 @@ public sealed class AppController : IDisposable
             return;
         }
 
+        var cursor = stage.Cursor;
+
+        // **커서가 멀면 느리게 본다.** 펫 모드를 켜 둔 내내 0.1초마다 깨우면, 커서가
+        // 다른 모니터에 있어도 하루 86만 번을 헛돈다. 가까이 오면 그때 촘촘히 본다 —
+        // 0.5초를 세려면 그 정도는 필요하다.
+        var near = window.CursorIsNear(cursor);
+        var wanted = near ? DodgeWatchClose : DodgeWatchFar;
+        if (dodgeTimer.Interval != wanted) dodgeTimer.Interval = wanted;
+
+        if (!near)
+        {
+            hover.Reset();
+            return;
+        }
+
         stage.SinceLastKey = window.SinceLastKey;
 
         var now = DateTimeOffset.UtcNow;
-        if (!hover.Update(now, window.CursorWantsDodge(stage.Cursor))) return;
+        if (!hover.Update(now, window.CursorWantsDodge(cursor))) return;
 
         // **비키지 못했어도 다시 센다.** 글을 쓰는 중이거나 이미 비키는 중이면 실패하는데,
         // 그때 그냥 두면 커서가 그대로 있는 동안 영영 다시 시도하지 않는다.
