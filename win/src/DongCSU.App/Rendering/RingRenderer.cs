@@ -60,13 +60,7 @@ public static class RingRenderer
         bool grayscale,
         Color? spentColor = null)
     {
-        var track = new Pen(Frozen(trackColor), thickness)
-        {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round,
-        };
-        track.Freeze();
-        context.DrawEllipse(null, track, center, radius, radius);
+        context.DrawEllipse(null, Paint.Pen(trackColor, thickness, round: true), center, radius, radius);
 
         // **값이 없는 것과 0%는 다르다.** 없으면 진행선을 아예 그리지 않는다.
         if (percent is not { } value) return;
@@ -81,21 +75,9 @@ public static class RingRenderer
 
         // 흐림 효과를 쓸 수 없으니, 더 두껍고 옅은 선을 밑에 깔아 번짐을 흉내 낸다.
         // 링이 배경과 같은 밝기일 때 가장자리가 묻히는 것을 막아 준다.
-        var glow = new Pen(Frozen(Color.FromArgb(0x4D, color.R, color.G, color.B)), thickness + 2)
-        {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round,
-        };
-        glow.Freeze();
-        context.DrawGeometry(null, glow, arc);
-
-        var pen = new Pen(Frozen(color), thickness)
-        {
-            StartLineCap = PenLineCap.Round,
-            EndLineCap = PenLineCap.Round,
-        };
-        pen.Freeze();
-        context.DrawGeometry(null, pen, arc);
+        var glow = Color.FromArgb(0x4D, color.R, color.G, color.B);
+        context.DrawGeometry(null, Paint.Pen(glow, thickness + 2, round: true), arc);
+        context.DrawGeometry(null, Paint.Pen(color, thickness, round: true), arc);
     }
 
     /// <summary>12시에서 시계 방향으로 <paramref name="fraction"/> 만큼.</summary>
@@ -135,10 +117,4 @@ public static class RingRenderer
         return Color.FromRgb(gray, gray, gray);
     }
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
 }

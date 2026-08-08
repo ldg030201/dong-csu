@@ -42,6 +42,32 @@
     <Version>2.1.0</Version>
   </PropertyGroup>
 
+  <!--
+    메모리.
+
+    **이 앱의 관리 힙은 5MB 도 안 된다.** 그런데 기본 설정의 GC 는 그것에 50MB 넘게
+    잡아 둔다 — 서버에서 처리량을 내려고 맞춰 둔 값이라, 하루 종일 떠 있기만 하는
+    HUD 에는 그대로 낭비다. 맥판과 나란히 두면 그 차이가 그대로 보인다.
+
+      동시 GC 끄기       백그라운드 GC 는 전용 스레드와 여분의 커밋을 들고 있는다.
+                         5MB 힙에서는 멈춤이 티도 안 난다.
+      ConserveMemory 5   다 쓴 구간을 미루지 않고 OS 에 돌려준다. 0~9 중 중간값.
+      RetainVM 끄기      반납한 구간을 대기 목록에 쥐고 있지 않는다.
+
+    **ReadyToRun 은 미리 컴파일해 둔다.** JIT 이 만든 코드는 전부 개인 메모리로 잡히는데,
+    미리 넣어 두면 그만큼 파일에서 매핑돼 공유된다. 시작도 빨라진다.
+  -->
+  <PropertyGroup>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+    <RetainVMGarbageCollection>false</RetainVMGarbageCollection>
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="5" Trim="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../DongCSU.Core/DongCSU.Core.csproj" />
   </ItemGroup>

@@ -563,13 +563,12 @@ public sealed class HudView : FrameworkElement
 
         if (Mode.ShowsBackdrop())
         {
-            var backdrop = new SolidColorBrush(palette.Backdrop)
-            {
-                Opacity = Math.Clamp(BackdropOpacity, AppSettings.MinBackdropOpacity, 1),
-            };
-            backdrop.Freeze();
-            var border = new Pen(Frozen(palette.Border), 1);
-            border.Freeze();
+            // 불투명도를 브러시 속성으로 두면 색마다 캐시가 갈리지 않는다. 알파에 섞는다.
+            var opacity = Math.Clamp(BackdropOpacity, AppSettings.MinBackdropOpacity, 1);
+            var card = palette.Backdrop;
+            var backdrop = Frozen(Color.FromArgb(
+                (byte)Math.Round(opacity * 255), card.R, card.G, card.B));
+            var border = Paint.Pen(palette.Border, 1);
 
             var radius = (Mode == HudMode.Collapsed ? 26 : 20) * s;
             context.DrawRoundedRectangle(
@@ -1034,10 +1033,9 @@ public sealed class HudView : FrameworkElement
         var center = new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
 
         // 투명한 배경 위에 뜨는 버튼이라 **제 바탕이 있어야 읽힌다.**
-        var fill = new SolidColorBrush(palette.Backdrop) { Opacity = 0.92 };
-        fill.Freeze();
-        var border = new Pen(Frozen(palette.RingTrack), Math.Max(1, s));
-        border.Freeze();
+        var backdrop = palette.Backdrop;
+        var fill = Frozen(Color.FromArgb(0xEB, backdrop.R, backdrop.G, backdrop.B));
+        var border = Paint.Pen(palette.RingTrack, Math.Max(1, s));
         context.DrawEllipse(fill, border, center, rect.Width / 2, rect.Height / 2);
 
         var color = Hover == target ? palette.ControlActive : palette.ControlIdle;
@@ -1102,10 +1100,6 @@ public sealed class HudView : FrameworkElement
 
     private static Color ToColor(Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
+    /// <summary>색마다 하나씩만 만들어 나눠 쓴다. 자세히는 <see cref="Paint"/>.</summary>
+    private static SolidColorBrush Frozen(Color color) => Paint.Brush(color);
 }
