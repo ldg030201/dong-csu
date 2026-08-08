@@ -70,9 +70,14 @@ public sealed class UpdateService(HttpClient http)
             LastChecked = DateTimeOffset.Now;
             AppLog.Write($"업데이트 확인: 설치본={IsInstalled} 최신={LatestVersion ?? "-"} 지금={AppInfo.Version}");
         }
-        catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
+        catch (Exception error)
         {
-            // 확인 실패는 정상적인 일이다(비행기 모드, 회사 프록시). 다음 주기에 다시 한다.
+            // **어떤 예외도 밖으로 내보내지 않는다.** 이걸 부르는 곳이 `async void`
+            // 타이머 핸들러라, 새어 나가면 처리되지 않은 예외가 되어 **앱이 그대로 죽는다.**
+            // 피드가 깨졌을 때 Velopack 이 던지는 것은 HttpRequestException 만이 아니다.
+            //
+            // 확인 실패 자체는 정상적인 일이다(비행기 모드, 회사 프록시, 깨진 피드).
+            // 다음 주기에 다시 한다.
             AppLog.Write($"업데이트 확인 실패: {error.Message}");
         }
         finally
@@ -95,8 +100,9 @@ public sealed class UpdateService(HttpClient http)
             var json = await http.GetStringAsync(Changelog.FeedUrl, cancellationToken).ConfigureAwait(false);
             if (Changelog.Parse(json) is { } feed) RemoteEntries = feed.Entries;
         }
-        catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
+        catch (Exception)
         {
+            // 변경 내역을 못 받아도 앱에 박힌 것이 있다. 조용히 넘어간다.
         }
     }
 

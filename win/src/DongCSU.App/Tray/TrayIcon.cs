@@ -19,7 +19,19 @@ public sealed partial class TrayIcon : IDisposable
     private readonly ToolStripMenuItem summaryItem;
     private readonly ToolStripMenuItem reloginItem;
     private Icon? currentIcon;
-    private string? lastGridKey;
+    private string[]? lastGrid;
+    private IReadOnlyDictionary<string, string>? lastPalette;
+
+    /// <summary>
+    /// 트레이 아이콘을 다시 그리는 가장 짧은 간격.
+    ///
+    /// **32×32 로 줄여 놓으면 걷는 다리가 보이지 않는다.** 그런데 걷는 동안에는 그림이
+    /// 0.14초마다 바뀌어서, 바뀔 때마다 다시 그리면 Bitmap·Icon 을 초당 일곱 번 만들었다
+    /// 버린다. 눈에 보이지도 않는 것에 GDI 를 그만큼 쓸 이유가 없다.
+    /// </summary>
+    private static readonly TimeSpan MinimumIconGap = TimeSpan.FromMilliseconds(400);
+
+    private DateTimeOffset lastIconAt = DateTimeOffset.MinValue;
 
     public event Action? RefreshRequested;
     public event Action? SettingsRequested;
@@ -80,12 +92,19 @@ public sealed partial class TrayIcon : IDisposable
     /// </summary>
     public void ShowMenuAtCursor()
     {
-        icon.ContextMenuStrip?.Show(Control.MousePosition);
+        if (icon.ContextMenuStrip is not { } strip) return;
+
+        strip.Show(Control.MousePosition);
+
+        // **띄운 뒤 앞으로 끌어와야 바깥을 눌렀을 때 닫힌다.** 이 메뉴의 주인 창은
+        // HUD 인데 그건 `WS_EX_NOACTIVATE` 라 절대 앞에 서지 못한다. 그대로 두면
+        // 다른 앱을 눌러도 메뉴가 그 위에 떠 있는 채로 남는다.
+        if (strip.Handle != IntPtr.Zero) NativeMethods.SetForegroundWindow(strip.Handle);
     }
 
     public void UpdateSummary(string text, bool needsReauth)
     {
-        // 트레이 툴팁은 127자를 넘으면 통째로 안 보인다. 잘라서 넣는다.
+        // 트레이 툴팁은 63자를 넘으면 WinForms 가 거부한다. 잘라서 넣는다.
         icon.Text = text.Length > 63 ? text[..60] + "…" : text;
         summaryItem.Text = text;
         reloginItem.Visible = needsReauth;
@@ -96,12 +115,23 @@ public sealed partial class TrayIcon : IDisposable
     ///
     /// **그림이 그대로면 아무것도 하지 않는다.** 눈 깜빡임은 0.05초짜리라, 프레임마다
     /// Bitmap 과 Icon 을 새로 만들면 초당 스무 번씩 GDI 핸들을 만들었다 버리게 된다.
+    ///
+    /// 같은지 볼 때 **글자로 이어 붙이지 않는다.** 그것부터가 매 프레임 200자짜리
+    /// 문자열을 만드는 일이라, 아끼려고 둔 검사가 아끼는 것보다 더 쓴다. 줄 단위로 견준다.
+    ///
+    /// 달라졌더라도 <see cref="MinimumIconGap"/> 안에는 다시 그리지 않는다 — 걷는 동안
+    /// 그림이 0.14초마다 바뀌는데, 32×32 로 줄이면 그 차이가 눈에 보이지도 않는다.
     /// </summary>
     public void UpdateOwl(string[] grid, IReadOnlyDictionary<string, string> palette, int size = 32)
     {
-        var key = string.Join("\n", grid) + "|" + string.Join(",", palette.Values);
-        if (key == lastGridKey) return;
-        lastGridKey = key;
+        if (Same(grid, palette)) return;
+
+        var now = DateTimeOffset.UtcNow;
+        if (now - lastIconAt < MinimumIconGap) return;
+        lastIconAt = now;
+
+        lastGrid = grid;
+        lastPalette = palette;
 
         var next = BuildIcon(grid, palette, size);
         icon.Icon = next;
@@ -109,6 +139,19 @@ public sealed partial class TrayIcon : IDisposable
         // NotifyIcon 이 새 아이콘을 잡은 뒤에 옛것을 버린다. 먼저 버리면 잠깐 빈칸이 뜬다.
         currentIcon?.Dispose();
         currentIcon = next;
+    }
+
+    /// <summary>지난번에 올린 것과 같은 그림인지. 새 문자열을 만들지 않고 견준다.</summary>
+    private bool Same(string[] grid, IReadOnlyDictionary<string, string> palette)
+    {
+        if (!ReferenceEquals(lastPalette, palette)) return false;
+        if (lastGrid is not { } previous || previous.Length != grid.Length) return false;
+
+        for (var i = 0; i < grid.Length; i++)
+        {
+            if (!string.Equals(previous[i], grid[i], StringComparison.Ordinal)) return false;
+        }
+        return true;
     }
 
     private static Icon BuildIcon(string[] grid, IReadOnlyDictionary<string, string> palette, int size)
@@ -164,5 +207,10 @@ public sealed partial class TrayIcon : IDisposable
         [return: System.Runtime.InteropServices.MarshalAs(
             System.Runtime.InteropServices.UnmanagedType.Bool)]
         public static partial bool DestroyIcon(IntPtr handle);
+
+        [System.Runtime.InteropServices.LibraryImport("user32.dll")]
+        [return: System.Runtime.InteropServices.MarshalAs(
+            System.Runtime.InteropServices.UnmanagedType.Bool)]
+        public static partial bool SetForegroundWindow(IntPtr handle);
     }
 }

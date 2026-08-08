@@ -48,10 +48,16 @@ public static class OwlMoodResolver
         if (isWeeklySpent) return OwlMood.Exhausted;
         if (sessionUtilization is not { } utilization) return OwlMood.Idle;
 
-        if (utilization >= document.MoodThresholds["exhausted"]) return OwlMood.Exhausted;
-        if (utilization >= document.MoodThresholds["tired"]) return OwlMood.Tired;
+        // **없는 값을 대괄호로 꺼내지 않는다.** owl.json 은 맥에서 뽑혀 오는 파일이라
+        // 언젠가 열쇠 이름이 바뀔 수 있는데, 그때 조회할 때마다 예외가 나면 사용량이
+        // 통째로 안 들어온다. 못 찾으면 그 문턱은 없는 것으로 보고 넘어간다.
+        if (utilization >= Threshold(document, "exhausted", 95)) return OwlMood.Exhausted;
+        if (utilization >= Threshold(document, "tired", 80)) return OwlMood.Tired;
         return OwlMood.Idle;
     }
+
+    private static double Threshold(OwlDocument document, string name, double fallback) =>
+        document.MoodThresholds.TryGetValue(name, out var value) ? value : fallback;
 }
 
 /// <summary>
@@ -100,7 +106,18 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// 걷는 중이면 기분보다 걸음이 이긴다 — 걸어가면서 서 있는 자세를 하면 미끄러진다.
     /// 그림은 <c>owl.json</c> 에 이미 다 들어 있다.
     /// </summary>
-    public OwlAnimation Animation => document.Animations.Single(a => a.Name == CurrentName);
+    public OwlAnimation Animation => Named(CurrentName);
+
+    /// <summary>
+    /// 이름으로 애니메이션을 찾는다.
+    ///
+    /// **목록을 훑지 않는다.** 이 값은 한 틱에 서너 번 읽히는데(프레임 넘기기·눈 고르기·
+    /// 합성·팔레트), 그때마다 <c>Single</c> 로 훑으면 delegate 까지 새로 만든다.
+    /// </summary>
+    private OwlAnimation Named(string name) => byName[name];
+
+    private readonly Dictionary<string, OwlAnimation> byName =
+        document.Animations.ToDictionary(a => a.Name);
 
     /// <summary>손에 잡혀 끌려가는 중인지. 다른 무엇보다 이게 먼저다.</summary>
     public bool IsDragged
@@ -322,8 +339,7 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     }
 
     /// <summary>기분이 정한 기본 자세. 걸을 때 여기에 발을 얹는다.</summary>
-    private OwlPose MoodPose =>
-        document.Animations.Single(a => a.Name == mood.Name()).Frames[0].Pose;
+    private OwlPose MoodPose => Named(mood.Name()).Frames[0].Pose;
 
     /// <summary>
     /// 걷는 자세 한 칸. 기분이 준 자세에서 <b>발·기울임·날개만</b> 바꾼다.

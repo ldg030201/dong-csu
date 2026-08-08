@@ -25,6 +25,14 @@ public static class StartupService
     /// </summary>
     private static string ValueName => AppInfo.Name;
 
+    /// <summary>
+    /// 켜져 있나. **경로가 달라도 켜진 것으로 본다.**
+    ///
+    /// 등록이 남아 있으면 윈도우는 그 경로로 띄운다 — 우리가 보기에 옛 경로라고 해서
+    /// 사용자에게 "꺼짐"이라고 말하면 거짓말이다. 업데이트로 경로가 바뀐 경우는
+    /// <see cref="RepairIfEnabled"/> 가 뜰 때마다 맞춰 주고, 그게 실패하는 환경
+    /// (정책으로 잠긴 기계 등)에서는 켜진 채로 옛 경로가 남는다.
+    /// </summary>
     public static bool IsEnabled
     {
         get
@@ -32,11 +40,7 @@ public static class StartupService
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(RunKey);
-                var stored = key?.GetValue(ValueName) as string;
-                if (string.IsNullOrEmpty(stored)) return false;
-
-                // 앱을 업데이트하면 경로가 바뀐다. 옛 경로가 남아 있으면 켜진 게 아니다.
-                return string.Equals(stored, CommandLine, StringComparison.OrdinalIgnoreCase);
+                return key?.GetValue(ValueName) is string stored && !string.IsNullOrEmpty(stored);
             }
             catch (Exception error) when (error is System.Security.SecurityException or IOException)
             {

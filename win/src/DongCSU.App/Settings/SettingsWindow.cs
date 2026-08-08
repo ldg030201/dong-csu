@@ -97,9 +97,19 @@ public sealed class SettingsWindow : Window
     /// </summary>
     public void Refresh()
     {
-        // 테마 설정이 바뀌었을 수 있다. 색까지 다시 잡는다.
-        Rebuild();
+        // **탭 안만 다시 그린다.** 조회는 5~10분마다 오고 새로고침 한 번에 두 번 온다.
+        // 그때마다 창을 통째로 다시 만들면 변경 내역을 읽던 자리가 맨 위로 튀고,
+        // 불투명도 막대를 끌던 손에서 막대가 빠져나간다.
+        //
+        // 테마가 바뀐 때만 색을 다시 잡느라 통째로 만든다.
+        var dark = IsDarkTheme();
+        if (dark != lastDark) { lastDark = dark; Rebuild(); return; }
+
+        ShowTab();
     }
+
+    /// <summary>마지막으로 색을 잡을 때의 테마. 바뀌었을 때만 통째로 다시 만든다.</summary>
+    private bool lastDark;
 
     /// <summary>탭을 하나 열어 둔 채로 띄운다. HUD 의 새 버전 표시가 여기로 보낸다.</summary>
     public void SelectTab(string key)
@@ -137,7 +147,8 @@ public sealed class SettingsWindow : Window
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         body.Margin = new Thickness(24, 22, 24, 18);
-        var (scrollHost, _) = Ui.Scroller(palette, body);
+        var (scrollHost, scroll) = Ui.Scroller(palette, body);
+        scroller = scroll;
         Grid.SetRow(scrollHost, 0);
         right.Children.Add(scrollHost);
 
@@ -245,6 +256,9 @@ public sealed class SettingsWindow : Window
     private void ShowTab()
     {
         var palette = Palette;
+        // 내용을 갈아 끼우면 스크롤이 맨 위로 간다. 읽던 자리를 도로 맞춰 준다.
+        var offset = scroller?.VerticalOffset ?? 0;
+
         body.Content = TabList[selected].Key switch
         {
             "display" => DisplayTab(palette),
@@ -254,7 +268,18 @@ public sealed class SettingsWindow : Window
             "version" => VersionTab(palette),
             _ => StatusTab(palette),
         };
+
+        // 새 내용의 높이가 잡힌 뒤라야 그만큼 내려갈 수 있다.
+        if (offset > 0 && scroller is { } view)
+        {
+            Dispatcher.BeginInvoke(
+                new Action(() => view.ScrollToVerticalOffset(offset)),
+                DispatcherPriority.Loaded);
+        }
     }
+
+    /// <summary>탭 내용을 감싼 스크롤. 내용을 갈아 끼운 뒤 읽던 자리를 맞추는 데 쓴다.</summary>
+    private ScrollViewer? scroller;
 
     private void Apply()
     {
