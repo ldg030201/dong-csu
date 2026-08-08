@@ -40,6 +40,23 @@ public enum HudHit
     PetRow,
 }
 
+public static class HudHitExtensions
+{
+    /// <summary>
+    /// **누를 것이 없는 자리인가.** 무엇인지 알려 주기만 하는 곳이다.
+    ///
+    /// 창은 이걸 <see cref="HudHit.None"/> 과 같이 다뤄야 한다 — 아니면 카운트다운이나
+    /// 버전 딱지를 잡고 창을 끌 수 없고, 그 위에서 더블클릭해도 접히지 않는다.
+    /// 설명 문구를 붙이겠다고 끌 수 있는 자리를 뺏으면 안 된다.
+    /// </summary>
+    public static bool IsPassive(this HudHit hit) =>
+        hit is HudHit.Countdown or HudHit.StatsRow or HudHit.VersionBadge or HudHit.PetRow;
+
+    /// <summary>눌러서 무언가 일어나는 자리인가.</summary>
+    public static bool IsButton(this HudHit hit) =>
+        hit is HudHit.Collapse or HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge;
+}
+
 /// <summary>
 /// 어둡게 / 밝게 한 벌.
 ///

@@ -123,6 +123,44 @@ public class PetShakeTests
         Assert.False(shake.IsDizzy);
     }
 
+    /// <summary>
+    /// 속도를 새로 재지 못한 표본은 그렇다고 알려야 한다.
+    ///
+    /// 못 쟀을 때 <c>Velocity</c> 는 **옛 값 그대로**다. 그걸 새 값으로 알리면
+    /// 마우스가 선 뒤에도 부엉이가 한 칸 더 기울어져 있는다.
+    /// </summary>
+    [Fact]
+    public void 첫_표본은_속도를_재지_못한다()
+    {
+        var clock = new MovingTime(Start);
+        var shake = new PetShake(clock);
+        shake.Begin();
+
+        shake.Sample(new PetPoint(500, 300));
+
+        Assert.False(shake.Measured);
+    }
+
+    [Fact]
+    public void 같은_눈금에_두_번_오면_속도를_재지_못한다()
+    {
+        var clock = new MovingTime(Start);
+        var shake = new PetShake(clock);
+        shake.Begin();
+
+        shake.Sample(new PetPoint(500, 300));
+        clock.Advance(TimeSpan.FromMilliseconds(16));
+        shake.Sample(new PetPoint(560, 300));
+        Assert.True(shake.Measured);
+        var measured = shake.Velocity;
+
+        // 시계를 안 돌리고 한 번 더 — 잰 것이 없다.
+        shake.Sample(new PetPoint(620, 300));
+
+        Assert.False(shake.Measured);
+        Assert.Equal(measured, shake.Velocity);
+    }
+
     private sealed class MovingTime(DateTimeOffset now) : TimeProvider
     {
         private DateTimeOffset current = now;

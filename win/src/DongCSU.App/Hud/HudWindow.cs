@@ -71,6 +71,19 @@ public sealed class HudWindow : Window
     public bool CursorWantsDodge(PetPoint cursor) =>
         view.PetDodgeZoneContains(new Point(cursor.X - Left, cursor.Y - Top));
 
+    /// <summary>
+    /// 커서가 창 근처에 있는지. **다가오는 것만 알아채면 되는 거친 판정이다.**
+    ///
+    /// 멀리 있을 때까지 촘촘히 볼 이유가 없어서, 이걸로 먼저 걸러 낸다.
+    /// 여유를 두는 이유는 다음 검사까지의 사이에 커서가 창 안으로 들어올 수 있어서다.
+    /// </summary>
+    public bool CursorIsNear(PetPoint cursor)
+    {
+        const double margin = 160;
+        return cursor.X >= Left - margin && cursor.X <= Left + Width + margin
+            && cursor.Y >= Top - margin && cursor.Y <= Top + Height + margin;
+    }
+
     /// <summary>펫 링이 향하는 값. 같은 목표로 애니메이션을 다시 걸지 않으려고 들고 있는다.</summary>
     private double petRingFadeTarget;
 
@@ -104,10 +117,13 @@ public sealed class HudWindow : Window
             {
                 // 끄는 동안 자리를 계속 넣어 준다. DragMove 는 자기 루프를 돌지만
                 // LocationChanged 는 그 안에서도 온다.
-                if (Shake.Sample(new PetPoint(Left, Top))) DizzyStarted?.Invoke();
-                // 끌리는 자세는 이 속도로 만든다. **화면 좌표는 아래로 커지므로 세로를
-                // 뒤집는다** — 부엉이 쪽은 "들어 올리면 양수"로 센다.
-                DragMoved?.Invoke(new PetPoint(Shake.Velocity.X, -Shake.Velocity.Y));
+                var shaken = Shake.Sample(new PetPoint(Left, Top));
+                if (shaken) DizzyStarted?.Invoke();
+
+                // **속도를 새로 재지 못했으면 알리지 않는다.** 첫 표본이거나 같은 눈금에
+                // 두 번 왔으면 옛 속도가 그대로 남아 있는데, 그걸 지금 시각으로 다시
+                // 알리면 마우스가 선 뒤에도 한 칸 더 기울어져 있는다.
+                if (Shake.Measured) DragMoved?.Invoke(new PetPoint(Shake.Velocity.X, -Shake.Velocity.Y));
                 return;
             }
             Moved?.Invoke();
@@ -303,9 +319,13 @@ public sealed class HudWindow : Window
                     | NativeMethods.SwpNoSendChanging);
 
             // WPF 쪽 값도 맞춰 둔다. 펫 무대가 이걸 읽어서 걸어 다닌다.
-            Width = size.Width;
-            Height = size.Height;
-            Left = target;
+            //
+            // **이미 같은 값이면 대입하지 않는다.** WPF 가 WM_WINDOWPOSCHANGED 를 아직
+            // 처리하지 않았으면 옛 값이 남아 있는데, 그때 대입하면 방금 옮긴 자리로
+            // 한 번 더 옮기는 SetWindowPos 가 나간다 — 한 번에 옮기려고 만든 길이 무색해진다.
+            if (Different(Width, size.Width)) Width = size.Width;
+            if (Different(Height, size.Height)) Height = size.Height;
+            if (Different(Left, target)) Left = target;
             return;
         }
 
@@ -313,6 +333,9 @@ public sealed class HudWindow : Window
         Height = size.Height;
         if (!double.IsNaN(left)) Left = left;
     }
+
+    /// <summary>화면 한 칸도 안 되는 차이는 같은 것으로 본다.</summary>
+    private static bool Different(double a, double b) => double.IsNaN(a) || Math.Abs(a - b) > 0.5;
 
     /// <summary>뷰 상태를 창 크기에 반영하고 다시 그린다.</summary>
     public void Refresh()
@@ -500,10 +523,9 @@ public sealed class HudWindow : Window
         view.Hover = hit;
         // 마스코트는 끄는 자리다. 손가락 커서를 띄우면 눌러야 할 것처럼 보인다.
         // 카운트다운·자원 줄·버전 딱지는 **읽는 자리**라 마찬가지다.
-        Cursor = hit is HudHit.None or HudHit.Mascot or HudHit.PetRow
-            or HudHit.Countdown or HudHit.StatsRow or HudHit.VersionBadge
-            ? Cursors.Arrow
-            : Cursors.Hand;
+        // 누르는 자리에서만 손가락 커서를 띄운다. 마스코트는 끄는 자리고,
+        // 카운트다운·자원 줄·버전 딱지는 **읽는 자리**라 화살표 그대로 둔다.
+        Cursor = hit.IsButton() ? Cursors.Hand : Cursors.Arrow;
         ToolTip = view.TooltipFor(hit);
         view.InvalidateVisual();
     }
@@ -514,8 +536,10 @@ public sealed class HudWindow : Window
 
         view.Hover = HudHit.None;
         view.IsHovered = false;
-        pressed = HudHit.None;
-        Cursor = Cursors.Arrow;
+
+        // 누르고 있는 중이면 그 상태는 건드리지 않는다 — 마우스를 잡아 뒀으므로
+        // 밖으로 나갔다 돌아와서 떼도 MouseUp 이 온다. 여기서 지우면 그 클릭이 사라진다.
+        if (pressed == HudHit.None) Cursor = Cursors.Arrow;
         ToolTip = null;
         SyncPetRingFade();
         view.InvalidateVisual();
@@ -550,12 +574,16 @@ public sealed class HudWindow : Window
         // 버튼 위에서 시작한 클릭은 창을 끌지 않는다. 누르자마자 실행하지도 않는다 —
         // 밖으로 끌어내면 취소되는 것이 버튼의 상식이다.
         //
-        // **마스코트는 예외다.** 펫 모드에서는 그것이 창의 거의 전부라, 여기서 못 끌면
-        // 창을 옮길 방법이 아예 없어진다. 마스코트에서는 드래그를 그대로 살린다.
+        // **마스코트와 설명만 붙은 자리는 예외다.** 펫 모드에서 마스코트는 창의 거의
+        // 전부라 여기서 못 끌면 창을 옮길 방법이 없고, 카운트다운·자원 줄·버전 딱지는
+        // 누를 것이 없는데도 막으면 카드 아래쪽을 통째로 못 잡게 된다.
         var hit = view.HitTest(e.GetPosition(view));
-        if (hit is not HudHit.None and not HudHit.Mascot)
+        if (hit.IsButton())
         {
             pressed = hit;
+            // **마우스를 잡아 둔다.** 안 잡으면 창 밖에서 뗐을 때 MouseUp 이 이 창으로
+            // 오지 않는다 — 누른 상태가 그대로 남아 펫이 멈춘 채로 굳는다.
+            CaptureMouse();
             HeldChanged?.Invoke();
             e.Handled = true;
             return;
@@ -585,6 +613,7 @@ public sealed class HudWindow : Window
     {
         var target = pressed;
         pressed = HudHit.None;
+        if (IsMouseCaptured) ReleaseMouseCapture();
         if (target == HudHit.None) return;
 
         HeldChanged?.Invoke();
@@ -606,13 +635,16 @@ public sealed class HudWindow : Window
     {
         if (e.ChangedButton != MouseButton.Left) return;
 
-        switch (view.HitTest(e.GetPosition(view)))
-        {
-            // 마스코트를 두 번 누르면 펫으로 드나든다. 맥과 같은 자리다.
-            case HudHit.Mascot: PetToggled?.Invoke(); break;
-            case HudHit.None: ModeToggled?.Invoke(); break;
-            // 버튼을 두 번 누른 것은 접기가 아니다. 이미 버튼이 두 번 실행됐다.
-        }
+        var hit = view.HitTest(e.GetPosition(view));
+
+        // 마스코트를 두 번 누르면 펫으로 드나든다. 맥과 같은 자리다.
+        if (hit == HudHit.Mascot) { PetToggled?.Invoke(); return; }
+
+        // 버튼을 두 번 누른 것은 접기가 아니다. 이미 버튼이 두 번 실행됐다.
+        if (hit.IsButton()) return;
+
+        // 나머지는 빈 자리와 같다 — 설명만 붙은 곳에서도 접기가 먹어야 한다.
+        ModeToggled?.Invoke();
     }
 
     /// <summary>

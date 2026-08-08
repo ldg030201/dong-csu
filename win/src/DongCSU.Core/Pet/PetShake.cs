@@ -53,6 +53,14 @@ public sealed class PetShake(TimeProvider? time = null)
     public PetPoint Velocity { get; private set; }
 
     /// <summary>
+    /// 방금 <see cref="Sample"/> 이 속도를 새로 쟀는지.
+    ///
+    /// 첫 표본이거나 같은 눈금에 두 번 오면 못 잰다. 그때 <see cref="Velocity"/> 는
+    /// **옛 값 그대로**라, 쓰는 쪽이 새 값으로 착각하면 안 된다.
+    /// </summary>
+    public bool Measured { get; private set; }
+
+    /// <summary>
     /// 끌기 시작. **점수를 새로 센다** — 사이를 두고 조금씩 흔든 것이 쌓여서
     /// 엉뚱한 때에 어지러워지면 안 된다.
     /// </summary>
@@ -63,6 +71,7 @@ public sealed class PetShake(TimeProvider? time = null)
         lastVertical = 0;
         previous = null;
         Velocity = default;
+        Measured = false;
     }
 
     /// <summary>
@@ -74,6 +83,7 @@ public sealed class PetShake(TimeProvider? time = null)
     public bool Sample(PetPoint position)
     {
         var now = time.GetUtcNow();
+        Measured = false;
 
         if (previous is not { } before)
         {
@@ -90,6 +100,7 @@ public sealed class PetShake(TimeProvider? time = null)
         var dx = (position.X - before.X) / seconds;
         var dy = (position.Y - before.Y) / seconds;
         Velocity = new PetPoint(dx, dy);
+        Measured = true;
 
         // 아주 긴 간격(다른 창에 갔다 온 뒤 등)에 점수가 통째로 날아가지 않게 막는다.
         score = Math.Max(0, score - DecayPerSecond * Math.Min(seconds, 0.25));
