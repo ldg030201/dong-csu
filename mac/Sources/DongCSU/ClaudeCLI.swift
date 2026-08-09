@@ -24,10 +24,8 @@ enum TerminalScript {
 
 /// Claude Code CLI를 찾아 로그인 플로우를 띄운다.
 ///
-/// 이 앱은 OAuth 토큰을 직접 갱신하지 않는다. 키체인에는 리프레시 토큰이 같이 들어있지만,
-/// 리프레시 토큰은 사용할 때 회전되는 경우가 많아서 우리가 먼저 써버리면 Claude Code가
-/// 들고 있던 값이 무효가 되고 사용자의 Claude Code 로그인이 풀릴 수 있다.
-/// 그래서 갱신은 Claude Code에게 맡기고, 우리는 그 과정을 시작만 해준다.
+/// **평소에는 여기까지 오지 않는다.** 토큰이 만료되면 앱이 스스로 갱신한다
+/// (`CredentialStore.current`). 리프레시 토큰까지 죽었을 때만 이 길이 남는다.
 enum ClaudeCLI {
     /// 설치 방식마다 위치가 달라서 알려진 경로를 순서대로 확인한다.
     static func resolveExecutable() -> String? {

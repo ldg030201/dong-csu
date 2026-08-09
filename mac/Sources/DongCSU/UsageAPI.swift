@@ -1,5 +1,6 @@
-import Foundation
 import CryptoKit
+import Foundation
+import Security
 
 /// 5시간 / 7일 사용량 창 하나.
 struct UsageWindow: Sendable {
@@ -76,6 +77,21 @@ struct OAuthCredentials: Sendable {
     let accessToken: String
     let subscriptionType: String?
     let expiresAt: Date?
+    /// 만료됐을 때 이걸로 새 토큰을 받는다. 없으면 재로그인 말고 길이 없다.
+    let refreshToken: String?
+    /// 키체인의 어느 자리에서 읽었는지. 회전한 토큰을 되돌려 쓸 때 쓴다.
+    let origin: ClaudeKeychain.Item?
+
+    /// 갱신해서 받은 것을 얹는다. 플랜 이름과 읽어 온 자리는 키체인 쪽 것을 그대로 둔다.
+    func applying(_ token: RefreshedToken) -> OAuthCredentials {
+        OAuthCredentials(
+            accessToken: token.accessToken,
+            subscriptionType: subscriptionType,
+            expiresAt: token.expiresAt,
+            refreshToken: token.refreshToken ?? refreshToken,
+            origin: origin
+        )
+    }
 
     var isExpired: Bool {
         guard let expiresAt else { return false }
@@ -98,18 +114,67 @@ actor CredentialStore {
 
     private var cached: OAuthCredentials?
 
-    func current() -> OAuthCredentials? {
-        if let cached, !cached.isExpired, cached.isUsableForAWhile {
-            return cached
+    /// 401을 받았다. 시계로는 멀쩡해 보여도 다음번에는 갱신부터 한다.
+    private var needsRefresh = false
+
+    /// 지금 쓸 수 있는 자격증명. 만료됐으면 **여기서 갱신까지 한다.**
+    ///
+    /// 예전에는 갱신을 Claude Code에게 맡겼다. 리프레시 토큰은 쓸 때 회전하는 일이 있어서
+    /// 우리가 먼저 써버리면 Claude Code 로그인이 풀릴 수 있기 때문이었다. **그런데 CLI를
+    /// 띄워도 키체인이 갱신되지 않는다** — Claude Code를 데스크톱 앱으로만 쓰면 키체인의
+    /// 토큰을 갱신해 줄 사람이 아무도 없어서, 다섯 시간마다 재로그인 안내만 뜬다.
+    ///
+    /// 그래서 직접 갱신하되, **회전한 경우에만** 새 값을 키체인에 되돌려 쓴다. 그러면
+    /// Claude Code 쪽도 같이 최신이 되어 갈라지지 않는다.
+    func current() async -> OAuthCredentials? {
+        if !needsRefresh, let cached, cached.isUsableForAWhile { return cached }
+
+        var effective = Self.merge(ClaudeKeychain.readCredentials(), with: RefreshedTokenStore.load())
+
+        if needsRefresh || !(effective?.isUsableForAWhile ?? false),
+           let credentials = effective,
+           let refreshToken = credentials.refreshToken,
+           let renewed = await OAuthTokenRefresher.refresh(using: refreshToken) {
+            Self.persist(renewed, replacing: refreshToken, origin: credentials.origin)
+            effective = credentials.applying(renewed)
         }
-        let fresh = ClaudeKeychain.readCredentials()
-        cached = fresh
-        return fresh
+
+        needsRefresh = false
+        cached = effective
+        return effective
     }
 
     /// 서버가 401/403을 주면 캐시된 토큰이 더 이상 유효하지 않다는 뜻이다.
     func invalidate() {
         cached = nil
+        needsRefresh = true
+    }
+
+    /// 키체인에서 읽은 것과 우리가 갱신해 둔 것 중 **더 새것**을 쓴다.
+    ///
+    /// 플랜 이름과 읽어 온 자리는 키체인에만 있으므로 그쪽이 없으면 아무것도 못 한다 —
+    /// 그 상태는 로그인 자체가 없는 것이다.
+    private static func merge(
+        _ base: OAuthCredentials?,
+        with stash: RefreshedToken?
+    ) -> OAuthCredentials? {
+        guard let base else { return nil }
+        guard let stash else { return base }
+        guard (stash.expiresAt ?? .distantPast) > (base.expiresAt ?? .distantPast) else { return base }
+        return base.applying(stash)
+    }
+
+    private static func persist(
+        _ token: RefreshedToken,
+        replacing previous: String,
+        origin: ClaudeKeychain.Item?
+    ) {
+        RefreshedTokenStore.save(token)
+
+        // **값이 실제로 바뀌었을 때만** 남의 자리를 건드린다. 같은 것을 돌려줬다면
+        // 키체인 값은 아직 유효하고, 우리가 쓸 이유가 없다.
+        guard let rotated = token.refreshToken, rotated != previous, let origin else { return }
+        ClaudeKeychain.write(token, to: origin)
     }
 }
 
@@ -121,16 +186,61 @@ actor CredentialStore {
 enum ClaudeKeychain {
     private static let baseService = "Claude Code-credentials"
 
+    /// 자격증명이 들어 있던 키체인 항목.
+    struct Item: Sendable {
+        let service: String
+        let account: String?
+        /// 들어 있던 원문. 되돌려 쓸 때 우리가 모르는 항목(`mcpOAuth` 같은 것)을
+        /// 지우지 않으려고 통째로 들고 있는다.
+        let raw: String
+    }
+
     static func readCredentials() -> OAuthCredentials? {
         let account = NSUserName()
         for service in serviceNames() {
             for accountName in [account, nil] {
                 guard let raw = runSecurity(service: service, account: accountName),
-                      let parsed = parse(raw) else { continue }
+                      let parsed = parse(raw, from: Item(service: service, account: accountName, raw: raw))
+                else { continue }
                 return parsed
             }
         }
         return nil
+    }
+
+    /// 회전한 토큰을 원래 자리에 되돌려 쓴다.
+    ///
+    /// **회전했을 때만 부른다.** 서버가 리프레시 토큰을 바꿔 주면 키체인에 남은 옛 값은
+    /// 그 순간 무효가 되고, 그대로 두면 Claude Code가 다음에 갱신하려다 로그인이 풀린다.
+    /// 회전하지 않았다면 키체인 값이 아직 유효하므로 남의 저장소를 건드릴 이유가 없다.
+    ///
+    /// 읽기와 달리 `/usr/bin/security`를 쓰지 않는다 — 값을 인자로 넘겨야 해서
+    /// **토큰이 프로세스 목록에 그대로 드러난다.**
+    @discardableResult
+    static func write(_ token: RefreshedToken, to item: Item) -> Bool {
+        guard let data = item.raw.data(using: .utf8),
+              var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var oauth = root["claudeAiOauth"] as? [String: Any]
+        else { return false }
+
+        oauth["accessToken"] = token.accessToken
+        if let refreshToken = token.refreshToken { oauth["refreshToken"] = refreshToken }
+        if let expiresAt = token.expiresAt {
+            // 키체인에는 밀리초로 들어 있다.
+            oauth["expiresAt"] = expiresAt.timeIntervalSince1970 * 1000
+        }
+        root["claudeAiOauth"] = oauth
+
+        guard let updated = try? JSONSerialization.data(withJSONObject: root) else { return false }
+
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: item.service,
+        ]
+        if let account = item.account { query[kSecAttrAccount as String] = account }
+
+        let attributes: [String: Any] = [kSecValueData as String: updated]
+        return SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecSuccess
     }
 
     /// 기본 서비스명 + CLAUDE_CONFIG_DIR을 쓰는 경우의 해시 접미사 변형.
@@ -177,7 +287,7 @@ enum ClaudeKeychain {
         return text
     }
 
-    private static func parse(_ raw: String) -> OAuthCredentials? {
+    private static func parse(_ raw: String, from item: Item) -> OAuthCredentials? {
         guard let data = raw.data(using: .utf8),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = root["claudeAiOauth"] as? [String: Any],
@@ -188,7 +298,9 @@ enum ClaudeKeychain {
         return OAuthCredentials(
             accessToken: token,
             subscriptionType: oauth["subscriptionType"] as? String,
-            expiresAt: expiresAt
+            expiresAt: expiresAt,
+            refreshToken: (oauth["refreshToken"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            origin: item
         )
     }
 

@@ -51,6 +51,72 @@ if CommandLine.arguments.contains("--probe-login") {
     exit(0)
 }
 
+// 토큰 갱신이 실제로 되는지 확인한다: dong-csu --probe-refresh [write]
+//
+// **토큰 값은 찍지 않는다.** 만료 시각과 회전 여부만 본다. `write`를 붙이면 회전한 값을
+// 키체인에 되돌려 쓰는 것까지 한다 — 그때는 키체인이 허락을 한 번 묻는다.
+if CommandLine.arguments.contains("--probe-refresh") {
+    // 갱신은 하지 않고, 우리가 들고 있는 토큰을 키체인에 맞춰 넣기만 한다.
+    // 되돌려 쓰기가 한 번 실패했을 때 되살리는 자리다.
+    if CommandLine.arguments.contains("sync") {
+        guard let stored = RefreshedTokenStore.load() else {
+            print("우리 저장소에 토큰이 없다")
+            exit(1)
+        }
+        guard let credentials = ClaudeKeychain.readCredentials(), let origin = credentials.origin else {
+            print("키체인 자격증명 없음")
+            exit(1)
+        }
+        print("키체인 되돌려 쓰기: \(ClaudeKeychain.write(stored, to: origin) ? "성공" : "실패")")
+        exit(0)
+    }
+
+    let writesBack = CommandLine.arguments.contains("write")
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+        func stamp(_ date: Date?) -> String {
+            date.map { ISO8601DateFormatter().string(from: $0) } ?? "없음"
+        }
+
+        guard let credentials = ClaudeKeychain.readCredentials() else {
+            print("자격증명 없음")
+            done.signal()
+            return
+        }
+        print("지금 토큰: \(stamp(credentials.expiresAt)) \(credentials.isExpired ? "(만료)" : "(살아 있음)")")
+
+        guard let refreshToken = credentials.refreshToken else {
+            print("refreshToken 없음 — 재로그인 말고 길이 없다")
+            done.signal()
+            return
+        }
+
+        guard let renewed = await OAuthTokenRefresher.refresh(using: refreshToken) else {
+            print("갱신 실패 (리프레시 토큰까지 죽었으면 재로그인해야 한다)")
+            done.signal()
+            return
+        }
+        print("갱신 성공 · 새 만료 \(stamp(renewed.expiresAt))")
+
+        let rotated = renewed.refreshToken != nil && renewed.refreshToken != refreshToken
+        print("리프레시 토큰 회전: \(rotated ? "했다" : "안 했다")")
+
+        RefreshedTokenStore.save(renewed)
+        print("우리 저장소에 기록: \(RefreshedTokenStore.fileURL?.path ?? "실패")")
+
+        if rotated, let origin = credentials.origin {
+            if writesBack {
+                print("키체인 되돌려 쓰기: \(ClaudeKeychain.write(renewed, to: origin) ? "성공" : "실패")")
+            } else {
+                print("키체인 되돌려 쓰기: 건너뜀 (write 를 붙이면 한다)")
+            }
+        }
+        done.signal()
+    }
+    done.wait()
+    exit(0)
+}
+
 // 최근 몇 분 동안 Claude Code가 쓴 토큰을 센다: dong-csu --probe-tokens [분]
 //
 // 측정 탭이 쓰는 계산과 같은 코드다. 파일을 처음부터 훑고 시각으로만 걸러서,

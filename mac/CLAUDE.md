@@ -66,7 +66,40 @@ dong-csu --dump-owl ../shared/owl.json            # 윈도우판과 나눠 쓸 �
 dong-csu --probe-login [on|off]                   # 로그인 항목 등록 상태 확인·변경
 dong-csu --probe-tokens 30                        # 최근 30분 동안 Claude Code가 쓴 토큰
 dong-csu --probe-meter [selftest|scan]            # 측정 기록 확인
+dong-csu --probe-refresh [write|sync]             # 토큰 갱신 · 회전 여부 확인
 ```
+
+## 토큰 갱신
+
+**앱이 스스로 갱신한다.** 만료된 토큰을 만나면 키체인의 리프레시 토큰으로 새로 받는다.
+
+한동안은 갱신을 Claude Code에게 맡겼다. 리프레시 토큰이 회전하면 우리가 먼저 써버린
+값이 무효가 되어 Claude Code 로그인이 풀리기 때문이었다. **그 전제가 틀렸다** —
+Claude Code를 데스크톱 앱으로만 쓰면 키체인 토큰을 갱신해 줄 사람이 아무도 없다.
+`claude --version` 을 돌려 봐도 키체인은 그대로다. 그래서 다섯 시간마다 재로그인
+안내만 뜨는 상태가 된다.
+
+### 회전한다 — 확인했다
+
+`--probe-refresh` 로 실제로 재 봤고, 서버는 **매번 새 리프레시 토큰을 준다.**
+그래서 갱신한 뒤 그 값을 **원래 키체인 자리에 되돌려 쓴다.** 안 그러면 Claude Code가
+들고 있는 값이 죽는다.
+
+| | 어디에 | 언제 |
+| --- | --- | --- |
+| 우리 사본 | `~/Library/Application Support/<번들 ID>/token.json` | **항상** |
+| 되돌려 쓰기 | 키체인 (Claude Code와 공유) | **회전했을 때만** |
+
+되돌려 쓰기는 `/usr/bin/security` 가 아니라 `SecItemUpdate` 로 한다 — 그쪽은 값을
+인자로 넘겨야 해서 **토큰이 프로세스 목록에 그대로 드러난다.** 쓸 때는 읽어 둔 원문에
+얹어서 통째로 다시 쓴다. `mcpOAuth` 처럼 우리가 모르는 항목이 같이 들어 있어서,
+새로 만들면 그것들이 지워진다.
+
+되돌려 쓰기가 한 번 실패했으면 `--probe-refresh sync` 로 우리 사본을 키체인에 맞춰
+넣을 수 있다.
+
+**윈도우는 아직 되돌려 쓰지 않는다.** 거기는 저장소가 파일이라 동시에 쓰면 섞일 수
+있어서 방법이 달라야 한다. 자세한 건 [`win/docs/handoff.md`](../win/docs/handoff.md).
 
 ## 측정
 
