@@ -67,7 +67,9 @@ if CommandLine.arguments.contains("--probe-refresh") {
             print("키체인 자격증명 없음")
             exit(1)
         }
-        print("키체인 되돌려 쓰기: \(ClaudeKeychain.write(stored, to: origin) ? "성공" : "실패")")
+        let result = ClaudeKeychain.write(stored, to: origin)
+        if result == .ok { KeychainWriteBack.allowed() }
+        print("키체인 되돌려 쓰기: \(result)")
         exit(0)
     }
 
@@ -106,7 +108,9 @@ if CommandLine.arguments.contains("--probe-refresh") {
 
         if rotated, let origin = credentials.origin {
             if writesBack {
-                print("키체인 되돌려 쓰기: \(ClaudeKeychain.write(renewed, to: origin) ? "성공" : "실패")")
+                let result = ClaudeKeychain.write(renewed, to: origin)
+                if result == .ok { KeychainWriteBack.allowed() }
+                print("키체인 되돌려 쓰기: \(result)")
             } else {
                 print("키체인 되돌려 쓰기: 건너뜀 (write 를 붙이면 한다)")
             }

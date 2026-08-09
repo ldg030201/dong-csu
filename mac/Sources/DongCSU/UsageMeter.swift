@@ -279,12 +279,7 @@ struct MeterStore: Sendable {
     private let url: URL?
 
     init() {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-        // 번들 ID로 갈라서 테스트판과 정식판이 서로의 기록을 건드리지 않게 한다.
-        let folder = base?.appendingPathComponent(
-            Bundle.main.bundleIdentifier ?? "com.ldg.dong-csu", isDirectory: true
-        )
-        self.url = folder?.appendingPathComponent("meter.json")
+        self.url = AppSupport.folder?.appendingPathComponent("meter.json")
     }
 
     /// 렌더 확인용. `nil`을 주면 아무것도 읽지도 쓰지도 않는다.
@@ -296,9 +291,7 @@ struct MeterStore: Sendable {
     }
 
     func save(_ state: UsageMeter.State) {
-        guard let url else { return }
-        let folder = url.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        guard let url, AppSupport.prepared() != nil else { return }
         guard let data = try? JSONEncoder().encode(state) else { return }
         try? data.write(to: url, options: .atomic)
     }

@@ -174,8 +174,35 @@ actor CredentialStore {
         // **값이 실제로 바뀌었을 때만** 남의 자리를 건드린다. 같은 것을 돌려줬다면
         // 키체인 값은 아직 유효하고, 우리가 쓸 이유가 없다.
         guard let rotated = token.refreshToken, rotated != previous, let origin else { return }
-        ClaudeKeychain.write(token, to: origin)
+        guard !KeychainWriteBack.isCoolingDown else { return }
+
+        switch ClaudeKeychain.write(token, to: origin) {
+        case .ok: KeychainWriteBack.allowed()
+        case .denied: KeychainWriteBack.denied()
+        case .failed: break
+        }
     }
+}
+
+/// 되돌려 쓰기를 거절당했으면 한동안 다시 묻지 않는다.
+///
+/// **이게 없으면 갱신할 때마다(여덟 시간에 한 번쯤) 키체인 창이 다시 뜬다.** 거절한
+/// 사람에게 같은 것을 계속 묻는 꼴이고, 우리는 우리 사본으로 계속 도니 급할 것도 없다.
+/// 대신 Claude Code 쪽 토큰은 그동안 낡은 채로 남는다 — 그게 거절의 뜻이다.
+///
+/// 비밀이 아니라 "언제 거절당했나" 하나뿐이라 UserDefaults에 둔다.
+enum KeychainWriteBack {
+    private static let key = "keychain.writeBackDeniedAt"
+    private static let cooldown: TimeInterval = 7 * 24 * 3600
+
+    static var isCoolingDown: Bool {
+        let stamp = UserDefaults.standard.double(forKey: key)
+        guard stamp > 0 else { return false }
+        return Date().timeIntervalSince1970 - stamp < cooldown
+    }
+
+    static func denied() { UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: key) }
+    static func allowed() { UserDefaults.standard.removeObject(forKey: key) }
 }
 
 /// Claude Code가 macOS 키체인에 저장한 OAuth 자격증명을 읽는다.
@@ -216,12 +243,19 @@ enum ClaudeKeychain {
     ///
     /// 읽기와 달리 `/usr/bin/security`를 쓰지 않는다 — 값을 인자로 넘겨야 해서
     /// **토큰이 프로세스 목록에 그대로 드러난다.**
+    enum WriteResult {
+        case ok
+        /// 사용자가 허락하지 않았다. 다시 물어도 같은 답일 가능성이 높다.
+        case denied
+        case failed
+    }
+
     @discardableResult
-    static func write(_ token: RefreshedToken, to item: Item) -> Bool {
+    static func write(_ token: RefreshedToken, to item: Item) -> WriteResult {
         guard let data = item.raw.data(using: .utf8),
               var root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               var oauth = root["claudeAiOauth"] as? [String: Any]
-        else { return false }
+        else { return .failed }
 
         oauth["accessToken"] = token.accessToken
         if let refreshToken = token.refreshToken { oauth["refreshToken"] = refreshToken }
@@ -231,16 +265,43 @@ enum ClaudeKeychain {
         }
         root["claudeAiOauth"] = oauth
 
-        guard let updated = try? JSONSerialization.data(withJSONObject: root) else { return false }
+        guard let updated = try? JSONSerialization.data(withJSONObject: root) else { return .failed }
 
-        var query: [String: Any] = [
+        // **account 를 반드시 붙인다.** `SecItemUpdate` 는 조건에 맞는 항목을 **전부** 고친다.
+        // 서비스 이름만 주면 같은 이름을 쓰는 다른 항목까지 우리 토큰으로 덮어쓴다.
+        guard let account = item.account ?? soleAccount(forService: item.service) else { return .failed }
+
+        let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: item.service,
+            kSecAttrAccount as String: account,
         ]
-        if let account = item.account { query[kSecAttrAccount as String] = account }
-
         let attributes: [String: Any] = [kSecValueData as String: updated]
-        return SecItemUpdate(query as CFDictionary, attributes as CFDictionary) == errSecSuccess
+
+        switch SecItemUpdate(query as CFDictionary, attributes as CFDictionary) {
+        case errSecSuccess: return .ok
+        case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed: return .denied
+        default: return .failed
+        }
+    }
+
+    /// 이 서비스를 쓰는 항목이 **딱 하나일 때만** 그 account 를 알려 준다.
+    ///
+    /// 값이 아니라 속성만 물어보므로 잠금 해제나 허락을 묻지 않는다. 여럿이면 어느 것을
+    /// 고쳐야 하는지 알 수 없으니 아무것도 하지 않는다 — 남의 항목을 덮어쓰느니 갱신한
+    /// 토큰을 우리 사본에만 두는 편이 낫다.
+    private static func soleAccount(forService service: String) -> String? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]], items.count == 1
+        else { return nil }
+        return items[0][kSecAttrAccount as String] as? String
     }
 
     /// 기본 서비스명 + CLAUDE_CONFIG_DIR을 쓰는 경우의 해시 접미사 변형.

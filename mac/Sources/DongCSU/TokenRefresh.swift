@@ -78,15 +78,7 @@ enum OAuthTokenRefresher {
 /// 접근을 막으면 실패할 수 있는데, 그때도 우리는 계속 돌아야 한다. 여기 있는 것이
 /// "우리가 마지막으로 받아 낸 값"이고, 키체인 쪽은 Claude Code와 나눠 쓰는 자리다.
 enum RefreshedTokenStore {
-    static var fileURL: URL? {
-        guard let base = FileManager.default.urls(
-            for: .applicationSupportDirectory, in: .userDomainMask
-        ).first else { return nil }
-        // 번들 ID로 갈라서 테스트판과 정식판이 서로의 것을 건드리지 않게 한다.
-        return base
-            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.ldg.dong-csu", isDirectory: true)
-            .appendingPathComponent("token.json")
-    }
+    static var fileURL: URL? { AppSupport.folder?.appendingPathComponent("token.json") }
 
     static func load() -> RefreshedToken? {
         guard let fileURL, let data = try? Data(contentsOf: fileURL) else { return nil }
@@ -94,9 +86,9 @@ enum RefreshedTokenStore {
     }
 
     static func save(_ token: RefreshedToken) {
-        guard let fileURL else { return }
-        let folder = fileURL.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        // 폴더부터 조인다. 파일 권한은 쓰고 난 뒤에야 바꿀 수 있어서 그 사이가 잠깐 열리는데,
+        // 폴더가 닫혀 있으면 그 틈에도 남이 들어오지 못한다.
+        guard AppSupport.prepared() != nil, let fileURL else { return }
         guard let data = try? JSONEncoder().encode(token) else { return }
         try? data.write(to: fileURL, options: .atomic)
         // 자격증명이다. 본인 외에는 못 읽게 한다.
@@ -106,5 +98,33 @@ enum RefreshedTokenStore {
     static func clear() {
         guard let fileURL else { return }
         try? FileManager.default.removeItem(at: fileURL)
+    }
+}
+
+
+/// 우리 파일들이 사는 폴더.
+///
+/// **본인만 읽을 수 있게 만든다.** 여기에 갱신한 토큰이 들어간다. `~/Library/Application
+/// Support` 자체가 보통 닫혀 있지만, 그건 우리가 정한 것이 아니라 기대일 뿐이다.
+enum AppSupport {
+    static var folder: URL? {
+        // 번들 ID로 갈라서 테스트판과 정식판이 서로의 것을 건드리지 않게 한다.
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.ldg.dong-csu", isDirectory: true)
+    }
+
+    /// 폴더를 만들고 권한을 조인다. 이미 있으면 권한만 맞춘다.
+    @discardableResult
+    static func prepared() -> URL? {
+        guard let folder else { return nil }
+        let manager = FileManager.default
+        try? manager.createDirectory(
+            at: folder,
+            withIntermediateDirectories: true,
+            attributes: [.posixPermissions: 0o700]
+        )
+        // 이미 있던 폴더는 위에서 권한이 안 바뀐다. 옛 판이 만들어 둔 것까지 조인다.
+        try? manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
+        return folder
     }
 }
