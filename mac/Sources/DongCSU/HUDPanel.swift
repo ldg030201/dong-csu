@@ -472,9 +472,15 @@ final class HUDController {
         // 그리드 15열 중 몸통이 쓰는 건 가운데 11열이다. 나머지는 날개를 펼 여백이라
         // 평소에는 비어 있어서, 그 폭까지 가린다고 치면 쓸데없이 멀리 비킨다.
         let width = height * CGFloat(OwlMark.bodyColumns) / CGFloat(OwlMark.lines)
+
+        // **창 한가운데가 아니다.** 아래에 버튼 줄이 깔려 있어서 마스코트는 그 위
+        // 영역의 가운데다 — `UsageHUDView.petHitRect` 와 같은 셈이다. 창 기준으로
+        // 재면 버튼 줄의 절반(배율 1에서 16pt)만큼 아래로 밀려서, 머리 쪽 커서를
+        // 몸으로 안 보고 버튼 줄 바로 위 빈 자리를 몸으로 본다.
+        let row = UsageHUDView.basePetButtonRow * scale
         return NSRect(
             x: panelFrame.midX - width / 2,
-            y: panelFrame.midY - height / 2,
+            y: panelFrame.minY + row + (panelFrame.height - row - height) / 2,
             width: width,
             height: height
         )

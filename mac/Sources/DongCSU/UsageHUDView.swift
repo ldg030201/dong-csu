@@ -330,10 +330,10 @@ struct UsageHUDView: View {
     /// 버튼이 늘 떠 있으면 그 뜻이 사라진다.
     private var petButtonRow: some View {
         HStack(spacing: s(8)) {
-            petCircleButton(systemName: "gearshape.fill", hovering: isHoveringSettings) {
+            PetCircleButton(systemName: "gearshape.fill", palette: palette, scale: scale) {
                 onOpenSettings?()
             }
-            petCircleButton(systemName: "arrow.clockwise", hovering: isHoveringRefresh) {
+            PetCircleButton(systemName: "arrow.clockwise", palette: palette, scale: scale) {
                 store.refresh(force: true)
             }
             .opacity(store.isRefreshing ? 0.35 : 1)
@@ -341,28 +341,6 @@ struct UsageHUDView: View {
         .frame(height: s(Self.basePetButtonRow))
         .opacity(showsPetRing ? 1 : 0)
         .animation(.easeOut(duration: 0.18), value: showsPetRing)
-    }
-
-    private func petCircleButton(
-        systemName: String,
-        hovering: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(.system(size: s(11), weight: .semibold))
-                .foregroundStyle(hovering ? palette.controlActive : palette.controlIdle)
-                .frame(width: s(24), height: s(24))
-                .background {
-                    // 투명한 배경 위에 뜨는 버튼이라 제 바탕이 있어야 읽힌다.
-                    Circle().fill(Color(nsColor: palette.backdrop(opacity: 0.92)))
-                }
-                .overlay {
-                    Circle().strokeBorder(palette.ringTrack, lineWidth: s(1))
-                }
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
     }
 
     /// 접힌 모습: 링 + 세로 버튼 열. 버튼은 펼쳐질 방향 쪽에 붙는다.
@@ -825,6 +803,42 @@ struct UsageHUDView: View {
 }
 
 /// HUD 왼쪽 아래에 붙는 이 앱의 자원 사용량.
+/// 링 밖 아래에 붙는 동그란 아이콘 버튼.
+///
+/// **호버 상태를 제가 들고 있다.** 펼침 보기의 버튼들과 `@State` 를 나눠 쓰면, 그
+/// 상태를 적어 주는 `.onHover` 가 펼침 보기에만 달려 있어서 펫 모드에서는 영영
+/// 바뀌지 않는다 — 마우스를 올려도 표시가 안 바뀌고, 펼침에서 올린 채로 펫으로
+/// 넘어오면 켜진 채 굳는다.
+private struct PetCircleButton: View {
+    let systemName: String
+    let palette: HUDPalette
+    let scale: CGFloat
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    private func s(_ value: CGFloat) -> CGFloat { value * scale }
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: s(11), weight: .semibold))
+                .foregroundStyle(isHovering ? palette.controlActive : palette.controlIdle)
+                .frame(width: s(24), height: s(24))
+                .background {
+                    // 투명한 배경 위에 뜨는 버튼이라 제 바탕이 있어야 읽힌다.
+                    Circle().fill(Color(nsColor: palette.backdrop(opacity: 0.92)))
+                }
+                .overlay {
+                    Circle().strokeBorder(palette.ringTrack, lineWidth: s(1))
+                }
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
 struct ProcessStatsRow: View {
     @ObservedObject var monitor: ProcessUsageMonitor
     let palette: HUDPalette

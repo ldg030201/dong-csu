@@ -80,7 +80,9 @@ enum ClaudeIcon {
     static let claudeAppPath = "/Applications/Claude.app"
 
     @MainActor private static var cachedImage: NSImage?
-    @MainActor private static var didResolve = false
+    /// 못 찾은 시각. 이만큼 지나면 한 번 더 본다.
+    @MainActor private static var missedAt: Date?
+    private static let retryAfterMiss: TimeInterval = 30
 
     /// 아이콘 이미지 해석 순서:
     /// 1) 번들에 넣어둔 claude-icon.png (직접 갈아끼운 이미지)
@@ -88,10 +90,14 @@ enum ClaudeIcon {
     ///
     /// View의 body에서 불리므로 결과를 캐시한다. 캐시가 없으면 다시 그릴 때마다
     /// 디스크를 읽고 NSImage를 새로 만든다.
+    ///
+    /// **못 찾은 것도 잠깐은 기억한다.** 실패를 안 기억하면 Claude 앱이 없는 사람은
+    /// 프레임마다 파일을 찾게 되는데, 캐시를 넣은 이유가 바로 그거다. 다만 **영영**
+    /// 기억하면 나중에 Claude 앱을 깔아도 다시 띄우기 전에는 안 잡힌다.
     @MainActor
     static func resolveImage() -> NSImage? {
-        if didResolve { return cachedImage }
-        didResolve = true
+        if let cachedImage { return cachedImage }
+        if let missedAt, Date().timeIntervalSince(missedAt) < retryAfterMiss { return nil }
 
         if let url = Bundle.main.url(forResource: "claude-icon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
@@ -99,6 +105,7 @@ enum ClaudeIcon {
         } else if FileManager.default.fileExists(atPath: claudeAppPath) {
             cachedImage = NSWorkspace.shared.icon(forFile: claudeAppPath)
         }
+        missedAt = cachedImage == nil ? Date() : nil
         return cachedImage
     }
 }
