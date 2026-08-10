@@ -351,17 +351,39 @@ final class UsageMeter: ObservableObject {
 
         isScanning = true
         let scan = TokenScan(since: since, offsets: state.offsets, seenIDs: state.seenIDs)
+        // 훑기 시작한 시점의 측정이 무엇이었는지 적어 둔다. 돌아왔을 때 대조한다.
+        let stamp = sessionStamp
 
         Task { [weak self] in
             // 파일을 훑는 동안 화면을 붙잡지 않는다.
             let result = await Task.detached(priority: .utility) { scan.run() }.value
             guard let self else { return }
-            self.apply(result)
+            self.apply(result, from: stamp)
         }
     }
 
-    private func apply(_ result: TokenScan.Result) {
+    /// 지금 재고 있는 것을 가리키는 표식.
+    ///
+    /// **다시 시작하면 `startedAt` 이, 계속을 누르면 `pausedTotal` 이 달라진다.** 중지는
+    /// 둘 다 그대로 두므로, 중지 직후의 마지막 훑기는 이 대조를 통과한다.
+    private struct SessionStamp: Equatable {
+        let startedAt: Date?
+        let pausedTotal: TimeInterval
+    }
+
+    private var sessionStamp: SessionStamp {
+        SessionStamp(startedAt: state.startedAt, pausedTotal: state.pausedTotal)
+    }
+
+    private func apply(_ result: TokenScan.Result, from stamp: SessionStamp) {
         isScanning = false
+
+        // **훑는 사이에 딴 측정이 됐으면 버린다.** 파일을 읽는 동안 메인 액터가 풀려서,
+        // 그 틈에 다시 시작이나 계속을 누르면 옛 결과가 새 측정 위에 떨어진다 —
+        // 옛 토큰이 새 측정에 더해지고, 새로 잡아 둔 기준(오프셋)이 옛 자리로 되감긴다.
+        // 되감기면 그 뒤로 계속 같은 자리를 다시 읽어서, 세워 둔 동안 쓴 것까지 딸려온다.
+        guard stamp == sessionStamp else { return }
+
         state = Self.applying(result, to: state)
         syncArchived()
         save()
