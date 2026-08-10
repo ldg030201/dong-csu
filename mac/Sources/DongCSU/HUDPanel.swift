@@ -878,6 +878,14 @@ final class HUDController {
         interactionView.addTrackingArea(area)
         trackingArea = area
 
+        // 추적 영역은 **이미 안에 들어와 있는 커서에는 mouseEntered를 보내지 않는다.**
+        // 마스코트를 더블클릭해서 펫으로 들어오면 커서가 바로 그 위에 있으므로,
+        // 이걸 빠뜨리면 한 번 밖으로 나갔다 들어올 때까지 링이 뜨지 않는다.
+        //
+        // **`defer` 로 거는 이유:** 아래에 `guard` 가 있어서, 그냥 마지막 줄에 두면
+        // 새 버전이 없을 때(=평소) 여기까지 오지 못한다. 실제로 그랬다.
+        defer { setPetHover(isMouseInside(area.rect)) }
+
         // 버튼 줄은 **따로** 좇는다. 여기 들어온 것은 도망의 이유가 아니라
         // 버튼을 보여줄 이유다. 같은 영역으로 묶으면 둘을 구분할 수 없다.
         let buttons = NSTrackingArea(
@@ -900,11 +908,6 @@ final class HUDController {
         )
         interactionView.addTrackingArea(badge)
         updateTrackingArea = badge
-
-        // 추적 영역은 **이미 안에 들어와 있는 커서에는 mouseEntered를 보내지 않는다.**
-        // 마스코트를 더블클릭해서 펫으로 들어오면 커서가 바로 그 위에 있으므로,
-        // 이걸 빠뜨리면 한 번 밖으로 나갔다 들어올 때까지 링이 뜨지 않는다.
-        setPetHover(isMouseInside(area.rect))
     }
 
     /// 뷰 좌표의 사각형 안에 지금 마우스가 있는지.
