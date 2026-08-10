@@ -1,0 +1,110 @@
+import AppKit
+import SwiftUI
+
+/// `dong-csu --probe-layout` — 설정 창이 탭마다 실제로 몇 pt를 차지하는지 잰다.
+///
+/// **`--render-settings` 로는 이걸 못 본다.** 그쪽은 `ImageRenderer` 가 `ScrollView`
+/// 안을 못 그려서 스크롤을 벗긴 모습을 그리는데, 여기서 알고 싶은 것이 바로 그 스크롤이
+/// 제대로 걸렸는지다. 그래서 진짜 창에 얹어 놓고 잰다.
+///
+/// 검사하는 것은 **목록이 길어져도 창이 그만큼 길어지지 않는가** 하나다. 기록을 4개
+/// 넣었을 때와 50개(최대치) 넣었을 때의 높이가 같아야 한다 — 다르면 그 목록에 스크롤이
+/// 안 걸린 것이고, 쓰다 보면 창이 화면을 넘어간다.
+@MainActor
+enum ProbeLayout {
+    static func run() -> Bool {
+        print("창 안쪽 높이 \(Int(SettingsView.size.height))pt 기준")
+
+        var allPassed = true
+        for probe in Probe.all {
+            let short = height(of: probe, records: 4)
+            let long = height(of: probe, records: 50)
+            let grew = long - short
+
+            var notes: [String] = []
+            if grew > 1 {
+                notes.append("기록 4→50개에 \(Int(grew))pt 늘어남 — 스크롤이 안 걸렸다")
+                allPassed = false
+            } else if probe.hasList {
+                notes.append("기록 4→50개에도 그대로")
+            }
+            if short > SettingsView.size.height + 1 {
+                notes.append("창보다 \(Int(short - SettingsView.size.height))pt 길다")
+            }
+
+            print(String(format: "  %-16@ %5dpt  %@",
+                         probe.label, Int(short), notes.joined(separator: " · ")))
+        }
+
+        print(allPassed ? "통과" : "실패 — 목록에 스크롤이 안 걸린 탭이 있다")
+        return allPassed
+    }
+
+    private struct Probe {
+        let tab: SettingsTab
+        let isRunning: Bool
+        let label: String
+        /// 안에서 따로 스크롤하는 목록이 있는 탭인지.
+        let hasList: Bool
+
+        static let all: [Probe] = SettingsTab.allCases.map {
+            Probe(tab: $0, isRunning: true, label: $0.rawValue,
+                  hasList: $0 == .measure || $0 == .version)
+        } + [
+            // 측정 탭은 재는 중이냐에 따라 화면이 통째로 다르다. 둘 다 잰다.
+            Probe(tab: .measure, isRunning: false, label: "measure(멈춤)", hasList: true),
+        ]
+    }
+
+    /// 진짜 창에 얹고 잰다. **그리기까지 시켜야 한다** — 안 그리면 레이아웃이 끝까지 안 간다.
+    private static func height(of probe: Probe, records: Int) -> CGFloat {
+        let snapshot = UsageSnapshot(
+            planName: "Max",
+            fiveHour: UsageWindow(utilization: 34, resetsAt: Date().addingTimeInterval(3 * 3600)),
+            sevenDay: UsageWindow(utilization: 61, resetsAt: Date().addingTimeInterval(26 * 3600)),
+            fetchedAt: Date()
+        )
+        let view = SettingsView(
+            settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-csu.probe") ?? .standard),
+            store: UsageStore(preview: snapshot),
+            updates: UpdateChecker(preview: nil, lastCheckedAt: Date()),
+            meter: UsageMeter(preview: HUDPreviewRenderer.probeMeterState(
+                running: probe.isRunning, records: records
+            )),
+            actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
+            version: AppInfo.displayVersion,
+            initialTab: probe.tab
+        )
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: SettingsView.size),
+            styleMask: [.titled, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentViewController = NSHostingController(rootView: view)
+        window.setContentSize(SettingsView.size)
+        window.orderFront(nil)
+        for _ in 0..<8 {
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.contentView?.display()
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        let result = documentHeight(window.contentView)
+        window.orderOut(nil)
+        return result
+    }
+
+    /// 바깥 스크롤이 들고 있는 알맹이 높이. 이게 창보다 크면 세로 스크롤이 생긴다.
+    private static func documentHeight(_ root: NSView?) -> CGFloat {
+        guard let root else { return 0 }
+        if let scroll = root as? NSScrollView, let document = scroll.documentView {
+            return document.frame.height
+        }
+        for child in root.subviews {
+            let found = documentHeight(child)
+            if found > 0 { return found }
+        }
+        return 0
+    }
+}

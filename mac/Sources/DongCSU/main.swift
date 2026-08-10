@@ -223,6 +223,16 @@ if CommandLine.arguments.contains("--probe-meter") {
     exit(0)
 }
 
+// 설정 창이 탭마다 얼마나 길어지는지 잰다: dong-csu --probe-layout
+//
+// 렌더 통로는 스크롤을 벗겨서 그리므로 **스크롤이 걸렸는지는 이걸로만 알 수 있다.**
+// 목록이 길어져도 창이 안 늘어나는지 검사하고, 어긋나면 1로 끝난다.
+if CommandLine.arguments.contains("--probe-layout") {
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    exit(MainActor.assumeIsolated { ProbeLayout.run() } ? 0 : 1)
+}
+
 // 설정 창을 PNG로 그려서 확인. 탭 이름은 SettingsTab 의 rawValue 를 그대로 쓴다:
 //   dong-csu --render-settings out.png [light] [status|measure|display|icon|pet|account|version]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),

@@ -55,6 +55,13 @@ dong-csu --dump-owl ../shared/owl.json         # 윈도우판과 나눠 쓸 부�
 > `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은
 > `isPreviewRender`로 스크롤을 벗긴 형태를 따로 그린다.
 
+그래서 **스크롤이 제대로 걸렸는지는 그림으로 확인할 수 없다.** 그건 진짜 창에 얹어
+놓고 잰다. 변경 내역·측정 기록이 길어져도 창이 안 늘어나는지 검사한다.
+
+```bash
+dong-csu --probe-layout
+```
+
 ## 코드 서명 신원 고정 (선택)
 
 macOS가 앱에 걸어 두는 것들(권한·keychain 항목 등) 중 일부는 **코드 서명 신원**에

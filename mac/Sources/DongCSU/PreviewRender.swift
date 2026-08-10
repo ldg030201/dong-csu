@@ -238,6 +238,27 @@ enum HUDPreviewRenderer {
     /// 설정 창을 PNG로 렌더한다. 탭마다 화면이 달라서 어느 탭을 그릴지 받는다.
     /// `update`를 주면 그 버전이 나와 있는 것처럼 그린다(버전 탭 확인용).
     /// 측정 탭을 그릴 고정값. 재는 중이고, 세션 창을 한 번 넘긴 모습이다.
+    /// `--probe-layout` 이 쓰는 고정값. 재는 중인지와 기록 개수를 바꿔 가며 잰다.
+    static func probeMeterState(running: Bool, records: Int) -> UsageMeter.State {
+        var state = meterState()
+        if !running {
+            state.startedAt = nil
+            state.stoppedAt = nil
+        }
+        let sample = state.history
+        state.history = (0..<records).map { index in
+            let base = sample[index % sample.count]
+            // id 가 시작 시각이라 겹치면 ForEach 가 항목을 합쳐 버린다.
+            return UsageMeter.Record(
+                startedAt: base.startedAt.addingTimeInterval(-Double(index) * 3600),
+                stoppedAt: base.stoppedAt.addingTimeInterval(-Double(index) * 3600),
+                tracks: base.tracks, tokens: base.tokens,
+                tokensByModel: base.tokensByModel, samples: base.samples
+            )
+        }
+        return state
+    }
+
     private static func meterState() -> UsageMeter.State {
         var state = UsageMeter.State()
         state.startedAt = Date().addingTimeInterval(-(5 * 3600 + 42 * 60))
@@ -259,6 +280,21 @@ enum HUDPreviewRenderer {
             "Haiku 4.5": TokenTally(responses: 124, input: 324, output: 165_375,
                                     cacheCreation: 2_885_030, cacheRead: 52_846_994),
         ]
+        // 끝난 측정 몇 개. 기록 목록이 제 안에서 넘겨지는지 여기서 눈으로 본다.
+        state.history = (1...4).map { index in
+            let stoppedAt = Date().addingTimeInterval(-Double(index) * 26 * 3600)
+            return UsageMeter.Record(
+                startedAt: stoppedAt.addingTimeInterval(-Double(index) * 40 * 60),
+                stoppedAt: stoppedAt,
+                tracks: [.init(title: "세션 (5시간)", accumulated: Double(index) * 7)],
+                tokens: TokenTally(
+                    responses: index * 40, input: index * 900, output: index * 120_000,
+                    cacheCreation: index * 1_400_000, cacheRead: index * 32_000_000
+                ),
+                tokensByModel: [:],
+                samples: index * 3
+            )
+        }
         return state
     }
 

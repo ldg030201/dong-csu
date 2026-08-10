@@ -58,6 +58,7 @@ pkill -f DongCSU-Test; open build/DongCSU-Test.app
 ```bash
 dong-csu --render out.png 34 61 owl ok large      # HUD (사용률·아이콘·상태·배율)
 dong-csu --render-settings out.png changelog      # 설정 창의 특정 탭
+dong-csu --probe-layout                           # 설정 창이 탭마다 얼마나 길어지는지
 dong-csu --render-menubar out.png 16              # 메뉴바 아이콘
 dong-csu --render-icon out.png 1024               # 앱 아이콘
 dong-csu --render-owl out.png 96                  # 부엉이 애니메이션 전 프레임 (기분 + 걷기·달리기)
@@ -194,6 +195,29 @@ GIF가 실제 애니메이션과 어긋나면 안 된다. GIF는 손으로 만�
 
 `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은
 `isPreviewRender`로 스크롤을 벗긴 형태를 따로 그린다.
+
+### 설정 창 안에서 따로 넘겨보는 목록
+
+변경 내역·측정 기록처럼 **길이가 정해지지 않은 목록은 창을 늘리지 않고 제자리에서
+넘겨본다.** 그러려면 위쪽 어딘가의 높이가 못 박혀 있어야 한다 — 바깥 스크롤은 세로
+높이를 무한히 제안해서, 그 아래에서 `maxHeight: .infinity` 는 "남는 만큼"이 아니라
+"내용만큼"으로 풀린다. `tabBodyHeight` 가 창 높이에서 `chromeHeight` 를 빼서 그
+기준을 만든다.
+
+**목록이 시작하는 자리를 재서 맞추는 길은 안 된다.** `GeometryReader` + `preference`
+로 해 봤는데, 값이 레이아웃이 끝난 뒤에야 돌아와서 그 판에는 반영되지 않는다
+(`.background` 안에서 올린 preference 는 아예 부모로 올라오지도 않는다).
+
+**렌더 통로로는 이게 걸렸는지 알 수 없다** — 그쪽은 스크롤을 벗긴 모습을 그린다.
+진짜 창에 얹어 놓고 재는 통로를 따로 둔다.
+
+```bash
+dong-csu --probe-layout
+```
+
+기록을 4개 넣었을 때와 50개(최대치) 넣었을 때 높이가 같은지 검사하고, 다르면 1로
+끝난다. **재는 중인 측정 탭이 창보다 긴 것은 정상이다** — 살아 있는 값이 자리를
+많이 쓰는 것이지 목록 탓이 아니라서, 넘치는 만큼은 바깥 스크롤이 받는다.
 
 ## 번들 ID
 
