@@ -220,6 +220,12 @@ final class HUDController {
         panel.hasShadow = true
         panel.hidesOnDeactivate = false
         panel.isReleasedWhenClosed = false
+        // **이게 없으면 버튼 설명(`.help`)이 한 번도 안 뜬다.** 이 앱은 Dock 아이콘이 없어서
+        // 거의 늘 비활성 상태인데, macOS 는 비활성 앱의 툴팁을 기본으로 막는다.
+        // 창을 눌러도 앱이 활성화되지 않는(`nonactivatingPanel`) HUD 에서는 영영 안 뜬다.
+        panel.allowsToolTipsWhenApplicationIsInactive = true
+        // 툴팁 추적은 마우스 이동 이벤트를 타고 돈다.
+        panel.acceptsMouseMovedEvents = true
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
         panel.appearance = settings.appearance.nsAppearance
 

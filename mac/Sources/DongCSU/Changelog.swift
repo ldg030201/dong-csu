@@ -133,8 +133,8 @@ enum Changelog {
                 .improve("캐시 포함 여부를 고를 수 있도록 개선 "
                          + "(기본은 미포함, 기록 상세에서는 따로 켜서 봄)"),
             ]),
-            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
-                .improve("아래 버튼에 마우스를 올리면 무슨 버튼인지 뜨도록 개선"),
+            ChangelogGroup(title: "HUD", notes: [
+                .fix("버튼에 마우스를 올려도 설명이 뜨지 않던 문제 수정 (펫 모드 버튼에도 추가)"),
             ]),
             ChangelogGroup(title: "계정", tab: "account", notes: [
                 .new("플랜·한도 등급·토큰 만료 표시 추가"),
