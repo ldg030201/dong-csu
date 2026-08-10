@@ -299,7 +299,7 @@ struct SettingsView: View {
                 Divider()
                 measureControls(now: context.date)
 
-                if !meter.state.history.isEmpty {
+                if !pastRecords.isEmpty {
                     Divider()
                     measureHistory
                 }
@@ -323,7 +323,11 @@ struct SettingsView: View {
                 .font(.system(size: 21, weight: .bold, design: .rounded))
                 .monospacedDigit()
 
-            if meter.isRunning {
+            if meter.isPaused {
+                Label("일시정지", systemImage: "pause.circle")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.orange)
+            } else if meter.isRunning {
                 Label("재는 중", systemImage: "record.circle")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.red)
@@ -419,13 +423,15 @@ struct SettingsView: View {
     private func measureControls(now: Date) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                if meter.isRunning {
+                if meter.isPaused {
+                    Button("계속", action: meter.resume)
+                    Button("중지", action: meter.stop)
+                } else if meter.isRunning {
+                    Button("일시정지", action: meter.pause)
                     Button("중지", action: meter.stop)
                 } else {
                     Button(meter.hasRecord ? "다시 시작" : "시작", action: meter.start)
                 }
-                Button("초기화", action: meter.reset)
-                    .disabled(!meter.hasRecord)
                 Spacer(minLength: 0)
                 if meter.hasRecord {
                     Text(measureSampleText(now: now))
@@ -435,7 +441,8 @@ struct SettingsView: View {
             }
 
             Text("한도는 조회할 때(\(settings.pollInterval.title)) 갱신된다. "
-                 + "서버가 정수 %로 줘서 1%p 아래는 안 잡힌다.")
+                 + "서버가 정수 %로 줘서 1%p 아래는 안 잡힌다. "
+                 + "중지하면 아래 기록에 남는다.")
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -456,11 +463,19 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            ForEach(meter.state.history) { record in
+            ForEach(pastRecords) { record in
                 Button { selectedRecord = record } label: { measureHistoryRow(record) }
                     .buttonStyle(.plain)
             }
         }
+    }
+
+    /// 목록에 늘어놓을 지난 측정.
+    ///
+    /// **위에 펼쳐 놓은 것은 뺀다.** 중지하면 그 측정이 기록에 남는데, 같은 것을
+    /// 위아래에 두 번 보여주면 두 번 잰 것처럼 읽힌다.
+    private var pastRecords: [UsageMeter.Record] {
+        meter.state.history.filter { $0.startedAt != meter.state.startedAt }
     }
 
     private func measureHistoryRow(_ record: UsageMeter.Record) -> some View {

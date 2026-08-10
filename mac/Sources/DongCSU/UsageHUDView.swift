@@ -18,8 +18,9 @@ struct UsageHUDView: View {
     var palette = HUDPalette(isDark: true)
     /// 설정 창 열기. HUDController가 꽂아준다.
     var onOpenSettings: (() -> Void)?
-    /// 측정을 시작하거나 멈춘다. HUD·펫 양쪽 버튼이 같은 것을 부른다.
-    var onToggleMeasure: (() -> Void)?
+    /// 측정 화면을 연다. **여기서 바로 재기 시작하지 않는다** — 손이 스치면 재던 것이
+    /// 끊기고, 무엇이 시작됐는지도 화면에 안 보인다.
+    var onOpenMeasure: (() -> Void)?
     /// 지금 재는 중인지. 버튼 모양이 이걸 따른다.
     var isMeasuring = false
     /// 접기/펼치기 토글.
@@ -347,7 +348,7 @@ struct UsageHUDView: View {
                 scale: scale,
                 tint: isMeasuring ? .red : nil
             ) {
-                onToggleMeasure?()
+                onOpenMeasure?()
             }
             PetCircleButton(systemName: "gearshape.fill", palette: palette, scale: scale) {
                 onOpenSettings?()
@@ -647,7 +648,7 @@ struct UsageHUDView: View {
     /// 측정 시작·중지. 재는 동안에는 빨갛게 채워 둔다.
     private var measureButton: some View {
         Button {
-            onToggleMeasure?()
+            onOpenMeasure?()
         } label: {
             controlLabel(
                 systemName: isMeasuring ? "stopwatch.fill" : "stopwatch",
@@ -657,7 +658,7 @@ struct UsageHUDView: View {
         }
         .buttonStyle(.plain)
         .onHover { isHoveringMeasure = $0 }
-        .help(isMeasuring ? "측정 중지" : "측정 시작")
+        .help(isMeasuring ? "측정 중 — 측정 화면 열기" : "측정")
     }
 
     private var measureTint: Color {

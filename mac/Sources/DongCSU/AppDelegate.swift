@@ -51,8 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 측정이 도는 동안 조회 결과를 기록에 붙인다.
         store.onSnapshot = { [weak meter] snapshot in meter?.record(snapshot) }
-        // 시작을 누르면 다음 폴링을 기다리지 않고 곧바로 기준점을 잡는다.
-        meter.onNeedsSample = { [weak store] in store?.refresh(force: true) }
+        // 시작·계속·중지를 누르면 다음 폴링을 기다리지 않고 곧바로 기준점을 잡는다.
+        // **force 로 쏘지 않는다** — 429 백오프를 무시하게 되어 요청 제한을 더 부른다.
+        meter.onNeedsSample = { [weak store] in store?.refresh() }
 
         store.start()
 

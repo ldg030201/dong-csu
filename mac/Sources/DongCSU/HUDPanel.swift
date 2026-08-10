@@ -1034,7 +1034,7 @@ final class HUDController {
             petRingDisplay: settings.petRingDisplay,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
-            onToggleMeasure: { [weak self] in self?.handleToggleMeasure() },
+            onOpenMeasure: { [weak self] in self?.handleOpenMeasure() },
             isMeasuring: meter.isRunning,
             onToggleCollapse: { [weak self] in self?.handleToggleCollapse() },
             expandSide: settings.expandSide,
@@ -1059,12 +1059,13 @@ final class HUDController {
 
     @objc private func handleQuit() { NSApp.terminate(nil) }
 
-    /// HUD·펫의 측정 버튼. 재고 있으면 멈추고, 아니면 새로 시작한다.
+    /// HUD·펫의 측정 버튼. **측정 화면을 열기만 한다.**
     ///
-    /// 새로 시작해도 **직전 측정은 기록에 남는다**(중지할 때 남겨 둔다). 그래서 버튼
-    /// 하나로 껐다 켜도 잃는 것이 없다.
-    private func handleToggleMeasure() {
-        if meter.isRunning { meter.stop() } else { meter.start() }
+    /// 여기서 바로 재기 시작하면 손이 스칠 때마다 재던 것이 끊기고, 무엇이 시작됐는지도
+    /// 화면에 안 보인다. 시작·일시정지·중지는 보이는 자리에서 누르게 한다.
+    private func handleOpenMeasure() {
+        settings.settingsTab = .measure
+        onOpenSettings?()
     }
 
     /// 재는 중인지가 바뀌면 버튼 모양이 달라진다. **그때만** 다시 그린다 —

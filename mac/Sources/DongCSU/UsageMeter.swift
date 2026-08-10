@@ -58,6 +58,10 @@ final class UsageMeter: ObservableObject {
         var seenIDs: Set<String> = []
         var samples = 0
         var lastSampledAt: Date?
+        /// 일시정지한 시각. nil이면 돌고 있다.
+        var pausedAt: Date?
+        /// 여태 멈춰 있던 시간의 합. 잰 시간에서 뺀다.
+        var pausedTotal: TimeInterval = 0
         /// 끝난 측정들. 최신이 앞이다.
         var history: [Record] = []
     }
@@ -70,13 +74,20 @@ final class UsageMeter: ObservableObject {
     @Published private(set) var isScanning = false
 
     var isRunning: Bool { state.startedAt != nil && state.stoppedAt == nil }
+    var isPaused: Bool { isRunning && state.pausedAt != nil }
+    /// 실제로 세고 있는 중. 일시정지 동안에는 표본도 토큰도 받지 않는다.
+    var isCounting: Bool { isRunning && state.pausedAt == nil }
     var hasRecord: Bool { state.startedAt != nil }
     var tracksInOrder: [LimitTrack] { state.order.compactMap { state.tracks[$0] } }
 
     /// 잰 시간. 재는 중이면 지금까지, 멈췄으면 멈춘 시점까지.
+    /// **멈춰 있던 시간은 뺀다.** 안 그러면 잠깐 세우고 밥 먹고 온 시간이 측정에 들어간다.
     func elapsed(now: Date = Date()) -> TimeInterval? {
         guard let startedAt = state.startedAt else { return nil }
-        return (state.stoppedAt ?? now).timeIntervalSince(startedAt)
+        let end = state.stoppedAt ?? now
+        var paused = state.pausedTotal
+        if let pausedAt = state.pausedAt { paused += end.timeIntervalSince(pausedAt) }
+        return max(0, end.timeIntervalSince(startedAt) - paused)
     }
 
     /// 지금 바로 한 번 조회해 달라고 부탁한다.
@@ -114,8 +125,12 @@ final class UsageMeter: ObservableObject {
 
     func start() {
         acceptsFinalSample = false
+        needsRebaseline = false
         var fresh = State()
         fresh.startedAt = Date()
+        // **지난 기록은 그대로 가져간다.** 새로 재기 시작했다고 지난 것을 버리면,
+        // 다시 시작 한 번에 여태 쌓은 기록이 통째로 날아간다.
+        fresh.history = state.history
         // **지금 파일 끝을 기준으로 잡는다.** 0부터 읽으면 며칠 치 옛 기록을 훑게 된다.
         fresh.offsets = ClaudeCodeUsage.endOffsets()
         state = fresh
@@ -125,8 +140,49 @@ final class UsageMeter: ObservableObject {
         scanTokens()
         // **기준점은 지금 값이어야 한다.** 마지막 조회는 10분 전 것일 수 있고, 그걸
         // 기준으로 삼으면 시작을 누르기 전에 쓴 몫이 이번 측정에 들어간다.
+        requestSample()
+    }
+
+    /// 잠깐 세운다. 세워 둔 동안 쓴 것은 이번 측정에 안 들어간다.
+    func pause() {
+        guard isCounting else { return }
+        // 세우기 직전까지 쓴 토큰은 담는다.
+        scanTokens()
+        state.pausedAt = Date()
+        stopScanTimer()
+        save()
+    }
+
+    /// 다시 센다. **기준을 지금으로 새로 잡는다** — 세워 둔 동안의 소모는 빼야 한다.
+    func resume() {
+        guard let pausedAt = state.pausedAt else { return }
+        state.pausedTotal += Date().timeIntervalSince(pausedAt)
+        state.pausedAt = nil
+        state.offsets = ClaudeCodeUsage.endOffsets()
+        needsRebaseline = true
+        save()
+
+        startScanTimer()
+        requestSample()
+    }
+
+    /// 다음 표본은 더하지 말고 기준만 옮긴다. 일시정지에서 돌아올 때 쓴다.
+    private var needsRebaseline = false
+
+    /// 조회를 부탁한다. **너무 잦으면 요청 제한(429)에 걸린다.**
+    ///
+    /// 시작·중지·계속을 연달아 누르면 그때마다 조회가 나가는데, 사용량 API는 창이
+    /// 좁아서 금방 막힌다. 최근에 부탁했으면 건너뛴다 — 어차피 폴링이 곧 가져온다.
+    private func requestSample() {
+        if let last = lastSampleRequestAt, Date().timeIntervalSince(last) < Self.minSampleInterval {
+            return
+        }
+        lastSampleRequestAt = Date()
         onNeedsSample?()
     }
+
+    private var lastSampleRequestAt: Date?
+    private static let minSampleInterval: TimeInterval = 30
 
     func stop() {
         guard isRunning else { return }
@@ -135,8 +191,12 @@ final class UsageMeter: ObservableObject {
         // 시작 때 하나뿐이라 소모량이 늘 0%p가 된다. 시작과 중지에서 각각 한 번씩
         // 재면 아무리 짧게 재도 두 점 사이의 차이가 남는다.
         acceptsFinalSample = true
-        onNeedsSample?()
+        requestSample()
 
+        if let pausedAt = state.pausedAt {
+            state.pausedTotal += Date().timeIntervalSince(pausedAt)
+            state.pausedAt = nil
+        }
         state.stoppedAt = Date()
         stopScanTimer()
         archiveCurrent()
@@ -190,17 +250,6 @@ final class UsageMeter: ObservableObject {
     /// 그때는 이미 `stoppedAt` 이 찍혀 있다.
     private var acceptsFinalSample = false
 
-    /// 재던 것을 지운다. **목록은 남긴다** — 지난 기록까지 날아가면 되돌릴 길이 없다.
-    /// 목록을 비우려면 `clearHistory()`.
-    func reset() {
-        acceptsFinalSample = false
-        stopScanTimer()
-        var fresh = State()
-        fresh.history = state.history
-        state = fresh
-        save()
-    }
-
     // MARK: - 한도
 
     /// 조회가 성공할 때마다 부른다.
@@ -209,8 +258,8 @@ final class UsageMeter: ObservableObject {
     /// 그때 값이 0으로 떨어지므로 그냥 빼면 기록이 날아간다. 리셋을 만나면 새 창에서
     /// 쓴 몫을 그대로 더한다.
     func record(_ snapshot: UsageSnapshot) {
-        guard isRunning || acceptsFinalSample else { return }
-        if !isRunning { acceptsFinalSample = false }
+        guard isCounting || acceptsFinalSample else { return }
+        if !isCounting { acceptsFinalSample = false }
 
         for limit in Self.limits(of: snapshot) {
             guard let track = state.tracks[limit.id] else {
@@ -225,8 +274,17 @@ final class UsageMeter: ObservableObject {
                 continue
             }
 
-            state.tracks[limit.id] = Self.advance(track, with: limit)
+            if needsRebaseline {
+                // 세워 둔 동안 늘어난 몫은 이번 측정이 쓴 것이 아니다. 기준만 옮긴다.
+                var moved = track
+                moved.lastPercent = limit.percent
+                moved.lastResetsAt = limit.resetsAt
+                state.tracks[limit.id] = moved
+            } else {
+                state.tracks[limit.id] = Self.advance(track, with: limit)
+            }
         }
+        needsRebaseline = false
 
         state.samples += 1
         state.lastSampledAt = snapshot.fetchedAt
@@ -287,6 +345,8 @@ final class UsageMeter: ObservableObject {
 
     func scanTokens() {
         guard let since = state.startedAt, !isScanning else { return }
+        // 세워 둔 동안 쓴 것은 세지 않는다. 다만 중지 직후의 마지막 훑기는 통과시킨다.
+        guard isCounting || !isRunning else { return }
         guard ClaudeCodeUsage.isAvailable else { return }
 
         isScanning = true
