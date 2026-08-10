@@ -178,8 +178,7 @@ actor CredentialStore {
 
         switch ClaudeKeychain.write(token, to: origin) {
         case .ok: KeychainWriteBack.allowed()
-        case .denied: KeychainWriteBack.denied()
-        case .failed: break
+        case .failed: KeychainWriteBack.denied()
         }
     }
 }
@@ -235,21 +234,28 @@ enum ClaudeKeychain {
         return nil
     }
 
-    /// 회전한 토큰을 원래 자리에 되돌려 쓴다.
-    ///
-    /// **회전했을 때만 부른다.** 서버가 리프레시 토큰을 바꿔 주면 키체인에 남은 옛 값은
-    /// 그 순간 무효가 되고, 그대로 두면 Claude Code가 다음에 갱신하려다 로그인이 풀린다.
-    /// 회전하지 않았다면 키체인 값이 아직 유효하므로 남의 저장소를 건드릴 이유가 없다.
-    ///
-    /// 읽기와 달리 `/usr/bin/security`를 쓰지 않는다 — 값을 인자로 넘겨야 해서
-    /// **토큰이 프로세스 목록에 그대로 드러난다.**
     enum WriteResult {
         case ok
-        /// 사용자가 허락하지 않았다. 다시 물어도 같은 답일 가능성이 높다.
-        case denied
         case failed
     }
 
+    /// 회전한 토큰을 원래 자리에 되돌려 쓴다.
+    ///
+    /// **회전했을 때만 부른다.** 서버가 리프레시 토큰을 바꿔 주면 키체인에 남은 옛 값은
+    /// 그 순간 무효가 되고(써 본 토큰은 즉시 죽는다), 그대로 두면 Claude Code가 다음에
+    /// 갱신하려다 로그인이 풀린다. 회전하지 않았다면 키체인 값이 아직 유효하므로
+    /// 남의 저장소를 건드릴 이유가 없다.
+    ///
+    /// **읽기와 같은 `/usr/bin/security`를 쓴다.** 이유가 두 가지다.
+    ///
+    /// 하나, 키체인 허락은 **코드 서명 신원**에 걸리는데 이 앱은 ad-hoc 서명이라 신원이
+    /// 바이너리 해시다. 우리가 직접 `SecItemUpdate`를 부르면 **버전을 올릴 때마다 해시가
+    /// 바뀌어 사용자에게 다시 묻는다.** `security`는 Apple이 서명해서 신원이 고정이고,
+    /// 읽기로 이미 허용돼 있어서 아무것도 묻지 않는다.
+    ///
+    /// 둘, 명령을 **표준 입력으로** 준다(`security -i`). 인자로 넘기면 토큰이 프로세스
+    /// 목록에 드러나고, `-w`만 주고 값을 표준 입력에 흘리면 **128바이트에서 잘린다**
+    /// (항목이 3KB를 넘는다). 둘 다 실제로 재 보고 버린 길이다.
     @discardableResult
     static func write(_ token: RefreshedToken, to item: Item) -> WriteResult {
         guard let data = item.raw.data(using: .utf8),
@@ -265,31 +271,59 @@ enum ClaudeKeychain {
         }
         root["claudeAiOauth"] = oauth
 
-        guard let updated = try? JSONSerialization.data(withJSONObject: root) else { return .failed }
+        // 읽어 둔 원문에 얹어서 통째로 다시 쓴다. `mcpOAuth`처럼 우리가 모르는 항목이
+        // 같이 들어 있어서, 새로 만들면 그것들이 지워진다.
+        guard let updated = try? JSONSerialization.data(withJSONObject: root),
+              let json = String(data: updated, encoding: .utf8)
+        else { return .failed }
 
-        // **account 를 반드시 붙인다.** `SecItemUpdate` 는 조건에 맞는 항목을 **전부** 고친다.
-        // 서비스 이름만 주면 같은 이름을 쓰는 다른 항목까지 우리 토큰으로 덮어쓴다.
+        // **account를 반드시 붙인다.** 서비스 이름만 주면 같은 이름을 쓰는 다른 항목까지
+        // 우리 토큰으로 덮어쓴다.
         guard let account = item.account ?? soleAccount(forService: item.service) else { return .failed }
 
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: item.service,
-            kSecAttrAccount as String: account,
-        ]
-        let attributes: [String: Any] = [kSecValueData as String: updated]
-
-        switch SecItemUpdate(query as CFDictionary, attributes as CFDictionary) {
-        case errSecSuccess: return .ok
-        case errSecUserCanceled, errSecAuthFailed, errSecInteractionNotAllowed: return .denied
-        default: return .failed
-        }
+        let command = "add-generic-password -U -s \(quoted(item.service)) "
+            + "-a \(quoted(account)) -w \(quoted(json))\n"
+        return runSecurityInteractive(command) ? .ok : .failed
     }
 
-    /// 이 서비스를 쓰는 항목이 **딱 하나일 때만** 그 account 를 알려 준다.
+    /// `security -i`의 한 줄 토큰. 역슬래시와 큰따옴표만 막으면 된다.
+    private static func quoted(_ value: String) -> String {
+        let escaped = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        return "\"\(escaped)\""
+    }
+
+    /// 명령을 표준 입력으로 흘려 넣는다. **인자에는 아무 값도 싣지 않는다.**
+    private static func runSecurityInteractive(_ command: String) -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = ["-i"]
+
+        let input = Pipe()
+        let output = Pipe()
+        let errors = Pipe()
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = errors
+
+        do { try process.run() } catch { return false }
+
+        input.fileHandleForWriting.write(Data(command.utf8))
+        try? input.fileHandleForWriting.close()
+        // 파이프가 차서 막히지 않게 먼저 비운다. 그다음에 끝나기를 기다린다.
+        output.fileHandleForReading.readDataToEndOfFile()
+        errors.fileHandleForReading.readDataToEndOfFile()
+        process.waitUntilExit()
+
+        return process.terminationStatus == 0
+    }
+
+    /// 이 서비스를 쓰는 항목이 **딱 하나일 때만** 그 account를 알려 준다.
     ///
-    /// 값이 아니라 속성만 물어보므로 잠금 해제나 허락을 묻지 않는다. 여럿이면 어느 것을
-    /// 고쳐야 하는지 알 수 없으니 아무것도 하지 않는다 — 남의 항목을 덮어쓰느니 갱신한
-    /// 토큰을 우리 사본에만 두는 편이 낫다.
+    /// 값이 아니라 속성만 물어보므로 허락을 묻지 않는다. 여럿이면 어느 것을 고쳐야
+    /// 하는지 알 수 없으니 아무것도 하지 않는다 — 남의 항목을 덮어쓰느니 갱신한 토큰을
+    /// 우리 사본에만 두는 편이 낫다.
     private static func soleAccount(forService service: String) -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,

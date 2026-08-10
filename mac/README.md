@@ -98,7 +98,9 @@ brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust 
 > [!NOTE]
 > **Claude Code 없이는 동작하지 않는다.** 이 앱은 Claude Code가 keychain에 저장해 둔 OAuth
 > 토큰으로 사용량을 읽는다. 토큰을 만드는 주체가 Claude Code이기 때문이다.
-> 첫 실행 때 keychain 접근을 허용할지 한 번 묻는다.
+> **keychain 접근을 처음 한 번만 묻는다** — 읽기도 갱신도 Apple이 서명한
+> `/usr/bin/security`를 거쳐서, 버전을 올려도 다시 묻지 않는다.
+> 왜 갱신까지 필요한지는 [사용량과 토큰](docs/privacy.md#왜-keychain에-되쓰나).
 
 업데이트는 앱 안의 **업데이트** 버튼으로 하거나:
 
@@ -150,7 +152,8 @@ git -C "$(brew --repository ldg030201/dong-csu)" pull -q || brew update; brew up
 
 ## 🔒 프라이버시
 
-- 🔑 토큰은 **Authorization 헤더로만** 쓰이고 디스크에 쓰거나 로그에 남기지 않는다
+- 🔑 토큰은 **Authorization 헤더로만** 쓰이고 **로그에 남기지 않는다.** 갱신해서 받은
+  것만 본인만 읽을 수 있는 파일(`-rw-------`)에 두고, 원본은 keychain 그대로다
 - 🌐 Anthropic 사용량 API와 **업데이트 확인용 GitHub** 외에는 접속하지 않는다
 - 🚫 통계·추적 없음. 외부 Swift 패키지 **의존성 0개**
 - 🖱️ 손쉬운 사용·화면 녹화 같은 **권한을 요청하지 않는다.** 펫이 타이핑 중에
