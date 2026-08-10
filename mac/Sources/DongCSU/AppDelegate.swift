@@ -12,8 +12,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
     private var cancellables: Set<AnyCancellable> = []
 
+    /// 버튼 설명이 뜨기까지 기다리는 시간을 줄인다.
+    ///
+    /// AppKit 기본값은 **3초에 가깝다.** 설정 창처럼 글자가 함께 있는 화면에서는 그래도
+    /// 되지만, HUD·펫은 그림뿐이라 설명이 안 뜨면 눌러 보는 수밖에 없다. 3초를 기다리느니
+    /// 그냥 눌러 보게 되므로 있으나 마나 한 설명이 된다.
+    ///
+    /// **덮어쓰지 않고 등록만 한다.** 사용자가 이 값을 직접 정해 뒀다면 그쪽이 이긴다.
+    private static func speedUpToolTips() {
+        UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 1000])
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)  // Dock 아이콘 없음
+        Self.speedUpToolTips()
 
         let hud = HUDController(store: store, settings: settings, updates: updates, meter: meter)
         self.hud = hud
