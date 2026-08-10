@@ -28,14 +28,25 @@ fi
 # v2.0.0 까지는 접두어가 없었다. 그 태그들은 그대로 둔다.
 TAG="mac-v$VERSION"
 
+# 뒷정리는 **어떻게 끝나든** 돌아야 한다.
+#
+# ERR 만 걸어 두면 명령이 실패했을 때만 돌고, 우리가 직접 부르는 `exit 1` 이나
+# 빌드 도중의 Ctrl+C 에서는 안 돈다. 그러면 버전만 올라간 채 작업 트리가 지저분하게
+# 남고, 다음 릴리스가 "커밋되지 않은 변경이 있다"로 막히면서 이유는 안 보인다.
+BUMPED=0
 COMMITTED=0
-restore_version_files() {
-  if [[ "$COMMITTED" == "0" ]]; then
+TMP=""
+cleanup() {
+  if [[ "$BUMPED" == "1" && "$COMMITTED" == "0" ]]; then
     git checkout -- Resources/Info.plist Sources/DongCSU/main.swift 2>/dev/null || true
     echo "→ 버전 변경을 되돌렸다." >&2
   fi
+  if [[ -n "$TMP" ]]; then rm -rf "$TMP"; fi
 }
-trap restore_version_files ERR
+trap cleanup EXIT
+# 신호로 죽으면 EXIT 트랩이 안 도는 경우가 있다. 직접 빠져나가 트랩을 태운다.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 # ── 1. 사전 점검 ────────────────────────────────────────────────
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
@@ -72,6 +83,7 @@ echo "▸ $TAG 준비"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
 sed -i '' "s/^let dongCSUVersion = \".*\"$/let dongCSUVersion = \"$VERSION\"/" \
   Sources/DongCSU/main.swift
+BUMPED=1
 
 ./build.sh >/dev/null
 BUILT="$("$BIN" --version | awk '{print $2}')"
@@ -103,7 +115,6 @@ REPO_URL="${REPO_URL/git@github.com:/https://github.com/}"
 TARBALL="$REPO_URL/archive/refs/tags/$TAG.tar.gz"
 
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 
 SHA=""
 for attempt in 1 2 3 4 5; do
