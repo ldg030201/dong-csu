@@ -38,7 +38,8 @@ COMMITTED=0
 TMP=""
 cleanup() {
   if [[ "$BUMPED" == "1" && "$COMMITTED" == "0" ]]; then
-    git checkout -- Resources/Info.plist Sources/DongCSU/main.swift 2>/dev/null || true
+    git checkout -- Resources/Info.plist Sources/DongCSU/main.swift \
+      "$REPO_ROOT/README.md" 2>/dev/null || true
     echo "→ 버전 변경을 되돌렸다." >&2
   fi
   if [[ -n "$TMP" ]]; then rm -rf "$TMP"; fi
@@ -83,6 +84,10 @@ echo "▸ $TAG 준비"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" Resources/Info.plist
 sed -i '' "s/^let dongCSUVersion = \".*\"$/let dongCSUVersion = \"$VERSION\"/" \
   Sources/DongCSU/main.swift
+# 뿌리 README 의 "지금 버전" 줄. 배지가 아니라 글자로 적혀 있어서 여기서 안 올리면 낡는다.
+# 맥 칸(첫 번째 숫자)만 바꾼다 — 윈도우 번호는 윈도우 릴리스가 올린다.
+# `\|` 는 BSD sed 가 빈 식으로 읽는다. 표 구분자는 `[|]` 로 적고 s 구분자는 `#` 을 쓴다.
+sed -i '' -E "s#^([|] 지금 버전 [|] )[0-9.]+#\1$VERSION#" "$REPO_ROOT/README.md"
 BUMPED=1
 
 ./build.sh >/dev/null
@@ -98,7 +103,8 @@ fi
 echo "▸ 빌드 확인 ($BUILT)"
 
 # ── 3. 커밋 · 태그 · 푸시 ───────────────────────────────────────
-git add Resources/Info.plist Sources/DongCSU/main.swift docs/changelog.json "$REPO_ROOT/docs/changelog.json"
+git add Resources/Info.plist Sources/DongCSU/main.swift docs/changelog.json \
+  "$REPO_ROOT/docs/changelog.json" "$REPO_ROOT/README.md"
 git commit -q -m "🔖 $TAG"
 COMMITTED=1
 git tag -a "$TAG" -m "$TAG"
