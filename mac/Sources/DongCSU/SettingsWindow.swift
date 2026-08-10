@@ -1016,6 +1016,17 @@ struct SettingsView: View {
         }
     }
 
+    /// 묶음 앞에 붙는 아이콘.
+    ///
+    /// 설정 탭 이야기면 **그 탭에 실제로 붙어 있는 아이콘**을 그대로 쓴다. 여기 따로
+    /// 적어 두면 탭 아이콘을 바꿨을 때 변경 내역만 옛 그림으로 남는다.
+    private static func groupSymbol(_ group: ChangelogGroup) -> String {
+        group.tab.flatMap(SettingsTab.init(rawValue:))?.symbol ?? otherGroupSymbol
+    }
+
+    /// 탭에 없는 묶음(마스코트·HUD·설치 같은 것)이 함께 쓰는 아이콘.
+    private static let otherGroupSymbol = "wrench.and.screwdriver"
+
     /// 기능 묶음 하나. 대분류를 달고, 딸린 줄들을 세로줄로 묶어 준다.
     ///
     /// **들여쓰기만으로는 어디까지가 그 묶음인지 안 보인다.** 딱지가 줄마다 붙어 있어서
@@ -1023,6 +1034,11 @@ struct SettingsView: View {
     private func changelogGroup(_ group: ChangelogGroup) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
+                Image(systemName: Self.groupSymbol(group))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                    // 아이콘마다 폭이 달라서, 맞춰 두지 않으면 제목 시작점이 줄마다 어긋난다.
+                    .frame(width: 15)
                 Text(group.title)
                     .font(.system(size: 11.5, weight: .semibold))
                 // 묶음 자체가 이번에 생긴 기능이면 제목 옆에 붙는다. 항목마다 신규가

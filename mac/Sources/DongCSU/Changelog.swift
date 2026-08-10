@@ -1,9 +1,10 @@
 import Foundation
 
-/// 버전별 변경 내역.
-///
-/// 설정 창의 "버전" 탭이 이걸 그대로 보여준다. 쓰는 방법은 CLAUDE.md 참고 —
-/// 기능 단위로 한 줄씩, "추가 / 수정 / 변경" 처럼 명사형으로 끝맺는다.
+// 버전별 변경 내역.
+//
+// 설정 창의 "버전" 탭이 이걸 그대로 보여준다. 쓰는 방법은 CLAUDE.md 참고 —
+// 기능 단위로 묶고, 한 줄씩 명사형으로 끝맺는다.
+
 /// 변경 한 줄이 어느 갈래인지. 항목 앞에 딱지로 붙는다.
 enum ChangeKind: String, Codable, Equatable, CaseIterable {
     case new
@@ -41,6 +42,14 @@ struct ChangelogNote: Codable, Equatable {
 /// 쓰는 사람은 자기가 쓰는 기능만 보면 되므로 그 단위로 묶는다.
 struct ChangelogGroup: Codable, Equatable {
     let title: String
+    /// 이 묶음이 어느 설정 탭 이야기인지(`SettingsTab` 의 rawValue).
+    ///
+    /// 제목 앞에 **그 탭에 실제로 붙어 있는 아이콘**이 그대로 나온다. 여기에 아이콘
+    /// 이름을 직접 적지 않는 이유가 그거다 — 탭 아이콘을 바꾸면 여기도 같이 바뀌어야 한다.
+    ///
+    /// **메뉴가 아닌 것은 nil.** 마스코트·HUD·설치처럼 탭에 없는 이야기는 공통 아이콘
+    /// 하나로 묶는다.
+    var tab: String?
     /// 이 묶음 자체가 이번에 새로 생긴 기능인지. 제목 오른쪽에 "신규"가 붙는다.
     var isNew: Bool = false
     let notes: [ChangelogNote]
@@ -116,7 +125,7 @@ enum Changelog {
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
         ChangelogEntry(version: "2.3.0", date: nil, groups: [
-            ChangelogGroup(title: "측정", isNew: true, notes: [
+            ChangelogGroup(title: "측정", tab: "measure", isNew: true, notes: [
                 .new("시작·중지 사이에 쓴 한도 %p와 토큰 수 측정 (설정 창 측정 탭)"),
                 .new("모델별 한도·토큰 표시"),
                 .new("토큰 합계와 캐시 제외 합계 표시"),
@@ -128,20 +137,20 @@ enum Changelog {
                 .change("주간 한도를 다 쓰면 완전히 멈추도록 변경 (걷기·커서 피하기·끌림 반응 정지)"),
                 .change("주간 한도를 다 쓰면 주간 링·점도 회색으로 표시하도록 변경"),
             ]),
-            ChangelogGroup(title: "펫 모드", notes: [
+            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
                 .fix("커서 피하기 판정이 마스코트보다 아래를 보던 문제 수정"),
                 .fix("막 들어갔을 때 커서가 마스코트 위에 있어도 링이 바로 뜨지 않던 문제 수정"),
                 .fix("설정·새로고침 버튼에 마우스를 올려도 표시가 바뀌지 않던 문제 수정"),
             ]),
-            ChangelogGroup(title: "토큰 자동 갱신", isNew: true, notes: [
+            ChangelogGroup(title: "토큰 자동 갱신", tab: "account", isNew: true, notes: [
                 .new("만료된 토큰을 앱이 스스로 갱신 (다섯 시간마다 뜨던 재로그인 안내가 없어짐)"),
                 .new("갱신한 토큰을 keychain에 되돌려 쓰기 (Claude Code 로그인이 같이 풀리지 않음)"),
             ]),
-            ChangelogGroup(title: "변경 내역", notes: [
+            ChangelogGroup(title: "변경 내역", tab: "version", notes: [
                 .improve("기능별로 묶고 항목마다 갈래를 붙여 보여주도록 개선"),
                 .improve("목록이 길어져도 창이 늘어나지 않고 안에서 넘겨보도록 개선"),
             ]),
-            ChangelogGroup(title: "아이콘", notes: [
+            ChangelogGroup(title: "아이콘", tab: "icon", notes: [
                 .fix("Claude 앱을 나중에 설치하면 다시 띄우기 전까지 못 찾던 문제 수정"),
             ]),
         ]),
