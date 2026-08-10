@@ -378,21 +378,27 @@ struct SettingsView: View {
                 measureRow("캐시 생성", "\(TokenFormat.short(tokens.cacheCreation)) 토큰")
                 measureRow("캐시 읽기", "\(TokenFormat.short(tokens.cacheRead)) 토큰")
 
+                Divider().padding(.vertical, 2)
+                // **네 값을 그냥 더한 것이다.** 단가가 서로 달라서 이 숫자가 곧 요금이나
+                // 한도 소모량은 아니다 — 그건 위의 %p 가 답한다. 여기서는 "얼마나
+                // 오갔나"를 한 줄로 알고 싶을 때 쓴다.
+                measureRow("합계", "\(TokenFormat.short(tokens.total)) 토큰")
+
                 if meter.state.tokensByModel.count > 1 {
                     Divider().padding(.vertical, 2)
-                    measureLabel("모델별", note: "출력 토큰")
+                    measureLabel("모델별", note: "합계")
                     ForEach(modelBreakdown, id: \.0) { model, tally in
-                        measureRow(model, "\(TokenFormat.short(tally.output)) 토큰", emphasised: false)
+                        measureRow(model, "\(TokenFormat.short(tally.total)) 토큰", emphasised: false)
                     }
                 }
             }
         }
     }
 
-    /// 모델별 출력 토큰. 많이 쓴 것부터.
+    /// 모델별 합계. 많이 쓴 것부터.
     private var modelBreakdown: [(String, TokenTally)] {
         meter.state.tokensByModel
-            .sorted { $0.value.output > $1.value.output }
+            .sorted { $0.value.total > $1.value.total }
             .map { ($0.key, $0.value) }
     }
 
