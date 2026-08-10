@@ -316,7 +316,9 @@ struct UsageHUDView: View {
             width: Self.size(mode: .pet, scale: scale).width,
             height: Self.size(mode: .pet, scale: scale).height
         )
-        .help(store.summaryText)
+        // **여기에 사용량 요약을 붙이지 않는다.** 카드 전체를 덮는 설명이라 버튼 위에
+        // 올려도 같이 떠서 버튼 설명과 겹친다. 마우스를 올리면 링이 떠오르므로
+        // 사용량은 이미 눈에 보인다 — 같은 말을 글로 한 번 더 할 이유가 없다.
     }
 
     private var petRingArea: some View {
