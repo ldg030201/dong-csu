@@ -77,7 +77,6 @@ final class UsageMeter: ObservableObject {
     var isPaused: Bool { isRunning && state.pausedAt != nil }
     /// 실제로 세고 있는 중. 일시정지 동안에는 표본도 토큰도 받지 않는다.
     var isCounting: Bool { isRunning && state.pausedAt == nil }
-    var hasRecord: Bool { state.startedAt != nil }
     var tracksInOrder: [LimitTrack] { state.order.compactMap { state.tracks[$0] } }
 
     /// 잰 시간. 재는 중이면 지금까지, 멈췄으면 멈춘 시점까지.

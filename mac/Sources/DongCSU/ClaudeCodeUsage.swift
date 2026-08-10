@@ -9,6 +9,15 @@ struct TokenTally: Codable, Sendable, Equatable {
     var cacheRead = 0
 
     var total: Int { input + output + cacheCreation + cacheRead }
+
+    /// 캐시를 뺀 합계.
+    ///
+    /// **캐시가 합계를 통째로 가린다.** 실제로는 여기 몇십만이 드나드는데 캐시 읽기가
+    /// 수백만~수천만이라, `total` 만 보면 "내가 이렇게 썼다고?" 가 된다. 캐시 읽기는
+    /// 같은 글을 다시 보내지 않으려고 서버가 들고 있는 것이라 단가도 입력의 1/10이다.
+    /// 두 숫자를 나란히 둬서 어느 쪽이 무엇인지 갈라 보이게 한다.
+    var withoutCache: Int { input + output }
+
     var isEmpty: Bool { responses == 0 }
 
     static func + (lhs: Self, rhs: Self) -> Self {

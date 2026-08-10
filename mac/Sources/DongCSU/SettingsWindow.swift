@@ -110,7 +110,7 @@ struct SettingsView: View {
     var body: some View {
         GeometryReader { proxy in
             ScrollView([.horizontal, .vertical]) {
-                content
+                content(viewportHeight: proxy.size.height)
                     // **폭은 못 박는다.** 가로 스크롤이 열려 있으면 폭 제안이 무한이라,
                     // `minWidth` 만 주면 긴 문장이 줄바꿈하지 않고 한 줄로 뻗는다.
                     // 그러면 창을 열 때마다 가로 스크롤이 생긴다(2.1.3 에서 그랬다).
@@ -123,7 +123,9 @@ struct SettingsView: View {
     }
 
     /// 스크롤 밖의 알맹이. 미리보기 렌더는 ScrollView를 그리지 못해서 이걸 직접 그린다.
-    var content: some View {
+    var content: some View { content(viewportHeight: Self.size.height) }
+
+    private func content(viewportHeight: CGFloat) -> some View {
         HStack(spacing: 0) {
             sidebar
             Divider()
@@ -131,7 +133,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Text(tab.title)
                         .font(.system(size: 15, weight: .semibold))
-                    tabBody
+                    tabBody(viewportHeight: viewportHeight)
                     Spacer(minLength: 0)
                 }
                 .padding(18)
@@ -145,6 +147,36 @@ struct SettingsView: View {
         // 미리보기 렌더에는 창이 없어서 폭을 정해 줘야 한다. 높이는 풀어 두고 전부 그린다.
         .frame(width: isPreviewRender ? Self.size.width : nil, alignment: .topLeading)
     }
+
+    // MARK: - 안에서 따로 스크롤하는 목록
+
+    /// 탭 본문이 쓸 수 있는 높이. 창 높이에서 탭 밖의 고정된 부분을 뺀 값이다.
+    ///
+    /// **목록을 안에서 따로 넘겨보게 하려면 위쪽 어딘가의 높이가 정해져 있어야 한다.**
+    /// 바깥 스크롤은 세로로 높이를 무한히 제안해서, 그 아래에서는 `maxHeight: .infinity`
+    /// 가 "남는 만큼"이 아니라 "내용만큼"으로 풀린다 — 목록이 제 길이대로 늘어나고
+    /// 창이 아래로 길어진다.
+    ///
+    /// 목록이 시작하는 자리를 재서(GeometryReader + preference) 맞추는 길을 먼저 해 봤고
+    /// **버렸다.** 값이 레이아웃이 끝난 뒤에야 돌아와서 그 판에는 반영되지 않는다.
+    /// `--probe-layout` 이 그때도 창이 그대로 늘어나는 것을 잡아냈다.
+    private func tabBodyHeight(_ viewportHeight: CGFloat) -> CGFloat {
+        max(Self.size.height, viewportHeight) - Self.chromeHeight
+    }
+
+    /// 탭 본문 밖에 늘 붙어 있는 것 — 제목·여백·구분선·바닥줄.
+    ///
+    /// **넉넉하게 잡는다.** 모자라게 잡으면 몇 픽셀이 넘쳐서 쓰지도 않을 스크롤 막대가
+    /// 뜨는데, 넉넉하면 아래가 조금 빌 뿐이다.
+    private static let chromeHeight: CGFloat = 148
+
+    /// 재는 중일 때 기록 목록에 주는 높이.
+    ///
+    /// 그때는 위쪽 살아 있는 값이 자리를 거의 다 써서, 남는 만큼을 계산하면 음수가 된다.
+    /// 정해진 만큼만 주고 넘치는 것은 바깥 스크롤이 받는다 — **기록이 몇 개든 창이
+    /// 늘어나는 양은 그대로**이고, 그게 이 변경에서 없애려던 것이다.
+    private static let runningHistoryHeight: CGFloat = 168
+
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -180,15 +212,15 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    private var tabBody: some View {
+    private func tabBody(viewportHeight: CGFloat) -> some View {
         switch tab {
         case .status: statusSection
-        case .measure: measureSection
+        case .measure: measureSection(viewportHeight: viewportHeight)
         case .display: displaySection
         case .icon: iconSection
         case .pet: petSection
         case .account: accountSection
-        case .version: versionSection
+        case .version: versionSection(viewportHeight: viewportHeight)
         }
     }
 
@@ -283,25 +315,27 @@ struct SettingsView: View {
     /// **두 숫자가 재는 범위가 다르다.** 한도 %p는 클로드 앱·웹까지 포함한 계정 전체이고,
     /// 토큰은 Claude Code 것뿐이다. 어느 쪽이 무엇을 재는지 밝혀 두지 않으면 두 값이
     /// 안 맞는 것을 버그로 읽는다.
-    private var measureSection: some View {
+    private func measureSection(viewportHeight: CGFloat) -> some View {
         // 재는 중에는 경과 시간이 초 단위로 움직인다.
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(alignment: .leading, spacing: 14) {
-                measureHeader(now: context.date)
-
-                if meter.hasRecord {
+                // **중지하면 그 자리에서 끝난다.** 멈춘 측정을 위에 계속 펼쳐 두면
+                // 다음에 열었을 때 재고 있는 것처럼 보이고, 같은 값이 아래 기록에도
+                // 있어서 두 번 잰 것으로 읽힌다. 끝난 것은 기록에서 본다.
+                if meter.isRunning {
+                    measureHeader(now: context.date)
                     Divider()
                     measureLimits
                     Divider()
                     measureTokens
+                    Divider()
                 }
 
-                Divider()
                 measureControls(now: context.date)
 
-                if !pastRecords.isEmpty {
+                if !meter.state.history.isEmpty {
                     Divider()
-                    measureHistory
+                    measureHistory(viewportHeight: viewportHeight)
                 }
             }
         }
@@ -317,9 +351,10 @@ struct SettingsView: View {
         }
     }
 
+    /// 재는 중에만 그린다.
     private func measureHeader(now: Date) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(meter.elapsed(now: now).map(RemainingTime.elapsedText) ?? "아직 안 쟀음")
+            Text(RemainingTime.elapsedText(meter.elapsed(now: now) ?? 0))
                 .font(.system(size: 21, weight: .bold, design: .rounded))
                 .monospacedDigit()
 
@@ -327,14 +362,10 @@ struct SettingsView: View {
                 Label("일시정지", systemImage: "pause.circle")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.orange)
-            } else if meter.isRunning {
+            } else {
                 Label("재는 중", systemImage: "record.circle")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.red)
-            } else if meter.hasRecord {
-                Text("멈춤")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
@@ -410,6 +441,9 @@ struct SettingsView: View {
         // **네 값을 그냥 더한 것이다.** 단가가 서로 달라서 이 숫자가 곧 요금이나
         // 한도 소모량은 아니다 — 그건 위의 %p 가 답한다.
         measureRow("합계", "\(TokenFormat.short(tokens.total)) 토큰")
+        // **캐시가 합계를 가린다.** 캐시 읽기가 보통 전체의 90% 넘게 차지해서, 합계만
+        // 보면 실제로 주고받은 양을 짐작할 수 없다. 오간 글에 해당하는 쪽을 따로 둔다.
+        measureRow("캐시 제외", "\(TokenFormat.short(tokens.withoutCache)) 토큰")
 
         if byModel.count > 1 {
             Divider().padding(.vertical, 2)
@@ -430,10 +464,11 @@ struct SettingsView: View {
                     Button("일시정지", action: meter.pause)
                     Button("중지", action: meter.stop)
                 } else {
-                    Button(meter.hasRecord ? "다시 시작" : "시작", action: meter.start)
+                    // 중지한 것은 기록으로 넘어갔다. 여기는 늘 새로 시작하는 자리다.
+                    Button("시작", action: meter.start)
                 }
                 Spacer(minLength: 0)
-                if meter.hasRecord {
+                if meter.isRunning {
                     Text(measureSampleText(now: now))
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
@@ -452,7 +487,10 @@ struct SettingsView: View {
     // MARK: - 측정 기록
 
     /// 끝난 측정 목록. 누르면 그때 값을 그대로 펼쳐 본다.
-    private var measureHistory: some View {
+    ///
+    /// 50개까지 쌓이므로 **목록 안에서 따로 넘겨본다.** 그대로 늘어놓으면 창이 그만큼
+    /// 길어져서 시작 버튼이 화면 밖으로 밀려난다.
+    private func measureHistory(viewportHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
                 measureLabel("측정 기록", note: "최신 순")
@@ -463,19 +501,30 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            ForEach(pastRecords) { record in
-                Button { selectedRecord = record } label: { measureHistoryRow(record) }
-                    .buttonStyle(.plain)
+            if isPreviewRender {
+                historyRows
+            } else {
+                ScrollView { historyRows }
+                    .frame(height: historyHeight(viewportHeight))
             }
         }
     }
 
-    /// 목록에 늘어놓을 지난 측정.
-    ///
-    /// **위에 펼쳐 놓은 것은 뺀다.** 중지하면 그 측정이 기록에 남는데, 같은 것을
-    /// 위아래에 두 번 보여주면 두 번 잰 것처럼 읽힌다.
-    private var pastRecords: [UsageMeter.Record] {
-        meter.state.history.filter { $0.startedAt != meter.state.startedAt }
+    private var historyRows: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(meter.state.history) { record in
+                Button { selectedRecord = record } label: { measureHistoryRow(record) }
+                    .buttonStyle(.plain)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// 기록 목록에 줄 높이. 재고 있지 않으면 화면에 기록밖에 없으니 남는 자리를 다 가진다.
+    private func historyHeight(_ viewportHeight: CGFloat) -> CGFloat {
+        guard !meter.isRunning else { return Self.runningHistoryHeight }
+        // 위에 시작 버튼 줄과 안내 문구가 있다.
+        return max(Self.runningHistoryHeight, tabBodyHeight(viewportHeight) - 110)
     }
 
     private func measureHistoryRow(_ record: UsageMeter.Record) -> some View {
@@ -828,17 +877,20 @@ struct SettingsView: View {
 
     // MARK: - 버전
 
-    private var versionSection: some View {
+    private func versionSection(viewportHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             updateBox
             Divider()
             if isPreviewRender {
                 changelogList
             } else {
+                // 위 두 개는 제 크기를 가져가고, 남는 자리를 이게 다 차지한다.
                 ScrollView { changelogList }
                     .frame(maxHeight: .infinity)
             }
         }
+        // 높이를 못 박아야 바로 위 `maxHeight: .infinity` 가 "남는 만큼"으로 풀린다.
+        .frame(height: isPreviewRender ? nil : tabBodyHeight(viewportHeight), alignment: .topLeading)
     }
 
     /// 지금 버전과 업데이트 상태.
@@ -913,29 +965,24 @@ struct SettingsView: View {
     private func changelogBadge(_ text: String, tint: Color) -> some View {
         Text(text)
             .font(.system(size: 9, weight: .medium))
+            .foregroundStyle(tint)
             .padding(.horizontal, 5)
             .padding(.vertical, 1)
-            .background { Capsule().fill(tint.opacity(0.20)) }
+            .background { Capsule().fill(tint.opacity(0.18)) }
     }
 
     private var changelogList: some View {
-        VStack(alignment: .leading, spacing: 14) {
-                ForEach(updates.entries, id: \.version) { entry in
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text(entry.version)
-                                .font(.system(size: 12, weight: .semibold))
-                            if let date = entry.date {
-                                Text(date)
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(.tertiary)
-                            }
-                            if entry.date == nil {
-                                changelogBadge("준비 중", tint: .orange)
-                            } else if entry.version == AppInfo.version {
-                                changelogBadge("지금 버전", tint: .accentColor)
-                            }
+        VStack(alignment: .leading, spacing: 16) {
+            ForEach(updates.entries, id: \.version) { entry in
+                VStack(alignment: .leading, spacing: 6) {
+                    changelogVersionRow(entry)
+                    if let groups = entry.groups {
+                        ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
+                            changelogGroup(group)
                         }
+                    } else {
+                        // 2.2.0 이하는 갈래가 없다. **뒤늦게 나누지 않는다** —
+                        // 이미 나간 문구라, 사용자가 그때 본 것과 달라지면 안 된다.
                         ForEach(entry.notes, id: \.self) { note in
                             HStack(alignment: .top, spacing: 5) {
                                 Text("·")
@@ -947,8 +994,56 @@ struct SettingsView: View {
                         }
                     }
                 }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func changelogVersionRow(_ entry: ChangelogEntry) -> some View {
+        HStack(spacing: 6) {
+            Text(entry.version)
+                .font(.system(size: 12, weight: .semibold))
+            if let date = entry.date {
+                Text(date)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
+            if entry.date == nil {
+                changelogBadge("준비 중", tint: .orange)
+            } else if entry.version == AppInfo.version {
+                changelogBadge("지금 버전", tint: .accentColor)
+            }
+        }
+    }
+
+    /// 기능 묶음 하나. 대분류를 달고 그 아래를 한 단 들여쓴다.
+    private func changelogGroup(_ group: ChangelogGroup) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 5) {
+                Text(group.title)
+                    .font(.system(size: 11, weight: .semibold))
+                // 묶음 자체가 이번에 생긴 기능이면 제목 옆에 붙는다. 항목마다 신규가
+                // 줄줄이 달리는 것보다 "이 기능이 새로 생겼다"가 한눈에 들어온다.
+                if group.isNew {
+                    changelogBadge(ChangeKind.new.title, tint: ChangeKind.new.tint)
+                }
+                Spacer(minLength: 0)
+            }
+
+            ForEach(Array(group.notes.enumerated()), id: \.offset) { _, note in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    changelogBadge(note.kind.title, tint: note.kind.tint)
+                        // 딱지 폭을 맞춰야 뒤따르는 글이 한 줄로 정렬된다.
+                        .frame(width: 30, alignment: .leading)
+                    Text(note.text)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.leading, 4)
+            }
+        }
+        .padding(.leading, 2)
     }
 
     // MARK: - 계정
@@ -987,6 +1082,19 @@ struct SettingsView: View {
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.secondary)
             .textCase(.uppercase)
+    }
+}
+
+/// 갈래마다 딱지 색. 데이터(`ChangeKind`)는 화면을 모르므로 여기서 붙인다.
+extension ChangeKind {
+    var tint: Color {
+        switch self {
+        case .new: return .green
+        case .improve: return .blue
+        case .change: return .purple
+        case .fix: return .orange
+        case .remove: return .gray
+        }
     }
 }
 
