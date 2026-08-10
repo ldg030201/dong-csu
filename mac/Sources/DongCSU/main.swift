@@ -223,6 +223,14 @@ if CommandLine.arguments.contains("--probe-meter") {
     exit(0)
 }
 
+// 업데이트가 무엇을 돌릴지 찍어 본다: dong-csu --probe-upgrade
+//
+// **실제로 돌리지 않는다.** 한 번 누르면 앱이 갈아끼워져서 눌러 보며 확인할 수 없는
+// 자리라, brew 를 찾았는지와 두 스크립트의 문법만이라도 본다.
+if CommandLine.arguments.contains("--probe-upgrade") {
+    exit(Upgrader.probe() ? 0 : 1)
+}
+
 // 설정 창이 탭마다 얼마나 길어지는지 잰다: dong-csu --probe-layout
 //
 // 렌더 통로는 스크롤을 벗겨서 그리므로 **스크롤이 걸렸는지는 이걸로만 알 수 있다.**

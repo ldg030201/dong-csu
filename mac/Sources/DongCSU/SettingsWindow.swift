@@ -80,9 +80,18 @@ struct SettingsView: View {
     @State private var isConfirmingReset = false
     @State private var isConfirmingClearHistory = false
     @State private var isConfirmingRecordDelete = false
+    /// 업데이트는 앱을 껐다 켠다. 지우는 건 아니지만 같은 이유로 먼저 묻는다.
+    @State private var isConfirmingUpgrade = false
+
+    /// 앱 수명만큼 산다. 설정 창을 닫아도 받던 것이 끊기지 않는다.
+    @ObservedObject private var upgrader = Upgrader.shared
 
     /// 팝업으로 펼쳐 볼 지난 측정. nil이면 팝업이 없다.
     @State private var selectedRecord: UsageMeter.Record?
+
+    /// 상세 팝업에서만 쓰는 캐시 포함 여부. 열 때 측정 탭 설정을 물려받고,
+    /// 거기서 바꿔도 탭 설정은 그대로다.
+    @State private var sheetIncludesCache = false
 
     /// 어느 탭이 열려 있는지. 메뉴에서 "변경 내역…"을 누르면 창 밖에서 바꾸므로
     /// 뷰 안의 @State가 아니라 설정 객체가 들고 있다.
@@ -444,37 +453,63 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             } else {
-                tokenRows(meter.state.tokens, byModel: meter.state.tokensByModel)
+                tokenRows(
+                    meter.state.tokens,
+                    byModel: meter.state.tokensByModel,
+                    includesCache: settings.measureIncludesCache
+                )
             }
+
+            // **기본은 꺼짐이다.** 캐시 읽기가 전체의 90%를 넘어서, 켜 두면 어느 측정이나
+            // 억 단위로 보이고 실제로 오간 양이 묻힌다.
+            Toggle("캐시 포함", isOn: $settings.measureIncludesCache)
+                .font(.system(size: 11))
+                .padding(.top, 2)
         }
     }
 
     /// 토큰 줄들. 한도 쪽과 같은 이유로 함수로 뺐다.
     @ViewBuilder
-    private func tokenRows(_ tokens: TokenTally, byModel: [String: TokenTally]) -> some View {
+    private func tokenRows(
+        _ tokens: TokenTally,
+        byModel: [String: TokenTally],
+        includesCache: Bool
+    ) -> some View {
         // **단위를 적는다.** `입력 4` 만 있으면 네 번 물었다는 뜻으로 읽힌다.
         // 횟수인 것은 응답 하나뿐이다.
         measureRow("응답", "\(TokenFormat.exact(tokens.responses))건")
         measureRow("입력", "\(TokenFormat.short(tokens.input)) 토큰")
         measureRow("출력", "\(TokenFormat.short(tokens.output)) 토큰")
-        measureRow("캐시 생성", "\(TokenFormat.short(tokens.cacheCreation)) 토큰")
-        measureRow("캐시 읽기", "\(TokenFormat.short(tokens.cacheRead)) 토큰")
+        if includesCache {
+            measureRow("캐시 생성", "\(TokenFormat.short(tokens.cacheCreation)) 토큰")
+            measureRow("캐시 읽기", "\(TokenFormat.short(tokens.cacheRead)) 토큰")
+        }
 
         Divider().padding(.vertical, 2)
-        // **네 값을 그냥 더한 것이다.** 단가가 서로 달라서 이 숫자가 곧 요금이나
-        // 한도 소모량은 아니다 — 그건 위의 %p 가 답한다.
-        measureRow("합계", "\(TokenFormat.short(tokens.total)) 토큰")
-        // **캐시가 합계를 가린다.** 캐시 읽기가 보통 전체의 90% 넘게 차지해서, 합계만
-        // 보면 실제로 주고받은 양을 짐작할 수 없다. 오간 글에 해당하는 쪽을 따로 둔다.
-        measureRow("캐시 제외", "\(TokenFormat.short(tokens.withoutCache)) 토큰")
+        // **단가가 서로 달라서 이 숫자가 곧 요금이나 한도 소모량은 아니다** — 그건
+        // 위의 %p 가 답한다. 캐시를 넣을지는 위 체크박스가 정한다.
+        measureRow("합계", "\(TokenFormat.short(Self.tokenTotal(tokens, includesCache: includesCache))) 토큰")
 
         if byModel.count > 1 {
             Divider().padding(.vertical, 2)
             measureLabel("모델별", note: "합계")
-            ForEach(byModel.sorted { $0.value.total > $1.value.total }, id: \.key) { model, tally in
-                measureRow(model, "\(TokenFormat.short(tally.total)) 토큰", emphasised: false)
+            let sorted = byModel.sorted {
+                Self.tokenTotal($0.value, includesCache: includesCache)
+                    > Self.tokenTotal($1.value, includesCache: includesCache)
+            }
+            ForEach(sorted, id: \.key) { model, tally in
+                measureRow(
+                    model,
+                    "\(TokenFormat.short(Self.tokenTotal(tally, includesCache: includesCache))) 토큰",
+                    emphasised: false
+                )
             }
         }
+    }
+
+    /// 화면에 쓰는 합계. 캐시를 넣을지는 한 곳에서만 정한다.
+    private static func tokenTotal(_ tokens: TokenTally, includesCache: Bool) -> Int {
+        includesCache ? tokens.total : tokens.withoutCache
     }
 
     private func measureControls(now: Date) -> some View {
@@ -516,7 +551,7 @@ struct SettingsView: View {
     private func measureHistory(viewportHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                measureLabel("측정 기록", note: "최신 순 · 전체 / 캐시 제외")
+                measureLabel("측정 기록", note: "최신 순 · 캐시 제외")
                 Spacer(minLength: 8)
                 Button("전체 지우기") { isConfirmingClearHistory = true }
                     .buttonStyle(.plain)
@@ -550,7 +585,10 @@ struct SettingsView: View {
     private var historyRows: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(meter.state.history) { record in
-                Button { selectedRecord = record } label: { measureHistoryRow(record) }
+                Button {
+                    sheetIncludesCache = settings.measureIncludesCache
+                    selectedRecord = record
+                } label: { measureHistoryRow(record) }
                     .buttonStyle(.plain)
             }
         }
@@ -583,10 +621,9 @@ struct SettingsView: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(measureHeadline(record))
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
-                // 합계만 보이면 캐시가 다 먹어서 어느 기록이나 억 단위로 보인다.
-                // 무엇이 무엇인지는 위 제목에 한 번만 적어 둔다 — 줄마다 붙이기엔 좁다.
-                Text("\(TokenFormat.short(record.tokens.total)) / "
-                     + "\(TokenFormat.short(record.tokens.withoutCache)) 토큰")
+                // **목록에는 캐시를 넣지 않는다.** 캐시가 다 먹어서 어느 기록이나 억
+                // 단위로 보이면 서로 견줄 수가 없다. 캐시까지 보려면 눌러서 펼친다.
+                Text("\(TokenFormat.short(record.tokens.withoutCache)) 토큰")
                     .font(.system(size: 10).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -635,7 +672,15 @@ struct SettingsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 } else {
-                    tokenRows(record.tokens, byModel: record.tokensByModel)
+                    tokenRows(
+                        record.tokens,
+                        byModel: record.tokensByModel,
+                        includesCache: sheetIncludesCache
+                    )
+                    // 이 팝업 안에서만 바뀐다. 측정 탭 설정은 건드리지 않는다.
+                    Toggle("캐시 포함", isOn: $sheetIncludesCache)
+                        .font(.system(size: 11))
+                        .padding(.top, 2)
                 }
             }
 
@@ -942,6 +987,23 @@ struct SettingsView: View {
     private func versionSection(viewportHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             updateBox
+                .confirmationDialog(
+                    "지금 업데이트할까요?",
+                    isPresented: $isConfirmingUpgrade,
+                    titleVisibility: .visible
+                ) {
+                    Button("업데이트") { upgrader.start() }
+                    Button("취소", role: .cancel) {}
+                } message: {
+                    Text("새 버전을 받은 뒤 **앱이 한 번 꺼졌다 다시 뜹니다.** "
+                         + "받는 동안에는 그대로 쓸 수 있습니다.")
+                }
+                .sheet(isPresented: Binding(
+                    get: { upgrader.phase != .idle },
+                    set: { if !$0 { upgrader.dismiss() } }
+                )) {
+                    upgradeSheet
+                }
             Divider()
             if isPreviewRender {
                 changelogList
@@ -998,8 +1060,9 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 if updates.hasUpdate {
-                    Button("업데이트") { _ = UpdateChecker.openUpgrade() }
+                    Button("업데이트") { isConfirmingUpgrade = true }
                         .buttonStyle(.borderedProminent)
+                        .disabled(upgrader.isBusy)
                 }
                 Button(updates.isChecking ? "확인 중…" : "업데이트 확인") { updates.check() }
                     .disabled(updates.isChecking || AppInfo.isTestBuild)
@@ -1016,7 +1079,7 @@ struct SettingsView: View {
                 .disabled(AppInfo.isTestBuild)
 
             if updates.hasUpdate {
-                Text("업데이트는 터미널에서 brew로 진행된다. 끝나면 앱이 다시 뜬다.")
+                Text("새 버전을 받는 동안 진행 상황이 이 창에 뜬다. 다 받으면 앱이 한 번 꺼졌다 다시 뜬다.")
                     .font(.system(size: 10))
                     .foregroundStyle(.tertiary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1025,6 +1088,73 @@ struct SettingsView: View {
     }
 
     /// 알약 모양 딱지. 변경 내역의 갈래·버전 표시와 beta 표시가 같이 쓴다.
+    /// 업데이트가 도는 동안 뜨는 화면.
+    ///
+    /// **터미널이 하던 일을 여기서 한다.** brew 가 뱉는 것을 그대로 흘려서, 소스 빌드로
+    /// 떨어져 몇십 초 걸릴 때도 멈춘 게 아니라는 걸 보여 준다.
+    private var upgradeSheet: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                if upgrader.isBusy {
+                    ProgressView().controlSize(.small)
+                }
+                Text(upgradeTitle)
+                    .font(.system(size: 14, weight: .semibold))
+                Spacer(minLength: 0)
+            }
+
+            if case .failed(let reason) = upgrader.phase {
+                Text(reason)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // 새 줄이 아래에 쌓이므로 마지막 줄이 보이게 뒤집어 놓는다. 바깥 스크롤 안에
+            // 있어도 높이가 못 박혀 있어서 창이 늘어나지 않는다.
+            ScrollView {
+                Text(upgrader.log.isEmpty ? "준비 중…" : upgrader.log)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .scaleEffect(y: -1, anchor: .center)
+            }
+            .scaleEffect(y: -1, anchor: .center)
+            .frame(height: 220)
+            .padding(8)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color(nsColor: .underPageBackgroundColor).opacity(0.6))
+            }
+
+            HStack {
+                Spacer()
+                switch upgrader.phase {
+                case .running:
+                    Button("취소") { upgrader.cancel() }
+                case .swapping:
+                    // 곧 꺼진다. 여기서 누를 것이 없다.
+                    EmptyView()
+                default:
+                    Button("닫기") { upgrader.dismiss() }
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+        .padding(18)
+        .frame(width: 460)
+    }
+
+    private var upgradeTitle: String {
+        switch upgrader.phase {
+        case .idle: return "업데이트"
+        case .running: return "새 버전을 받는 중…"
+        case .swapping: return "앱을 갈아끼우는 중 — 곧 다시 뜹니다"
+        case .failed: return "업데이트하지 못했습니다"
+        }
+    }
+
     private func pillBadge(_ text: String, tint: Color) -> some View {
         Text(text)
             .font(.system(size: 9, weight: .medium))
