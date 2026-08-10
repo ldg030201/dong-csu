@@ -135,7 +135,7 @@ enum Changelog {
             ]),
             ChangelogGroup(title: "HUD", notes: [
                 .fix("버튼에 마우스를 올려도 설명이 뜨지 않던 문제 수정 (펫 모드 버튼에도 추가)"),
-                .improve("설명이 뜨기까지 기다리는 시간을 3초에서 1초로 단축"),
+                .improve("설명이 뜨기까지 기다리는 시간을 3초에서 0.5초로 단축"),
             ]),
             ChangelogGroup(title: "계정", tab: "account", notes: [
                 .new("플랜·한도 등급·토큰 만료 표시 추가"),

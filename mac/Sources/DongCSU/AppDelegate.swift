@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///
     /// **덮어쓰지 않고 등록만 한다.** 사용자가 이 값을 직접 정해 뒀다면 그쪽이 이긴다.
     private static func speedUpToolTips() {
-        UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 1000])
+        UserDefaults.standard.register(defaults: ["NSInitialToolTipDelay": 500])
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
