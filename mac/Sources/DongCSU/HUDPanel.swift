@@ -1088,16 +1088,10 @@ final class HUDController {
         store.objectWillChange
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
-                self?.updateTooltip()
                 self?.refreshMood()
                 // 끊겼다 돌아오면 다시 걸어다녀야 하고, 끊기면 멈춰야 한다.
                 self?.syncMotion()
             }
             .store(in: &cancellables)
-        updateTooltip()
-    }
-
-    private func updateTooltip() {
-        interactionView.toolTip = store.summaryText
     }
 }
