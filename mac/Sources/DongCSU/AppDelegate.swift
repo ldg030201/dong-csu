@@ -15,7 +15,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)  // Dock 아이콘 없음
 
-        let hud = HUDController(store: store, settings: settings, updates: updates)
+        let hud = HUDController(store: store, settings: settings, updates: updates, meter: meter)
         self.hud = hud
 
         let settingsWindow = SettingsWindowController(

@@ -18,6 +18,10 @@ struct UsageHUDView: View {
     var palette = HUDPalette(isDark: true)
     /// 설정 창 열기. HUDController가 꽂아준다.
     var onOpenSettings: (() -> Void)?
+    /// 측정을 시작하거나 멈춘다. HUD·펫 양쪽 버튼이 같은 것을 부른다.
+    var onToggleMeasure: (() -> Void)?
+    /// 지금 재는 중인지. 버튼 모양이 이걸 따른다.
+    var isMeasuring = false
     /// 접기/펼치기 토글.
     var onToggleCollapse: (() -> Void)?
     /// 펼쳐지는 방향. 손잡이(링·버튼)가 붙는 쪽이 반대편이 된다.
@@ -148,8 +152,14 @@ struct UsageHUDView: View {
     static func refreshInset(scale: CGFloat) -> CGFloat { 4 * scale }
     static func refreshHitSize(scale: CGFloat) -> CGFloat { 20 * scale }
 
+    /// 카드 위 버튼 수(접기 · 측정 · 설정 · 새로고침).
+    ///
+    /// **여기를 안 늘리면 버튼을 더해도 클릭이 통과하지 않는다.** 버튼은 SwiftUI가
+    /// 그리지만 클릭을 흘려보낼 자리는 AppKit 쪽에서 따로 재기 때문이다.
+    static let controlButtonCount = 4
+
     /// AppKit 좌표(원점 왼쪽 아래) 기준의 버튼 영역.
-    /// 펼친 상태는 위쪽 가로 세 칸, 접은 상태는 옆쪽 세로 세 칸이다.
+    /// 펼친 상태는 위쪽 가로 한 줄, 접은 상태는 옆쪽 세로 한 줄이다.
     ///
     /// 높이는 반드시 "실제 창 크기"에서 가져와야 한다. 자원 사용량 줄이 붙으면 창이
     /// 17pt 커지는데, 그때 펼친 기본 높이(88)로 계산하면 영역이 그만큼 아래로 밀려서
@@ -169,7 +179,7 @@ struct UsageHUDView: View {
         let inset = refreshInset(scale: scale)
 
         if mode == .collapsed {
-            let height = button * 3
+            let height = button * CGFloat(controlButtonCount)
             let x = side == .right ? panel.width - trailing - button : trailing
             return CGRect(
                 x: x,
@@ -179,7 +189,7 @@ struct UsageHUDView: View {
             )
         }
 
-        let width = button * 3
+        let width = button * CGFloat(controlButtonCount)
         let x = side == .right ? panel.width - inset - width : inset
         return CGRect(
             x: x,
@@ -246,6 +256,7 @@ struct UsageHUDView: View {
 
     @State private var isHoveringRefresh = false
     @State private var isHoveringSettings = false
+    @State private var isHoveringMeasure = false
     @State private var isHoveringCollapse = false
 
     /// 지금 링을 그릴지.
@@ -330,6 +341,14 @@ struct UsageHUDView: View {
     /// 버튼이 늘 떠 있으면 그 뜻이 사라진다.
     private var petButtonRow: some View {
         HStack(spacing: s(8)) {
+            PetCircleButton(
+                systemName: isMeasuring ? "stopwatch.fill" : "stopwatch",
+                palette: palette,
+                scale: scale,
+                tint: isMeasuring ? .red : nil
+            ) {
+                onToggleMeasure?()
+            }
             PetCircleButton(systemName: "gearshape.fill", palette: palette, scale: scale) {
                 onOpenSettings?()
             }
@@ -368,6 +387,7 @@ struct UsageHUDView: View {
     private var buttonColumn: some View {
         VStack(spacing: 0) {
             collapseButton
+            measureButton
             settingsButton
             refreshButton
         }
@@ -602,6 +622,7 @@ struct UsageHUDView: View {
     private var controlButtons: some View {
         HStack(spacing: 0) {
             collapseButton
+            measureButton
             settingsButton
             refreshButton
         }
@@ -621,6 +642,27 @@ struct UsageHUDView: View {
         .buttonStyle(.plain)
         .onHover { isHoveringCollapse = $0 }
         .help(mode == .collapsed ? "펼치기" : "접기")
+    }
+
+    /// 측정 시작·중지. 재는 동안에는 빨갛게 채워 둔다.
+    private var measureButton: some View {
+        Button {
+            onToggleMeasure?()
+        } label: {
+            controlLabel(
+                systemName: isMeasuring ? "stopwatch.fill" : "stopwatch",
+                tint: measureTint,
+                hovering: isHoveringMeasure
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { isHoveringMeasure = $0 }
+        .help(isMeasuring ? "측정 중지" : "측정 시작")
+    }
+
+    private var measureTint: Color {
+        if isMeasuring { return .red }
+        return isHoveringMeasure ? palette.controlActive : palette.controlIdle
     }
 
     private var settingsButton: some View {
@@ -813,6 +855,8 @@ private struct PetCircleButton: View {
     let systemName: String
     let palette: HUDPalette
     let scale: CGFloat
+    /// 색을 못 박고 싶을 때. 재는 중인 측정 버튼이 빨갛게 남는 자리다.
+    var tint: Color?
     let action: () -> Void
 
     @State private var isHovering = false
@@ -823,7 +867,7 @@ private struct PetCircleButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: s(11), weight: .semibold))
-                .foregroundStyle(isHovering ? palette.controlActive : palette.controlIdle)
+                .foregroundStyle(tint ?? (isHovering ? palette.controlActive : palette.controlIdle))
                 .frame(width: s(24), height: s(24))
                 .background {
                     // 투명한 배경 위에 뜨는 버튼이라 제 바탕이 있어야 읽힌다.

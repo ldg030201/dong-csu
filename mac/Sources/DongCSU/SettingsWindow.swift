@@ -71,6 +71,9 @@ struct SettingsView: View {
     /// 초기화는 되돌릴 수 없어서 한 번 더 묻는다.
     @State private var isConfirmingReset = false
 
+    /// 팝업으로 펼쳐 볼 지난 측정. nil이면 팝업이 없다.
+    @State private var selectedRecord: UsageMeter.Record?
+
     /// 어느 탭이 열려 있는지. 메뉴에서 "변경 내역…"을 누르면 창 밖에서 바꾸므로
     /// 뷰 안의 @State가 아니라 설정 객체가 들고 있다.
     private var tab: SettingsTab { settings.settingsTab }
@@ -295,6 +298,11 @@ struct SettingsView: View {
 
                 Divider()
                 measureControls(now: context.date)
+
+                if !meter.state.history.isEmpty {
+                    Divider()
+                    measureHistory
+                }
             }
         }
         // 탭을 열자마자, 그리고 열어 둔 동안에는 자주 다시 센다. 앱이 평소에 도는
@@ -303,6 +311,9 @@ struct SettingsView: View {
         .onAppear { meter.scanTokens() }
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
             meter.scanTokens()
+        }
+        .sheet(item: $selectedRecord) { record in
+            measureRecordSheet(record)
         }
     }
 
@@ -335,23 +346,29 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(store.errorText == nil ? Color.secondary : Color.orange)
             } else {
-                ForEach(Array(meter.tracksInOrder.enumerated()), id: \.offset) { _, track in
-                    HStack(spacing: 8) {
-                        Text(track.title)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                        Spacer(minLength: 12)
-                        if track.resets > 0 {
-                            // 리셋을 넘겨서도 계속 쌓았다는 표시. 이게 없으면 창이 새로
-                            // 열린 뒤의 값이 왜 이렇게 큰지 알 수 없다.
-                            Text("리셋 \(track.resets)회 넘김")
-                                .font(.system(size: 10))
-                                .foregroundStyle(.tertiary)
-                        }
-                        Text(String(format: "%.0f%%p", track.accumulated))
-                            .font(.system(size: 12, weight: .semibold).monospacedDigit())
-                    }
+                limitRows(meter.tracksInOrder)
+            }
+        }
+    }
+
+    /// 한도 줄들. 지금 재는 것과 지난 기록이 같은 모양으로 보이게 함수로 뺐다.
+    @ViewBuilder
+    private func limitRows(_ tracks: [UsageMeter.LimitTrack]) -> some View {
+        ForEach(Array(tracks.enumerated()), id: \.offset) { _, track in
+            HStack(spacing: 8) {
+                Text(track.title)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 12)
+                if track.resets > 0 {
+                    // 리셋을 넘겨서도 계속 쌓았다는 표시. 이게 없으면 창이 새로
+                    // 열린 뒤의 값이 왜 이렇게 큰지 알 수 없다.
+                    Text("리셋 \(track.resets)회 넘김")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
                 }
+                Text(String(format: "%.0f%%p", track.accumulated))
+                    .font(.system(size: 12, weight: .semibold).monospacedDigit())
             }
         }
     }
@@ -369,37 +386,34 @@ struct SettingsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             } else {
-                let tokens = meter.state.tokens
-                // **단위를 적는다.** `입력 4` 만 있으면 네 번 물었다는 뜻으로 읽힌다.
-                // 횟수인 것은 응답 하나뿐이다.
-                measureRow("응답", "\(TokenFormat.exact(tokens.responses))건")
-                measureRow("입력", "\(TokenFormat.short(tokens.input)) 토큰")
-                measureRow("출력", "\(TokenFormat.short(tokens.output)) 토큰")
-                measureRow("캐시 생성", "\(TokenFormat.short(tokens.cacheCreation)) 토큰")
-                measureRow("캐시 읽기", "\(TokenFormat.short(tokens.cacheRead)) 토큰")
-
-                Divider().padding(.vertical, 2)
-                // **네 값을 그냥 더한 것이다.** 단가가 서로 달라서 이 숫자가 곧 요금이나
-                // 한도 소모량은 아니다 — 그건 위의 %p 가 답한다. 여기서는 "얼마나
-                // 오갔나"를 한 줄로 알고 싶을 때 쓴다.
-                measureRow("합계", "\(TokenFormat.short(tokens.total)) 토큰")
-
-                if meter.state.tokensByModel.count > 1 {
-                    Divider().padding(.vertical, 2)
-                    measureLabel("모델별", note: "합계")
-                    ForEach(modelBreakdown, id: \.0) { model, tally in
-                        measureRow(model, "\(TokenFormat.short(tally.total)) 토큰", emphasised: false)
-                    }
-                }
+                tokenRows(meter.state.tokens, byModel: meter.state.tokensByModel)
             }
         }
     }
 
-    /// 모델별 합계. 많이 쓴 것부터.
-    private var modelBreakdown: [(String, TokenTally)] {
-        meter.state.tokensByModel
-            .sorted { $0.value.total > $1.value.total }
-            .map { ($0.key, $0.value) }
+    /// 토큰 줄들. 한도 쪽과 같은 이유로 함수로 뺐다.
+    @ViewBuilder
+    private func tokenRows(_ tokens: TokenTally, byModel: [String: TokenTally]) -> some View {
+        // **단위를 적는다.** `입력 4` 만 있으면 네 번 물었다는 뜻으로 읽힌다.
+        // 횟수인 것은 응답 하나뿐이다.
+        measureRow("응답", "\(TokenFormat.exact(tokens.responses))건")
+        measureRow("입력", "\(TokenFormat.short(tokens.input)) 토큰")
+        measureRow("출력", "\(TokenFormat.short(tokens.output)) 토큰")
+        measureRow("캐시 생성", "\(TokenFormat.short(tokens.cacheCreation)) 토큰")
+        measureRow("캐시 읽기", "\(TokenFormat.short(tokens.cacheRead)) 토큰")
+
+        Divider().padding(.vertical, 2)
+        // **네 값을 그냥 더한 것이다.** 단가가 서로 달라서 이 숫자가 곧 요금이나
+        // 한도 소모량은 아니다 — 그건 위의 %p 가 답한다.
+        measureRow("합계", "\(TokenFormat.short(tokens.total)) 토큰")
+
+        if byModel.count > 1 {
+            Divider().padding(.vertical, 2)
+            measureLabel("모델별", note: "합계")
+            ForEach(byModel.sorted { $0.value.total > $1.value.total }, id: \.key) { model, tally in
+                measureRow(model, "\(TokenFormat.short(tally.total)) 토큰", emphasised: false)
+            }
+        }
     }
 
     private func measureControls(now: Date) -> some View {
@@ -427,6 +441,110 @@ struct SettingsView: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
+
+    // MARK: - 측정 기록
+
+    /// 끝난 측정 목록. 누르면 그때 값을 그대로 펼쳐 본다.
+    private var measureHistory: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                measureLabel("측정 기록", note: "최신 순")
+                Spacer(minLength: 8)
+                Button("지우기") { meter.clearHistory() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            ForEach(meter.state.history) { record in
+                Button { selectedRecord = record } label: { measureHistoryRow(record) }
+                    .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func measureHistoryRow(_ record: UsageMeter.Record) -> some View {
+        HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 1) {
+                Text(Self.recordFormatter.string(from: record.stoppedAt))
+                    .font(.system(size: 11))
+                Text(RemainingTime.elapsedText(record.duration))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(measureHeadline(record))
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+                Text("\(TokenFormat.short(record.tokens.total)) 토큰")
+                    .font(.system(size: 10).monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 9, weight: .semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(.vertical, 3)
+        // 글자가 없는 자리도 눌리게 한다.
+        .contentShape(Rectangle())
+    }
+
+    /// 목록에 한 줄로 요약할 값. 세션이 있으면 그것, 없으면 첫 한도.
+    private func measureHeadline(_ record: UsageMeter.Record) -> String {
+        guard let track = record.tracks.first else { return "—" }
+        return String(format: "%@ %.0f%%p", track.title, track.accumulated)
+    }
+
+    private func measureRecordSheet(_ record: UsageMeter.Record) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Self.recordFormatter.string(from: record.stoppedAt))
+                    .font(.system(size: 15, weight: .semibold))
+                Text("\(RemainingTime.elapsedText(record.duration)) 동안 · 표본 \(record.samples)회")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+            VStack(alignment: .leading, spacing: 5) {
+                measureLabel("한도 소모", note: "클로드 앱·웹 포함")
+                if record.tracks.isEmpty {
+                    Text("잡힌 표본이 없다")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    limitRows(record.tracks)
+                }
+            }
+
+            Divider()
+            VStack(alignment: .leading, spacing: 5) {
+                measureLabel("토큰", note: "Claude Code만")
+                if record.tokens.isEmpty {
+                    Text("없음")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    tokenRows(record.tokens, byModel: record.tokensByModel)
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("닫기") { selectedRecord = nil }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 320)
+    }
+
+    private static let recordFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "M월 d일 (E) HH:mm"
+        return formatter
+    }()
 
     private func measureSampleText(now: Date) -> String {
         guard let last = meter.state.lastSampledAt else { return "표본 없음" }

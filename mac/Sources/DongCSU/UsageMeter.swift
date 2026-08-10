@@ -29,6 +29,23 @@ final class UsageMeter: ObservableObject {
         var resets: Int = 0
     }
 
+    /// 끝난 측정 하나. 목록과 팝업이 이걸 그린다.
+    ///
+    /// 중지한 **그 순간의 값을 통째로 얼려 둔다.** 나중에 다시 계산하지 않으므로
+    /// 그때 무엇을 봤는지가 그대로 남는다.
+    struct Record: Codable, Equatable, Identifiable {
+        /// 시작 시각이 곧 구분자다. 같은 순간에 두 번 시작할 수 없다.
+        var id: Date { startedAt }
+        let startedAt: Date
+        let stoppedAt: Date
+        let tracks: [LimitTrack]
+        let tokens: TokenTally
+        let tokensByModel: [String: TokenTally]
+        let samples: Int
+
+        var duration: TimeInterval { stoppedAt.timeIntervalSince(startedAt) }
+    }
+
     struct State: Codable, Equatable {
         var startedAt: Date?
         var stoppedAt: Date?
@@ -41,7 +58,12 @@ final class UsageMeter: ObservableObject {
         var seenIDs: Set<String> = []
         var samples = 0
         var lastSampledAt: Date?
+        /// 끝난 측정들. 최신이 앞이다.
+        var history: [Record] = []
     }
+
+    /// 남겨 두는 기록 수. 넘치면 오래된 것부터 버린다.
+    private static let historyLimit = 50
 
     @Published private(set) var state = State()
     /// 토큰 세는 중. 파일을 훑는 동안 버튼이 두 번 눌리지 않게 한다.
@@ -117,19 +139,65 @@ final class UsageMeter: ObservableObject {
 
         state.stoppedAt = Date()
         stopScanTimer()
+        archiveCurrent()
         save()
         // 멈추기 직전에 쓴 것도 들어가야 한다.
         scanTokens()
+    }
+
+    // MARK: - 기록
+
+    /// 끝난 측정을 목록 맨 위에 남긴다.
+    ///
+    /// **중지하는 그 순간 바로 남긴다.** 마지막 표본과 마지막 훑기는 조금 뒤에 도착하는데,
+    /// 그때 `syncArchived()` 가 같은 자리를 다시 덮어써서 최종값이 들어간다. 도착을
+    /// 기다렸다 남기면, 조회가 실패했을 때 기록이 영영 안 생긴다.
+    private func archiveCurrent() {
+        guard let record = currentRecord() else { return }
+        state.history.removeAll { $0.startedAt == record.startedAt }
+        state.history.insert(record, at: 0)
+        if state.history.count > Self.historyLimit {
+            state.history.removeLast(state.history.count - Self.historyLimit)
+        }
+    }
+
+    /// 중지 뒤 늦게 도착한 값으로 목록의 그 기록을 갱신한다.
+    private func syncArchived() {
+        guard !isRunning, let record = currentRecord() else { return }
+        guard let index = state.history.firstIndex(where: { $0.startedAt == record.startedAt }) else { return }
+        state.history[index] = record
+    }
+
+    private func currentRecord() -> Record? {
+        guard let startedAt = state.startedAt, let stoppedAt = state.stoppedAt else { return nil }
+        return Record(
+            startedAt: startedAt,
+            stoppedAt: stoppedAt,
+            tracks: tracksInOrder,
+            tokens: state.tokens,
+            tokensByModel: state.tokensByModel,
+            samples: state.samples
+        )
+    }
+
+    /// 목록만 비운다. 재고 있던 것은 건드리지 않는다.
+    func clearHistory() {
+        state.history = []
+        save()
     }
 
     /// 멈춘 뒤 딱 한 번, 마지막 표본을 받아 준다. 조회가 돌아오는 데 시간이 걸려서
     /// 그때는 이미 `stoppedAt` 이 찍혀 있다.
     private var acceptsFinalSample = false
 
+    /// 재던 것을 지운다. **목록은 남긴다** — 지난 기록까지 날아가면 되돌릴 길이 없다.
+    /// 목록을 비우려면 `clearHistory()`.
     func reset() {
         acceptsFinalSample = false
         stopScanTimer()
-        state = State()
+        var fresh = State()
+        fresh.history = state.history
+        state = fresh
         save()
     }
 
@@ -162,6 +230,7 @@ final class UsageMeter: ObservableObject {
 
         state.samples += 1
         state.lastSampledAt = snapshot.fetchedAt
+        syncArchived()
         save()
     }
 
@@ -234,6 +303,7 @@ final class UsageMeter: ObservableObject {
     private func apply(_ result: TokenScan.Result) {
         isScanning = false
         state = Self.applying(result, to: state)
+        syncArchived()
         save()
     }
 

@@ -158,11 +158,14 @@ final class HUDController {
     private let panel: HUDPanel
     private let interactionView = HUDInteractionView()
     private var cancellables: Set<AnyCancellable> = []
+    /// 직전에 본 측정 상태. 바뀔 때만 뷰를 다시 만든다.
+    private var wasMeasuring = false
 
     private let hosting: FirstMouseHostingView<UsageHUDView>
     private let container: NSView
     let settings: HUDSettings
     private let updates: UpdateChecker
+    private let meter: UsageMeter
     /// 설정 창을 여는 동작. AppDelegate가 꽂아준다.
     var onOpenSettings: (@MainActor () -> Void)?
     private let backdrop = NSView()
@@ -193,10 +196,11 @@ final class HUDController {
     private var appearance: HUDAppearance { settings.appearance }
     private var scale: CGFloat { settings.scale.factor }
 
-    init(store: UsageStore, settings: HUDSettings, updates: UpdateChecker) {
+    init(store: UsageStore, settings: HUDSettings, updates: UpdateChecker, meter: UsageMeter) {
         self.store = store
         self.settings = settings
         self.updates = updates
+        self.meter = meter
 
         let size = UsageHUDView.size(
             mode: settings.mode,
@@ -350,6 +354,7 @@ final class HUDController {
             object: nil
         )
         observeStore()
+        observeMeter()
         observeSettings()
     }
 
@@ -1029,6 +1034,8 @@ final class HUDController {
             petRingDisplay: settings.petRingDisplay,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
+            onToggleMeasure: { [weak self] in self?.handleToggleMeasure() },
+            isMeasuring: meter.isRunning,
             onToggleCollapse: { [weak self] in self?.handleToggleCollapse() },
             expandSide: settings.expandSide,
             // 표본 타이머가 도는지가 아니라 "표시 설정"을 봐야 한다.
@@ -1051,6 +1058,27 @@ final class HUDController {
     }
 
     @objc private func handleQuit() { NSApp.terminate(nil) }
+
+    /// HUD·펫의 측정 버튼. 재고 있으면 멈추고, 아니면 새로 시작한다.
+    ///
+    /// 새로 시작해도 **직전 측정은 기록에 남는다**(중지할 때 남겨 둔다). 그래서 버튼
+    /// 하나로 껐다 켜도 잃는 것이 없다.
+    private func handleToggleMeasure() {
+        if meter.isRunning { meter.stop() } else { meter.start() }
+    }
+
+    /// 재는 중인지가 바뀌면 버튼 모양이 달라진다. **그때만** 다시 그린다 —
+    /// 측정은 토큰을 셀 때마다 알림을 보내는데, 그때마다 뷰를 새로 만들면 낭비다.
+    private func observeMeter() {
+        meter.objectWillChange
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                guard let self, self.wasMeasuring != self.meter.isRunning else { return }
+                self.wasMeasuring = self.meter.isRunning
+                self.rebuildRootView()
+            }
+            .store(in: &cancellables)
+    }
 
     private func observeStore() {
         store.objectWillChange
