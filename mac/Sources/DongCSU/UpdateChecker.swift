@@ -126,8 +126,20 @@ final class UpdateChecker: ObservableObject {
         timer = nil
     }
 
+    /// 확인 사이 최소 간격. 사용량 조회와 같은 이유로 바닥을 깐다 —
+    /// **버튼을 잇달아 누르면 그만큼 그대로 나간다.**
+    static let minCheckInterval: TimeInterval = 10
+
+    private var lastCheckAt: Date?
+
+    var canCheckNow: Bool {
+        guard let lastCheckAt else { return true }
+        return Date().timeIntervalSince(lastCheckAt) >= Self.minCheckInterval
+    }
+
     func check() {
-        guard !inFlight else { return }
+        guard !inFlight, canCheckNow else { return }
+        lastCheckAt = Date()
         inFlight = true
         isChecking = true
 

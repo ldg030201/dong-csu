@@ -117,6 +117,20 @@ actor CredentialStore {
     /// 401을 받았다. 시계로는 멀쩡해 보여도 다음번에는 갱신부터 한다.
     private var needsRefresh = false
 
+    /// 갱신 요청 사이 최소 간격.
+    ///
+    /// 갱신은 사용량 조회 안에서만 일어나므로 대개 그쪽 바닥에 함께 걸린다. 다만
+    /// **리프레시 토큰까지 죽으면 조회마다 갱신을 다시 시도하게 되어**, 조회를 막아도
+    /// 갱신 쪽만 계속 나갈 수 있다. 여기서도 한 번 더 막는다.
+    private static let minRefreshInterval: TimeInterval = 10
+
+    private var lastRefreshAt: Date?
+
+    private var canRefreshNow: Bool {
+        guard let lastRefreshAt else { return true }
+        return Date().timeIntervalSince(lastRefreshAt) >= Self.minRefreshInterval
+    }
+
     /// 지금 쓸 수 있는 자격증명. 만료됐으면 **여기서 갱신까지 한다.**
     ///
     /// 예전에는 갱신을 Claude Code에게 맡겼다. 리프레시 토큰은 쓸 때 회전하는 일이 있어서
@@ -134,9 +148,12 @@ actor CredentialStore {
         if needsRefresh || !(effective?.isUsableForAWhile ?? false),
            let credentials = effective,
            let refreshToken = credentials.refreshToken,
-           let renewed = await OAuthTokenRefresher.refresh(using: refreshToken) {
-            Self.persist(renewed, replacing: refreshToken, origin: credentials.origin)
-            effective = credentials.applying(renewed)
+           canRefreshNow {
+            lastRefreshAt = Date()
+            if let renewed = await OAuthTokenRefresher.refresh(using: refreshToken) {
+                Self.persist(renewed, replacing: refreshToken, origin: credentials.origin)
+                effective = credentials.applying(renewed)
+            }
         }
 
         needsRefresh = false

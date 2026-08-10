@@ -111,10 +111,32 @@ final class UsageStore: ObservableObject {
         refresh(force: true)
     }
 
+    /// 조회 사이 최소 간격.
+    ///
+    /// **`force` 로도 못 뚫는 바닥이다.** 새로고침 버튼·절전 복귀·화면 켜짐·측정 시작이
+    /// 겹치면 몇 초 안에 여러 번 나가는데, 사용량 API는 창이 좁아서 그것만으로 429가 된다.
+    ///
+    /// 429를 맞은 뒤 쉬는 백오프와 **다른 물건이다** — 저쪽은 맞고 나서 물러서는 것이고
+    /// 이건 맞기 전에 막는 것이다. force 가 백오프를 무시하도록 둔 이유(재로그인 직후처럼
+    /// 사람이 상황을 바꾼 뒤엔 바로 봐야 한다)는 그대로 살아 있다.
+    static let minFetchInterval: TimeInterval = 10
+
+    /// 마지막으로 조회를 **내보낸** 시각. 성공·실패를 가리지 않는다 — 실패한 요청도
+    /// 서버 쪽 계산에는 똑같이 들어간다.
+    private var lastFetchAt: Date?
+
+    /// 지금 조회를 내보낼 수 있는지. 버튼을 잠그는 데도 쓴다.
+    var canFetchNow: Bool {
+        guard let lastFetchAt else { return true }
+        return Date().timeIntervalSince(lastFetchAt) >= Self.minFetchInterval
+    }
+
     func refresh(force: Bool = false) {
         if inFlight { return }
+        guard canFetchNow else { return }
         if !force, let backoffUntil, backoffUntil > Date() { return }
         if force { backoffUntil = nil }
+        lastFetchAt = Date()
 
         inFlight = true
         isRefreshing = true
