@@ -6,6 +6,12 @@ class DongCsu < Formula
   license "MIT"
   head "https://github.com/ldg030201/dong-csu.git", branch: "main"
 
+  bottle do
+    root_url "https://github.com/ldg030201/dong-csu/releases/download/mac-v2.3.1"
+    sha256 arm64_tahoe:   "ba9dca7cc55af5bfd32eb67cfcc3e47f02644608d7886b3d3a4ccebd959ab7c8"
+    sha256 arm64_sequoia: "5a887f5a25223178d83755f9c38223727b65602ba74389b43ab78760c2b20e1d"
+  end
+
 
 
 
