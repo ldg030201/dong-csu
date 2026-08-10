@@ -362,6 +362,8 @@ struct UsageHUDView: View {
     /// 버튼이 늘 떠 있으면 그 뜻이 사라진다.
     private var petButtonRow: some View {
         HStack(spacing: s(8)) {
+            // **그림만 있는 버튼이라 설명을 붙인다.** 펫 모드에는 글자가 하나도 없어서,
+            // 마우스를 올렸을 때 말해 주지 않으면 눌러 보는 수밖에 없다.
             PetCircleButton(
                 systemName: isMeasuring ? "stopwatch.fill" : "stopwatch",
                 palette: palette,
@@ -370,13 +372,16 @@ struct UsageHUDView: View {
             ) {
                 onOpenMeasure?()
             }
+            .help(measureHelp)
             PetCircleButton(systemName: "gearshape.fill", palette: palette, scale: scale) {
                 onOpenSettings?()
             }
+            .help("설정")
             PetCircleButton(systemName: "arrow.clockwise", palette: palette, scale: scale) {
                 store.refresh(force: true)
             }
             .opacity(store.isRefreshing ? 0.35 : 1)
+            .help(refreshHelp)
         }
         .frame(height: s(Self.basePetButtonRow))
         .opacity(showsPetRing ? 1 : 0)
@@ -678,7 +683,7 @@ struct UsageHUDView: View {
         }
         .buttonStyle(.plain)
         .onHover { isHoveringMeasure = $0 }
-        .help(isMeasuring ? "측정 중 — 측정 화면 열기" : "측정")
+        .help(measureHelp)
     }
 
     private var measureTint: Color {
@@ -741,6 +746,11 @@ struct UsageHUDView: View {
     private var refreshTint: Color {
         if store.errorText != nil { return palette.warning }
         return isHoveringRefresh ? palette.controlActive : palette.controlIdle
+    }
+
+    /// 펼친 보기와 펫 모드가 같이 쓴다. 두 곳에 따로 적으면 한쪽만 고쳐진다.
+    private var measureHelp: String {
+        isMeasuring ? "측정 중 — 측정 화면 열기" : "측정"
     }
 
     private var refreshHelp: String {
