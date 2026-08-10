@@ -364,8 +364,9 @@ struct UsageHUDView: View {
     /// 버튼이 늘 떠 있으면 그 뜻이 사라진다.
     private var petButtonRow: some View {
         HStack(spacing: s(8)) {
-            // **그림만 있는 버튼이라 설명을 붙인다.** 펫 모드에는 글자가 하나도 없어서,
-            // 마우스를 올렸을 때 말해 주지 않으면 눌러 보는 수밖에 없다.
+            // **설명은 여기 붙이지 않는다.** 펫에서는 `HUDInteractionView` 가 이 줄
+            // 위를 통째로 덮고 있어서 SwiftUI 의 `.help` 가 커서에 안 잡힌다.
+            // 그 뷰에 자리별로 걸어 둔다 — `petButtonRects`.
             PetCircleButton(
                 systemName: isMeasuring ? "stopwatch.fill" : "stopwatch",
                 palette: palette,
@@ -374,16 +375,13 @@ struct UsageHUDView: View {
             ) {
                 onOpenMeasure?()
             }
-            .help(measureHelp)
             PetCircleButton(systemName: "gearshape.fill", palette: palette, scale: scale) {
                 onOpenSettings?()
             }
-            .help("설정")
             PetCircleButton(systemName: "arrow.clockwise", palette: palette, scale: scale) {
                 store.refresh(force: true)
             }
             .opacity(store.isRefreshing ? 0.35 : 1)
-            .help(refreshHelp)
         }
         .frame(height: s(Self.basePetButtonRow))
         .opacity(showsPetRing ? 1 : 0)
@@ -750,12 +748,20 @@ struct UsageHUDView: View {
         return isHoveringRefresh ? palette.controlActive : palette.controlIdle
     }
 
-    /// 펼친 보기와 펫 모드가 같이 쓴다. 두 곳에 따로 적으면 한쪽만 고쳐진다.
-    private var measureHelp: String {
+    private var measureHelp: String { Self.measureHelp(isMeasuring: isMeasuring) }
+    private var refreshHelp: String { Self.refreshHelp(store: store) }
+
+    // 버튼 설명 문구.
+    //
+    // **펼친 보기·펫 모드·패널이 같이 쓴다.** 펫 쪽은 SwiftUI 가 아니라 겹쳐 있는
+    // AppKit 뷰가 띄우므로(`HUDInteractionView`), 여기 한 곳에 두지 않으면 세 자리에
+    // 같은 말을 적게 되고 한 곳만 고쳐진다.
+    static func measureHelp(isMeasuring: Bool) -> String {
         isMeasuring ? "측정 중 — 측정 화면 열기" : "측정"
     }
 
-    private var refreshHelp: String {
+    @MainActor
+    static func refreshHelp(store: UsageStore) -> String {
         if let error = store.errorText {
             return "갱신 실패: \(error) — 클릭해서 다시 시도"
         }
@@ -763,6 +769,23 @@ struct UsageHUDView: View {
         // 마우스를 올렸을 때 몇 초 남았는지 알려 준다.
         let remaining = Int(store.fetchCooldown().rounded(.up))
         return remaining > 0 ? "새로고침 — \(remaining)초 뒤에 가능" : "새로고침"
+    }
+
+    /// 펫 버튼 세 개의 자리. 왼쪽부터 **측정 · 설정 · 새로고침**.
+    ///
+    /// `petButtonsRect` 와 같은 좌표계다. 겹쳐 있는 AppKit 뷰가 버튼마다 다른 설명을
+    /// 띄우려면 이 자리를 알아야 한다 — 줄 전체 사각형만으로는 셋을 가를 수 없다.
+    /// **레이아웃과 같은 값에서 나온다**(`petButtonRow` 의 HStack 간격 8, 버튼 크기).
+    static func petButtonRects(scale: CGFloat) -> [CGRect] {
+        let row = petButtonsRect(scale: scale)
+        let button = refreshHitSize(scale: scale)
+        let gap = 8 * scale
+        let total = button * 3 + gap * 2
+        let startX = row.minX + (row.width - total) / 2
+        let y = row.minY + (row.height - button) / 2
+        return (0..<3).map { index in
+            CGRect(x: startX + CGFloat(index) * (button + gap), y: y, width: button, height: button)
+        }
     }
 
     // MARK: - 링

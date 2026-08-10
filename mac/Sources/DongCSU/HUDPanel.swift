@@ -60,6 +60,22 @@ final class HUDInteractionView: NSView {
     /// 손에 잡힌 채로 걸어나가면 잡은 자리에서 미끄러진다.
     var onPressChanged: (@MainActor (Bool) -> Void)?
 
+    /// 자리마다 다른 버튼 설명.
+    ///
+    /// **SwiftUI 의 `.help` 로는 펫 버튼 설명이 안 뜬다.** 이 뷰가 버튼 줄 위를 통째로
+    /// 덮고 있어서, 클릭은 `hitTest` 로 흘려보내도 커서 아래의 설명 주인은 여기로 잡힌다.
+    /// AppKit 이 그럴 때 쓰라고 둔 자리별 툴팁을 그대로 쓴다.
+    private var toolTipRegions: [(rect: CGRect, text: () -> String)] = []
+
+    /// 자리와 문구를 다시 건다. 배율이나 모드가 바뀌면 자리도 달라진다.
+    func setToolTipRegions(_ regions: [(CGRect, () -> String)]) {
+        removeAllToolTips()
+        toolTipRegions = regions.map { (rect: $0.0, text: $0.1) }
+        for region in toolTipRegions {
+            addToolTip(region.rect, owner: self, userData: nil)
+        }
+    }
+
     /// 마우스와 창 원점 사이의 간격. 드래그 내내 이 값을 유지한다.
     private var dragOffset: CGSize?
 
@@ -143,6 +159,19 @@ final class HUDInteractionView: NSView {
         onPressChanged?(true)
         NSMenu.popUpContextMenu(menu, with: event, for: self)
         onPressChanged?(false)
+    }
+}
+
+extension HUDInteractionView: NSViewToolTipOwner {
+    /// 문구는 **띄우기 직전에** 만든다. 남은 초처럼 시시각각 달라지는 것이 들어 있어서,
+    /// 걸어 둘 때 정해 버리면 옛 숫자가 뜬다.
+    func view(
+        _ view: NSView,
+        stringForToolTip tag: NSView.ToolTipTag,
+        point: NSPoint,
+        userData: UnsafeMutableRawPointer?
+    ) -> String {
+        toolTipRegions.first { $0.rect.contains(point) }?.text() ?? ""
     }
 }
 
@@ -1016,6 +1045,8 @@ final class HUDController {
         }
         interactionView.passThroughRects = rects
 
+        refreshToolTipRegions()
+
         // 펫은 창 대부분이 투명하다. 마스코트가 있는 자리와 버튼 줄만 마우스를 받게 좁힌다.
         interactionView.liveRects = mode == .pet
             ? [
@@ -1024,6 +1055,28 @@ final class HUDController {
                 UsageHUDView.petUpdateRect(scale: scale),
             ]
             : []
+    }
+
+    /// 펫 버튼 설명을 자리마다 걸어 둔다. 왼쪽부터 측정 · 설정 · 새로고침.
+    ///
+    /// 펫이 아닐 때는 걸지 않는다 — 펼친 보기의 버튼은 SwiftUI 쪽 `.help` 가 뜬다.
+    private func refreshToolTipRegions() {
+        guard mode == .pet else {
+            interactionView.setToolTipRegions([])
+            return
+        }
+        let rects = UsageHUDView.petButtonRects(scale: scale)
+        guard rects.count == 3 else { return }
+        interactionView.setToolTipRegions([
+            (rects[0], { [weak self] in
+                UsageHUDView.measureHelp(isMeasuring: self?.meter.isRunning ?? false)
+            }),
+            (rects[1], { "설정" }),
+            (rects[2], { [weak self] in
+                guard let self else { return "새로고침" }
+                return UsageHUDView.refreshHelp(store: self.store)
+            }),
+        ])
     }
 
     /// 표시 상태가 바뀌면 뷰를 다시 만든다. 숨겨져 있는 동안 카운트다운의 1초 타이머를 끄기 위해서다.
@@ -1052,6 +1105,33 @@ final class HUDController {
             onOpenUpdates: { [weak self] in self?.openUpdates() },
             owlAnimator: owlAnimator
         )
+        nudgeToolTips()
+    }
+
+    /// 방금 만든 버튼 위에 커서가 이미 있으면 설명이 안 뜬다. 다시 재게 한다.
+    ///
+    /// **펫 버튼이 딱 그 경우다.** 마스코트에 마우스를 올리면 그때 뷰를 새로 만들면서
+    /// 버튼이 나타나는데, AppKit 은 **이미 안에 들어와 있는 커서에는 `mouseEntered` 를
+    /// 보내지 않는다.** 그래서 커서를 한 번 뺐다 넣기 전에는 설명 타이머가 시작되지
+    /// 않는다 — 추적 영역을 걸 때 `setPetHover` 를 손으로 불러 주는 것과 같은 이유다.
+    ///
+    /// 지금 커서 자리로 `mouseMoved` 를 하나 흘려서 다시 재게 한다.
+    private func nudgeToolTips() {
+        // 끌거나 누르고 있는 중에는 끼어들지 않는다.
+        guard panel.isVisible, !isDraggingPanel, !isPressed else { return }
+        let location = panel.convertPoint(fromScreen: NSEvent.mouseLocation)
+        guard let moved = NSEvent.mouseEvent(
+            with: .mouseMoved,
+            location: location,
+            modifierFlags: [],
+            timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: panel.windowNumber,
+            context: nil,
+            eventNumber: 0,
+            clickCount: 0,
+            pressure: 0
+        ) else { return }
+        panel.postEvent(moved, atStart: false)
     }
 
     /// 업데이트 표시나 메뉴 항목을 눌렀을 때. 설정 창의 버전 화면을 연다.
