@@ -88,15 +88,15 @@ enum ProbeLayout {
         )
         window.contentViewController = NSHostingController(rootView: view)
         window.setContentSize(SettingsView.size)
-        window.orderFront(nil)
+        // **화면 밖에 둔다.** 앞으로 내보내면 재는 동안 창이 스물넷 번쩍인다.
+        // 그리기는 화면에 없어도 도므로 자리만 치우면 된다.
+        window.setFrameOrigin(NSPoint(x: -30_000, y: -30_000))
         for _ in 0..<8 {
             window.contentView?.layoutSubtreeIfNeeded()
             window.contentView?.display()
             RunLoop.main.run(until: Date().addingTimeInterval(0.02))
         }
-        let result = documentHeight(window.contentView)
-        window.orderOut(nil)
-        return result
+        return documentHeight(window.contentView)
     }
 
     /// 바깥 스크롤이 들고 있는 알맹이 높이. 이게 창보다 크면 세로 스크롤이 생긴다.
