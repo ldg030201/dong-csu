@@ -132,6 +132,7 @@ enum Changelog {
                 .new("일시정지·계속 (세워 둔 동안의 시간과 사용량은 빼고 셈)"),
                 .new("측정 기록 목록 (중지하면 남고, 누르면 그때 값을 펼쳐 봄)"),
                 .new("HUD·펫 모드의 측정 버튼 (설정 버튼 왼쪽, 누르면 측정 화면이 열림)"),
+                .new("아직 다듬는 중이라 beta 표시 (숫자가 실제와 어긋날 수 있음)"),
             ]),
             ChangelogGroup(title: "마스코트", notes: [
                 .change("주간 한도를 다 쓰면 완전히 멈추고 주간 링·점까지 회색이 되도록 변경 "
@@ -145,6 +146,10 @@ enum Changelog {
             ChangelogGroup(title: "토큰 자동 갱신", tab: "account", isNew: true, notes: [
                 .new("만료된 토큰을 앱이 스스로 갱신 (다섯 시간마다 뜨던 재로그인 안내가 없어짐)"),
                 .new("갱신한 토큰을 keychain에 되돌려 쓰기 (Claude Code 로그인이 같이 풀리지 않음)"),
+            ]),
+            ChangelogGroup(title: "사용량 조회", tab: "status", notes: [
+                .improve("새로고침을 잇달아 눌러도 요청 제한(429)에 걸리지 않도록 개선 "
+                         + "(조회 사이 최소 10초, 그동안 버튼이 잠김)"),
             ]),
             ChangelogGroup(title: "변경 내역", tab: "version", notes: [
                 .improve("기능별로 묶고 항목마다 갈래를 붙여 보여주도록 개선"),
