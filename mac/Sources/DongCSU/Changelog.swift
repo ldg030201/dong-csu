@@ -124,7 +124,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "2.3.1", date: nil, groups: [
+        ChangelogEntry(version: "2.3.1", date: "2026-08-11", groups: [
             ChangelogGroup(title: "업데이트", tab: "version", notes: [
                 .improve("터미널 대신 앱 안에서 진행하도록 개선 "
                          + "(먼저 확인을 받고, 받는 동안 진행 상황이 창에 뜸)"),
@@ -134,8 +134,8 @@ enum Changelog {
                          + "(기본은 미포함, 기록 상세에서는 따로 켜서 봄)"),
             ]),
             ChangelogGroup(title: "HUD", notes: [
-                .fix("버튼에 마우스를 올려도 설명이 뜨지 않던 문제 수정 (펫 모드 버튼에도 추가)"),
-                .improve("설명이 뜨기까지 기다리는 시간을 3초에서 0.5초로 단축"),
+                .fix("버튼에 마우스를 올려도 설명이 뜨지 않던 문제 수정 "
+                     + "(펫 모드 버튼에도 붙고, 뜨기까지 3초에서 0.5초로 단축)"),
             ]),
             ChangelogGroup(title: "계정", tab: "account", notes: [
                 .new("플랜·한도 등급·토큰 만료 표시 추가"),
