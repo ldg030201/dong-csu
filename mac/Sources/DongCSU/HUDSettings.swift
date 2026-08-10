@@ -211,7 +211,15 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(showsProcessStats, forKey: Keys.showsProcessStats) }
     }
 
-    /// HUD 왼쪽 위에 버전을 표시할지. 테스트판은 뒤에 `test`가 붙는다.
+    /// 측정 화면에서 캐시 토큰까지 세어 보여줄지.
+    ///
+    /// **기본은 꺼짐이다.** 캐시 읽기가 보통 전체의 90% 넘게 차지해서, 켜 두면 어느
+    /// 측정이나 억 단위로 보이고 실제로 주고받은 양이 묻힌다. 캐시는 같은 글을 다시
+    /// 보내지 않으려고 서버가 들고 있는 것이라 단가도 입력의 1/10이다.
+    @Published var measureIncludesCache: Bool = false {
+        didSet { defaults.set(measureIncludesCache, forKey: Keys.measureIncludesCache) }
+    }
+
     /// 가운데 마스코트를 움직일지.
     ///
     /// 움직임 자체가 거슬리는 사람이 있고, 배터리를 아끼고 싶을 때도 끈다.
@@ -220,6 +228,7 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(!animatesIcon, forKey: Keys.iconAnimationOff) }
     }
 
+    /// HUD 왼쪽 위에 버전을 표시할지. 테스트판은 뒤에 `test`가 붙는다.
     @Published var showsVersionBadge: Bool = true {
         didSet { defaults.set(!showsVersionBadge, forKey: Keys.versionBadgeOff) }
     }
@@ -283,6 +292,7 @@ final class HUDSettings: ObservableObject {
         static let updateCheckOff = "hud.updateCheckOff"
         static let backdropOpacity = "hud.backdropOpacity"
         static let showsProcessStats = "hud.showsProcessStats"
+        static let measureIncludesCache = "measure.includesCache"
         static let pollInterval = "hud.pollInterval"
         // 버전 표시도 기본값이 켜짐이라 반대 의미로 저장한다.
         static let versionBadgeOff = "hud.versionBadgeOff"
@@ -320,6 +330,8 @@ final class HUDSettings: ObservableObject {
         let stored = defaults.object(forKey: Keys.backdropOpacity) as? Double
         backdropOpacity = stored.map { min(Self.maxOpacity, max(Self.minOpacity, $0)) } ?? Self.defaultOpacity
         showsProcessStats = defaults.bool(forKey: Keys.showsProcessStats)
+        // 없으면 false — 기본이 미포함이라 그대로 맞다.
+        measureIncludesCache = defaults.bool(forKey: Keys.measureIncludesCache)
         pollInterval = PollInterval(rawValue: defaults.integer(forKey: Keys.pollInterval)) ?? .default
         showsVersionBadge = !defaults.bool(forKey: Keys.versionBadgeOff)
         animatesIcon = !defaults.bool(forKey: Keys.iconAnimationOff)

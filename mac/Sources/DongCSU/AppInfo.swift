@@ -25,9 +25,12 @@ enum AppInfo {
     /// 렌더 통로도 같은 값을 써야 미리보기가 실제와 어긋나지 않는다.
     static let testBuildTint = NSColor(srgbRed: 0.54, green: 0.34, blue: 0.85, alpha: 1)
 
-    /// "DongCSU 0.2.0" 처럼 이름과 버전을 붙인 표기.
+    /// 설정 창 바닥에 쓰는 표기. `DongCSU 2.3.0` 처럼 이름과 버전을 붙인다.
+    ///
+    /// **테스트판은 이름만 쓴다.** 거기 적힌 번호는 그때 소스에 있던 값이라 나가 있는
+    /// 버전과 아무 상관이 없는데, 나란히 띄워 놓고 보면 정식판 번호처럼 읽힌다.
     static var displayVersion: String {
-        "\(name) \(version)"
+        isTestBuild ? name : "\(name) \(version)"
     }
 
     /// HUD 왼쪽 위에 붙이는 버전 딱지. 테스트판은 뒤에 `test`가 붙는다.
