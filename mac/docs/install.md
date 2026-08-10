@@ -42,7 +42,7 @@ Launchpad와 Spotlight에 나타나지 않고 Finder에서 직접 열 수만 있
 
 ```bash
 git clone https://github.com/ldg030201/dong-csu.git
-cd dong-csu && ./build.sh && open build/DongCSU.app
+cd dong-csu/mac && ./build.sh && open build/DongCSU.app
 ```
 
 Xcode는 필요 없다. Command Line Tools(`xcode-select --install`)만 있으면 된다.

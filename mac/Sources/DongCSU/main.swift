@@ -223,7 +223,8 @@ if CommandLine.arguments.contains("--probe-meter") {
     exit(0)
 }
 
-// 설정 창을 PNG로 그려서 확인: dong-csu --render-settings out.png [light] [status|display|icon|account]
+// 설정 창을 PNG로 그려서 확인. 탭 이름은 SettingsTab 의 rawValue 를 그대로 쓴다:
+//   dong-csu --render-settings out.png [light] [status|measure|display|icon|pet|account|version]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-settings"),
    flagIndex + 1 < CommandLine.arguments.count {
     let path = CommandLine.arguments[flagIndex + 1]

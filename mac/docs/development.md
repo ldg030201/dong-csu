@@ -37,17 +37,20 @@ dong-csu --render-settings out.png version     # 설정 창의 특정 탭
 dong-csu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-csu --render-icon out.png 1024            # 앱 아이콘
 dong-csu --render-owl out.png 96               # 부엉이 애니메이션 전 프레임 (기분 + 걸음걸이)
-dong-csu --render-owl-gif ../../docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
-dong-csu --dump-owl shared/owl.json            # 윈도우판과 나눠 쓸 부엉이 데이터
+dong-csu --render-owl-gif ../docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
+dong-csu --dump-owl ../shared/owl.json         # 윈도우판과 나눠 쓸 부엉이 데이터
 ```
+
+**전부 `mac/` 안에서 돌린다.** 나가는 경로가 `../` 로 시작하는 건 그림과 부엉이
+데이터가 두 판 공통이라 저장소 뿌리에 있기 때문이다.
 
 `--render`의 뒤쪽 인자는 순서와 무관하게 인식한다:
 보기(`expanded` `collapsed` `pet`), `hover` `light` `expandLeft` `stats` `update`,
 버전 딱지(`version` 정식판 · `test` 테스트판), 배율(`small`~`extraLarge`),
 상태(`ok` `stale` `reauth`), 0~1 사이 숫자는 배경 불투명도.
 
-`--render-settings`는 탭 이름(`status` `display` `icon` `pet` `account` `version`)과
-`update=1.2.0`(새 버전이 있는 것처럼 그리기)을 받는다.
+`--render-settings`는 탭 이름(`status` `measure` `display` `icon` `pet` `account`
+`version`)과 `update=1.2.0`(새 버전이 있는 것처럼 그리기)을 받는다.
 
 > `ImageRenderer`는 `ScrollView` 안을 그리지 못한다. 스크롤이 필요한 화면은
 > `isPreviewRender`로 스크롤을 벗긴 형태를 따로 그린다.
@@ -76,8 +79,11 @@ ad-hoc  → designated => cdhash H"266bfb…"                       ← 빌드�
   통째로 안 나오면 곤란하다
 - 지우려면 `security delete-certificate -c "DongCSU Local Signing" ~/Library/Keychains/login.keychain-db`
 
-> 지금은 앱이 아무 권한도 쓰지 않아서 당장 필요하지는 않다. 권한을 쓰는 기능을
-> 되살릴 때(`pet-typing-dodge` 브랜치) 필요해진다.
+> **지금은 없어도 된다.** 앱이 손쉬운 사용 같은 권한을 하나도 안 쓰고, 유일하게
+> 신원이 걸리는 keychain 은 우리가 직접 건드리지 않고 `/usr/bin/security` 를 거친다
+> (그쪽 신원은 Apple 것이라 고정이다). 펫이 타이핑 중에 멈추는 것도 권한 없이
+> 읽히는 값을 쓴다 — [사용량과 토큰](privacy.md) 참고. 나중에 진짜 권한을 쓰는 기능이
+> 생기면 그때 이게 필요해진다.
 
 ## 마스코트
 

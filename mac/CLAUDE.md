@@ -210,9 +210,14 @@ GIF가 실제 애니메이션과 어긋나면 안 된다. GIF는 손으로 만�
 때마다 허용해 둔 권한이 풀린다. `./make-signing-cert.sh` 를 한 번 돌려 자체 서명
 인증서를 만들어 두면 신원이 고정된다.
 
-권한을 확인할 때 **터미널에서 바이너리를 직접 부르면 안 된다.** TCC가 Terminal.app에
-권한을 물어서 결과가 거짓이 된다. 앱 번들을 통해 확인한다.
+**지금은 이 인증서가 없어도 된다.** 앱이 손쉬운 사용 같은 권한을 하나도 안 쓰고,
+keychain 은 신원이 고정된 `/usr/bin/security` 를 거친다. 나중에 진짜 권한을 쓰는
+기능이 생길 때를 위해 통로만 열어 둔 것이다.
 
 ```bash
-open -n build/DongCSU-Test.app --args --probe-accessibility /tmp/ax.txt
+codesign -dv --verbose=4 build/DongCSU-Test.app 2>&1 | grep Authority
 ```
+
+권한이 걸리는 기능을 만들게 되면, 확인할 때 **터미널에서 바이너리를 직접 부르면
+안 된다.** TCC가 Terminal.app에 권한을 물어서 결과가 거짓이 된다. `open -n
+build/DongCSU-Test.app --args …` 로 번들을 통해 확인한다.
