@@ -1027,18 +1027,43 @@ struct SettingsView: View {
     /// 탭에 없는 묶음(마스코트·HUD·설치 같은 것)이 함께 쓰는 아이콘.
     private static let otherGroupSymbol = "wrench.and.screwdriver"
 
+    // 묶음 머리의 가로 자리. **셋이 한 계산에서 나와야 한다** — 따로 적어 두면
+    // 세로줄이 아이콘 옆으로 비끼고 딸린 줄이 제목과 다른 자리에서 시작한다.
+    private static let groupIconWidth: CGFloat = 15
+    private static let groupIconGap: CGFloat = 5
+    private static let groupRuleWidth: CGFloat = 2
+    /// 제목 글자가 시작하는 x. 딸린 줄도 여기에 맞춘다.
+    private static var groupTextInset: CGFloat { groupIconWidth + groupIconGap }
+    /// 세로줄이 아이콘 한가운데로 내려오게 하는 왼쪽 여백.
+    private static var groupRuleInset: CGFloat { (groupIconWidth - groupRuleWidth) / 2 }
+    /// 세로줄과 글 사이. 남는 만큼을 채워서 딸린 줄이 제목과 같은 x에서 시작한다.
+    private static var groupRuleGap: CGFloat { groupTextInset - groupRuleInset - groupRuleWidth }
+
+    /// 갈래 딱지 폭. **가장 넓은 갈래 이름에서 뽑는다.**
+    ///
+    /// 눈대중으로 잡으면 좁을 때는 글자가 잘리고 넓을 때는 뒤따르는 글이 멀찍이 떨어져
+    /// 보인다. 갈래를 하나 더 만들어도 여기가 알아서 따라온다.
+    private static let badgeWidth: CGFloat = {
+        let font = NSFont.systemFont(ofSize: 9, weight: .medium)
+        let widest = ChangeKind.allCases
+            .map { ($0.title as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 20
+        // changelogBadge 의 좌우 여백 5씩.
+        return (widest + 10).rounded(.up)
+    }()
+
     /// 기능 묶음 하나. 대분류를 달고, 딸린 줄들을 세로줄로 묶어 준다.
     ///
     /// **들여쓰기만으로는 어디까지가 그 묶음인지 안 보인다.** 딱지가 줄마다 붙어 있어서
     /// 왼쪽 끝이 들쭉날쭉해 보이는데, 세로줄이 그 경계를 대신 그어 준다.
     private func changelogGroup(_ group: ChangelogGroup) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 5) {
+            HStack(spacing: Self.groupIconGap) {
                 Image(systemName: Self.groupSymbol(group))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     // 아이콘마다 폭이 달라서, 맞춰 두지 않으면 제목 시작점이 줄마다 어긋난다.
-                    .frame(width: 15)
+                    .frame(width: Self.groupIconWidth)
                 Text(group.title)
                     .font(.system(size: 11.5, weight: .semibold))
                 // 묶음 자체가 이번에 생긴 기능이면 제목 옆에 붙는다. 항목마다 신규가
@@ -1049,21 +1074,22 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
 
-            HStack(alignment: .top, spacing: 8) {
-                // 제목 아래로 흐르는 세로줄. 여기까지가 이 묶음이라는 표시다.
+            HStack(alignment: .top, spacing: Self.groupRuleGap) {
+                // 아이콘 한가운데에서 아래로 흐르는 세로줄. 여기까지가 이 묶음이라는 표시다.
                 Capsule()
                     .fill(Color.secondary.opacity(0.28))
-                    .frame(width: 2)
+                    .frame(width: Self.groupRuleWidth)
 
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(Array(group.notes.enumerated()), id: \.offset) { _, note in
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline, spacing: 4) {
                             // **새로 생긴 기능에는 갈래를 안 붙인다.** 전부 새 것이라
                             // 가를 것이 없고, 제목 옆 "신규" 가 이미 그 말을 한다.
                             if !group.isNew {
                                 changelogBadge(note.kind.title, tint: note.kind.tint)
-                                    // 딱지 폭을 맞춰야 뒤따르는 글이 한 줄로 정렬된다.
-                                    .frame(width: 30, alignment: .leading)
+                                    // 갈래 이름이 전부 두 글자라 폭이 거의 같지만, 1pt만
+                                    // 달라도 뒤따르는 글의 시작점이 줄마다 흔들린다.
+                                    .frame(width: Self.badgeWidth, alignment: .leading)
                             }
                             Text(note.text)
                                 .font(.system(size: 11))
@@ -1074,8 +1100,7 @@ struct SettingsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            // 세로줄이 제목 글자 아래 오게 살짝 들여 둔다.
-            .padding(.leading, 3)
+            .padding(.leading, Self.groupRuleInset)
         }
     }
 
