@@ -59,8 +59,14 @@ openssl pkcs12 -export -inkey "$WORK/key.pem" -in "$WORK/cert.pem" \
   -out "$WORK/bundle.p12" -name "$SIGN_CERT_NAME" -passout pass:dongcsu
 
 # -T 로 codesign에 미리 접근을 열어 두지 않으면, 빌드할 때마다 키체인 암호를 묻는다.
+#
+# **`-A` 는 쓰지 않는다.** 그건 "아무 앱이나 이 키를 물어보지 않고 쓰게 하라"는 뜻이라
+# 바로 위 `-T` 제한을 무효로 만든다(man 페이지도 insecure 라고 적어 뒀다). 이 키는
+# 이 앱의 서명 신원이고, 신원을 쥐면 macOS가 같은 앱으로 보고 허용해 둔 키체인 접근을
+# 물려받는다 — 인증서를 배포하지 않기로 한 것과 같은 이유다. 실제로 여는 것은
+# 아래 `set-key-partition-list` 이므로 `-A` 없이도 빌드 때 묻지 않는다.
 echo "키체인에 넣는 중… (암호를 물으면 로그인 암호를 넣어라)"
-security import "$WORK/bundle.p12" -k "$KEYCHAIN" -P dongcsu -T /usr/bin/codesign -A
+security import "$WORK/bundle.p12" -k "$KEYCHAIN" -P dongcsu -T /usr/bin/codesign
 
 # 자체 서명 루트라 그대로 두면 codesign이 신뢰 사슬을 못 만든다.
 # 이 인증서에 한해 **코드 서명 용도로만** 신뢰한다고 표시한다.
@@ -71,5 +77,5 @@ allow_codesign
 
 echo
 echo "끝났다. 지금 서명 신원: $(sign_identity)"
-echo "이제 다시 빌드해도 손쉬운 사용 권한이 풀리지 않는다."
-echo "확인: dong-csu --probe-accessibility"
+echo "이제 다시 빌드해도 신원이 그대로다."
+echo "확인: codesign -dv --verbose=4 build/DongCSU-Test.app 2>&1 | grep Authority"
