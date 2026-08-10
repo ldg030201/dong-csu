@@ -4,11 +4,83 @@ import Foundation
 ///
 /// 설정 창의 "버전" 탭이 이걸 그대로 보여준다. 쓰는 방법은 CLAUDE.md 참고 —
 /// 기능 단위로 한 줄씩, "추가 / 수정 / 변경" 처럼 명사형으로 끝맺는다.
+/// 변경 한 줄이 어느 갈래인지. 항목 앞에 딱지로 붙는다.
+enum ChangeKind: String, Codable, Equatable, CaseIterable {
+    case new
+    case improve
+    case change
+    case fix
+    case remove
+
+    var title: String {
+        switch self {
+        case .new: return "신규"
+        case .improve: return "개선"
+        case .change: return "변경"
+        case .fix: return "오류"
+        case .remove: return "제거"
+        }
+    }
+}
+
+/// 변경 한 줄.
+struct ChangelogNote: Codable, Equatable {
+    let kind: ChangeKind
+    let text: String
+
+    static func new(_ text: String) -> Self { Self(kind: .new, text: text) }
+    static func improve(_ text: String) -> Self { Self(kind: .improve, text: text) }
+    static func change(_ text: String) -> Self { Self(kind: .change, text: text) }
+    static func fix(_ text: String) -> Self { Self(kind: .fix, text: text) }
+    static func remove(_ text: String) -> Self { Self(kind: .remove, text: text) }
+}
+
+/// 기능 단위 묶음. 화면·메뉴 이름을 그대로 쓴다("측정", "펫 모드").
+///
+/// 한 버전에 스무 줄이 쌓이면 평평한 목록으로는 무엇이 달라졌는지 안 잡힌다.
+/// 쓰는 사람은 자기가 쓰는 기능만 보면 되므로 그 단위로 묶는다.
+struct ChangelogGroup: Codable, Equatable {
+    let title: String
+    /// 이 묶음 자체가 이번에 새로 생긴 기능인지. 제목 오른쪽에 "신규"가 붙는다.
+    var isNew: Bool = false
+    let notes: [ChangelogNote]
+}
+
 struct ChangelogEntry: Codable, Equatable {
     let version: String
     /// 아직 내보내지 않은 항목은 nil. 릴리스할 때 날짜를 채운다.
     let date: String?
+    /// 평평한 목록.
+    ///
+    /// **지우면 안 된다.** 2.2.0 이하가 같은 JSON을 받아보는데 그쪽은 이것만 읽는다.
+    /// 2.3.0부터는 `groups` 에서 만들어 내므로 손으로 적지 않는다.
     let notes: [String]
+    /// 2.3.0부터. 기능별로 묶고 항목마다 갈래를 단다.
+    ///
+    /// 옛 항목은 nil이고, 그때는 화면이 `notes` 를 그대로 늘어놓는다. 이미 나간 문구를
+    /// 뒤늦게 갈래로 나누면 사용자가 봤던 것과 달라지므로 **옛 버전은 손대지 않는다.**
+    let groups: [ChangelogGroup]?
+}
+
+extension ChangelogEntry {
+    /// 2.3.0부터 쓰는 형태. 옛 앱이 읽는 평평한 목록은 여기서 만들어 낸다 —
+    /// 두 곳에 손으로 적으면 반드시 어긋난다.
+    init(version: String, date: String?, groups: [ChangelogGroup]) {
+        self.version = version
+        self.date = date
+        self.groups = groups
+        self.notes = groups.flatMap { group in
+            group.notes.map { "[\(group.title)] \($0.text)" }
+        }
+    }
+
+    /// 2.2.0 이하. 그때 나간 문구를 그대로 둔다.
+    init(version: String, date: String?, notes: [String]) {
+        self.version = version
+        self.date = date
+        self.notes = notes
+        self.groups = nil
+    }
 }
 
 /// 원격에서 받아오는 변경 내역 파일의 형태.
@@ -43,27 +115,43 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "2.3.0", date: nil, notes: [
-            "사용량 측정 추가 (시작·중지 사이에 쓴 한도 %p와 토큰 수, 설정 창 측정 탭)",
-            "측정에 모델별 한도·토큰 표시 추가",
-            "주간 한도를 다 쓰면 마스코트가 완전히 멈추도록 변경 (걷기·커서 피하기·끌림 반응 정지)",
-            "주간 한도를 다 쓰면 주간 링·점도 회색으로 표시하도록 변경",
-            "펫 모드에서 커서 피하기 판정이 마스코트보다 아래를 보던 문제 수정",
-            "펫 모드에 막 들어갔을 때 커서가 마스코트 위에 있어도 링이 바로 뜨지 않던 문제 수정",
-            "펫 모드 설정·새로고침 버튼에 마우스를 올려도 표시가 바뀌지 않던 문제 수정",
-            "Claude 앱을 나중에 설치하면 다시 띄우기 전까지 아이콘을 못 찾던 문제 수정",
-            "만료된 토큰을 앱이 스스로 갱신하도록 추가 (재로그인 안내가 뜨지 않음)",
-            "갱신한 토큰을 keychain에 되돌려 써서 Claude Code 로그인이 풀리지 않도록 개선",
-            "측정 탭 토큰 값에 단위 표시 추가 (횟수와 토큰 수를 구분)",
-            "측정 탭을 열어 둔 동안 토큰 수를 5초마다 다시 세도록 개선",
-            "측정 탭에 토큰 합계 표시 추가 (모델별도 합계 기준으로 변경)",
-            "측정 기록 목록 추가 (중지하면 남고, 누르면 그때 값을 펼쳐 봄)",
-            "측정에 일시정지·계속 추가 (세워 둔 동안의 시간과 사용량은 빼고 셈)",
-            "측정 초기화 제거 (다시 시작이 그 자리를 대신함)",
-            "다시 시작하면 지난 측정 기록이 사라지던 문제 수정",
-            "측정을 시작·중지할 때 요청 제한(429)에 걸리기 쉽던 문제 수정",
-            "다시 시작하거나 계속을 누르면 직전 측정의 토큰이 새 측정에 섞이던 문제 수정",
-            "HUD·펫 모드에 측정 버튼 추가 (설정 버튼 왼쪽, 누르면 측정 화면이 열림)",
+        ChangelogEntry(version: "2.3.0", date: nil, groups: [
+            ChangelogGroup(title: "측정", isNew: true, notes: [
+                .new("시작·중지 사이에 쓴 한도 %p와 토큰 수 측정 추가 (설정 창 측정 탭)"),
+                .new("모델별 한도·토큰 표시 추가"),
+                .new("측정 기록 목록 추가 (중지하면 남고, 누르면 그때 값을 펼쳐 봄)"),
+                .new("일시정지·계속 추가 (세워 둔 동안의 시간과 사용량은 빼고 셈)"),
+                .new("HUD·펫 모드에 측정 버튼 추가 (설정 버튼 왼쪽, 누르면 측정 화면이 열림)"),
+                .new("토큰 합계와 캐시 제외 합계 표시 추가"),
+                .improve("토큰 값에 단위 표시 추가 (횟수와 토큰 수를 구분)"),
+                .improve("탭을 열어 둔 동안 토큰 수를 5초마다 다시 세도록 개선"),
+                .improve("기록이 길어져도 창이 늘어나지 않고 안에서 넘겨보도록 개선"),
+                .change("중지하면 그 자리에서 끝나고 기록으로 넘어가도록 변경"),
+                .remove("측정 초기화 제거"),
+                .fix("다시 시작하면 지난 측정 기록이 사라지던 문제 수정"),
+                .fix("시작·중지할 때 요청 제한(429)에 걸리기 쉽던 문제 수정"),
+                .fix("다시 시작하거나 계속을 누르면 직전 측정의 토큰이 섞이던 문제 수정"),
+            ]),
+            ChangelogGroup(title: "마스코트", notes: [
+                .change("주간 한도를 다 쓰면 완전히 멈추도록 변경 (걷기·커서 피하기·끌림 반응 정지)"),
+                .change("주간 한도를 다 쓰면 주간 링·점도 회색으로 표시하도록 변경"),
+            ]),
+            ChangelogGroup(title: "펫 모드", notes: [
+                .fix("커서 피하기 판정이 마스코트보다 아래를 보던 문제 수정"),
+                .fix("막 들어갔을 때 커서가 마스코트 위에 있어도 링이 바로 뜨지 않던 문제 수정"),
+                .fix("설정·새로고침 버튼에 마우스를 올려도 표시가 바뀌지 않던 문제 수정"),
+            ]),
+            ChangelogGroup(title: "계정", notes: [
+                .new("만료된 토큰을 앱이 스스로 갱신하도록 추가 (재로그인 안내가 뜨지 않음)"),
+                .improve("갱신한 토큰을 keychain에 되돌려 써서 Claude Code 로그인이 풀리지 않도록 개선"),
+            ]),
+            ChangelogGroup(title: "변경 내역", notes: [
+                .improve("기능별로 묶고 항목마다 갈래를 붙여 보여주도록 개선"),
+                .improve("목록이 길어져도 창이 늘어나지 않고 안에서 넘겨보도록 개선"),
+            ]),
+            ChangelogGroup(title: "아이콘", notes: [
+                .fix("Claude 앱을 나중에 설치하면 다시 띄우기 전까지 못 찾던 문제 수정"),
+            ]),
         ]),
         ChangelogEntry(version: "2.2.0", date: "2026-08-07", notes: [
             "펫 모드에 설정·새로고침 버튼 추가 (마스코트 아래, 마우스를 올리면 나타남)",
