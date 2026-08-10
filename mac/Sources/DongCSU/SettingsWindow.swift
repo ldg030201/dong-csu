@@ -75,8 +75,11 @@ struct SettingsView: View {
     /// 내용이 잘리더라도 보이게 한다.
     var isPreviewRender = false
 
-    /// 초기화는 되돌릴 수 없어서 한 번 더 묻는다.
+    // **지우는 것은 반드시 한 번 더 묻는다.** 되돌릴 수 없고, 목록에서 누르는 자리라
+    // 스쳐도 눌린다. 지우는 버튼을 새로 만들면 여기에 상태를 하나 더 둔다.
     @State private var isConfirmingReset = false
+    @State private var isConfirmingClearHistory = false
+    @State private var isConfirmingRecordDelete = false
 
     /// 팝업으로 펼쳐 볼 지난 측정. nil이면 팝업이 없다.
     @State private var selectedRecord: UsageMeter.Record?
@@ -513,12 +516,22 @@ struct SettingsView: View {
     private func measureHistory(viewportHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                measureLabel("측정 기록", note: "최신 순")
+                measureLabel("측정 기록", note: "최신 순 · 전체 / 캐시 제외")
                 Spacer(minLength: 8)
-                Button("지우기") { meter.clearHistory() }
+                Button("전체 지우기") { isConfirmingClearHistory = true }
                     .buttonStyle(.plain)
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
+            }
+            .confirmationDialog(
+                "측정 기록을 전부 지울까요?",
+                isPresented: $isConfirmingClearHistory,
+                titleVisibility: .visible
+            ) {
+                Button("전체 지우기", role: .destructive) { meter.clearHistory() }
+                Button("취소", role: .cancel) {}
+            } message: {
+                Text("기록 \(meter.state.history.count)개가 지워집니다. 되돌릴 수 없습니다.")
             }
 
             // **짧으면 그냥 늘어놓는다.** 스크롤을 씌우면 내용이 적어도 그 높이를 그대로
@@ -570,7 +583,10 @@ struct SettingsView: View {
             VStack(alignment: .trailing, spacing: 1) {
                 Text(measureHeadline(record))
                     .font(.system(size: 11, weight: .medium).monospacedDigit())
-                Text("\(TokenFormat.short(record.tokens.total)) 토큰")
+                // 합계만 보이면 캐시가 다 먹어서 어느 기록이나 억 단위로 보인다.
+                // 무엇이 무엇인지는 위 제목에 한 번만 적어 둔다 — 줄마다 붙이기엔 좁다.
+                Text("\(TokenFormat.short(record.tokens.total)) / "
+                     + "\(TokenFormat.short(record.tokens.withoutCache)) 토큰")
                     .font(.system(size: 10).monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -624,6 +640,7 @@ struct SettingsView: View {
             }
 
             HStack {
+                Button("삭제", role: .destructive) { isConfirmingRecordDelete = true }
                 Spacer()
                 Button("닫기") { selectedRecord = nil }
                     .keyboardShortcut(.defaultAction)
@@ -631,6 +648,21 @@ struct SettingsView: View {
         }
         .padding(18)
         .frame(width: 320)
+        .confirmationDialog(
+            "이 측정 기록을 지울까요?",
+            isPresented: $isConfirmingRecordDelete,
+            titleVisibility: .visible
+        ) {
+            Button("지우기", role: .destructive) {
+                meter.deleteRecord(record)
+                // 지운 기록의 팝업을 띄워 둘 수 없다. 같이 닫는다.
+                selectedRecord = nil
+            }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("\(Self.recordFormatter.string(from: record.stoppedAt)) 기록이 지워집니다. "
+                 + "되돌릴 수 없습니다.")
+        }
     }
 
     private static let recordFormatter: DateFormatter = {

@@ -245,6 +245,12 @@ final class UsageMeter: ObservableObject {
         save()
     }
 
+    /// 기록 하나만 지운다. 시작 시각이 구분자다.
+    func deleteRecord(_ record: Record) {
+        state.history.removeAll { $0.startedAt == record.startedAt }
+        save()
+    }
+
     /// 멈춘 뒤 딱 한 번, 마지막 표본을 받아 준다. 조회가 돌아오는 데 시간이 걸려서
     /// 그때는 이미 `stoppedAt` 이 찍혀 있다.
     private var acceptsFinalSample = false
