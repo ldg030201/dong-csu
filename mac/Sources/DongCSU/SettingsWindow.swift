@@ -1016,12 +1016,15 @@ struct SettingsView: View {
         }
     }
 
-    /// 기능 묶음 하나. 대분류를 달고 그 아래를 한 단 들여쓴다.
+    /// 기능 묶음 하나. 대분류를 달고, 딸린 줄들을 세로줄로 묶어 준다.
+    ///
+    /// **들여쓰기만으로는 어디까지가 그 묶음인지 안 보인다.** 딱지가 줄마다 붙어 있어서
+    /// 왼쪽 끝이 들쭉날쭉해 보이는데, 세로줄이 그 경계를 대신 그어 준다.
     private func changelogGroup(_ group: ChangelogGroup) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
                 Text(group.title)
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 11.5, weight: .semibold))
                 // 묶음 자체가 이번에 생긴 기능이면 제목 옆에 붙는다. 항목마다 신규가
                 // 줄줄이 달리는 것보다 "이 기능이 새로 생겼다"가 한눈에 들어온다.
                 if group.isNew {
@@ -1030,20 +1033,34 @@ struct SettingsView: View {
                 Spacer(minLength: 0)
             }
 
-            ForEach(Array(group.notes.enumerated()), id: \.offset) { _, note in
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    changelogBadge(note.kind.title, tint: note.kind.tint)
-                        // 딱지 폭을 맞춰야 뒤따르는 글이 한 줄로 정렬된다.
-                        .frame(width: 30, alignment: .leading)
-                    Text(note.text)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 8) {
+                // 제목 아래로 흐르는 세로줄. 여기까지가 이 묶음이라는 표시다.
+                Capsule()
+                    .fill(Color.secondary.opacity(0.28))
+                    .frame(width: 2)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(Array(group.notes.enumerated()), id: \.offset) { _, note in
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            // **새로 생긴 기능에는 갈래를 안 붙인다.** 전부 새 것이라
+                            // 가를 것이 없고, 제목 옆 "신규" 가 이미 그 말을 한다.
+                            if !group.isNew {
+                                changelogBadge(note.kind.title, tint: note.kind.tint)
+                                    // 딱지 폭을 맞춰야 뒤따르는 글이 한 줄로 정렬된다.
+                                    .frame(width: 30, alignment: .leading)
+                            }
+                            Text(note.text)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
                 }
-                .padding(.leading, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            // 세로줄이 제목 글자 아래 오게 살짝 들여 둔다.
+            .padding(.leading, 3)
         }
-        .padding(.leading, 2)
     }
 
     // MARK: - 계정
