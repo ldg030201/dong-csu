@@ -7,9 +7,12 @@ import SwiftUI
 /// 안을 못 그려서 스크롤을 벗긴 모습을 그리는데, 여기서 알고 싶은 것이 바로 그 스크롤이
 /// 제대로 걸렸는지다. 그래서 진짜 창에 얹어 놓고 잰다.
 ///
-/// 검사하는 것은 **목록이 길어져도 창이 그만큼 길어지지 않는가** 하나다. 기록을 4개
-/// 넣었을 때와 50개(최대치) 넣었을 때의 높이가 같아야 한다 — 다르면 그 목록에 스크롤이
+/// 검사하는 것은 **목록이 길어져도 창이 그만큼 길어지지 않는가** 하나다. 넘치고도 남을
+/// 만큼(20개)과 최대치(50개)를 넣어 보고 높이가 같아야 한다 — 다르면 그 목록에 스크롤이
 /// 안 걸린 것이고, 쓰다 보면 창이 화면을 넘어간다.
+///
+/// **적을 때 짧아지는 것은 정상이다.** 짧은데도 자리를 다 차지하면 빈 자리가 남고,
+/// 그 빈 자리 때문에 도리어 창에 스크롤이 붙는다. 그래서 4개일 때 높이도 같이 찍는다.
 @MainActor
 enum ProbeLayout {
     static func run() -> Bool {
@@ -17,23 +20,24 @@ enum ProbeLayout {
 
         var allPassed = true
         for probe in Probe.all {
-            let short = height(of: probe, records: 4)
-            let long = height(of: probe, records: 50)
-            let grew = long - short
+            let few = height(of: probe, records: 4)
+            let many = height(of: probe, records: 20)
+            let most = height(of: probe, records: 50)
 
             var notes: [String] = []
-            if grew > 1 {
-                notes.append("기록 4→50개에 \(Int(grew))pt 늘어남 — 스크롤이 안 걸렸다")
+            if most - many > 1 {
+                notes.append("기록 20→50개에 \(Int(most - many))pt 늘어남 — 스크롤이 안 걸렸다")
                 allPassed = false
             } else if probe.hasList {
-                notes.append("기록 4→50개에도 그대로")
+                notes.append("기록 20→50개에도 그대로")
+                if few < many - 1 { notes.append("4개면 \(Int(few))pt 로 줄어듦") }
             }
-            if short > SettingsView.size.height + 1 {
-                notes.append("창보다 \(Int(short - SettingsView.size.height))pt 길다")
+            if most > SettingsView.size.height + 1 {
+                notes.append("창보다 \(Int(most - SettingsView.size.height))pt 길다")
             }
 
             print(String(format: "  %-16@ %5dpt  %@",
-                         probe.label, Int(short), notes.joined(separator: " · ")))
+                         probe.label, Int(most), notes.joined(separator: " · ")))
         }
 
         print(allPassed ? "통과" : "실패 — 목록에 스크롤이 안 걸린 탭이 있다")

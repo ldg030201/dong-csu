@@ -40,6 +40,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .version: return "arrow.down.circle"
         }
     }
+
+    /// 아직 다듬는 중인 화면. 사이드바와 그 화면 제목 옆에 딱지가 붙는다.
+    ///
+    /// **숫자가 안 맞을 수 있다는 것을 미리 말해 두는 자리다.** 측정은 한도 %p를 1%p
+    /// 눈금으로 받고 토큰은 Claude Code 것만 세기 때문에, 쓰는 사람이 기대한 값과
+    /// 어긋나는 경우가 있다. 다듬어서 믿을 만해지면 여기서 뺀다.
+    var isBeta: Bool { self == .measure }
 }
 
 /// 설정 창의 내용.
@@ -131,8 +138,14 @@ struct SettingsView: View {
             Divider()
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(tab.title)
-                        .font(.system(size: 15, weight: .semibold))
+                    HStack(spacing: 6) {
+                        Text(tab.title)
+                            .font(.system(size: 15, weight: .semibold))
+                        if tab.isBeta {
+                            pillBadge("beta", tint: .orange)
+                        }
+                        Spacer(minLength: 0)
+                    }
                     tabBody(viewportHeight: viewportHeight)
                     Spacer(minLength: 0)
                 }
@@ -190,6 +203,11 @@ struct SettingsView: View {
                             .frame(width: 16)
                         Text(item.title)
                             .font(.system(size: 12))
+                        if item.isBeta {
+                            Text("beta")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.orange)
+                        }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 8)
@@ -263,8 +281,10 @@ struct SettingsView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                // 바닥에 걸려 있는 동안은 눌러도 안 나간다. 눌리는데 아무 일도 안 일어나면
+                // 고장으로 보이므로 잠가 둔다. 이 줄은 1초마다 다시 그려져서 알아서 풀린다.
                 Button(store.isRefreshing ? "조회 중…" : "새로고침", action: actions.refresh)
-                    .disabled(store.isRefreshing)
+                    .disabled(store.isRefreshing || !store.canFetchNow)
             }
         }
     }
@@ -501,11 +521,15 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            if isPreviewRender {
+            // **짧으면 그냥 늘어놓는다.** 스크롤을 씌우면 내용이 적어도 그 높이를 그대로
+            // 차지해서, 기록 두 줄에 빈 자리가 한 뼘씩 남고 그게 넘쳐 창에 스크롤이 붙는다.
+            let cap = historyCap(viewportHeight)
+            let natural = CGFloat(meter.state.history.count) * Self.historyRowHeight
+            if isPreviewRender || natural <= cap {
                 historyRows
             } else {
                 ScrollView { historyRows }
-                    .frame(height: historyHeight(viewportHeight))
+                    .frame(height: cap)
             }
         }
     }
@@ -520,12 +544,18 @@ struct SettingsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// 기록 목록에 줄 높이. 재고 있지 않으면 화면에 기록밖에 없으니 남는 자리를 다 가진다.
-    private func historyHeight(_ viewportHeight: CGFloat) -> CGFloat {
+    /// 기록 목록에 줄 **최대** 높이. 재고 있지 않으면 화면에 기록밖에 없으니 남는 자리를 다 준다.
+    private func historyCap(_ viewportHeight: CGFloat) -> CGFloat {
         guard !meter.isRunning else { return Self.runningHistoryHeight }
         // 위에 시작 버튼 줄과 안내 문구가 있다.
         return max(Self.runningHistoryHeight, tabBodyHeight(viewportHeight) - 110)
     }
+
+    /// 기록 한 줄의 높이. 두 줄짜리 글에 위아래 여백 3씩.
+    ///
+    /// **넘겨봐야 하는지만 가리는 데 쓴다.** 조금 어긋나도 스크롤이 한 칸 일찍 붙거나
+    /// 늦게 붙을 뿐이라, 재서 맞추는 값을 들이지 않았다.
+    private static let historyRowHeight: CGFloat = 34
 
     private func measureHistoryRow(_ record: UsageMeter.Record) -> some View {
         HStack(spacing: 8) {
@@ -962,7 +992,8 @@ struct SettingsView: View {
         }
     }
 
-    private func changelogBadge(_ text: String, tint: Color) -> some View {
+    /// 알약 모양 딱지. 변경 내역의 갈래·버전 표시와 beta 표시가 같이 쓴다.
+    private func pillBadge(_ text: String, tint: Color) -> some View {
         Text(text)
             .font(.system(size: 9, weight: .medium))
             .foregroundStyle(tint)
@@ -1009,9 +1040,9 @@ struct SettingsView: View {
                     .foregroundStyle(.tertiary)
             }
             if entry.date == nil {
-                changelogBadge("준비 중", tint: .orange)
+                pillBadge("준비 중", tint: .orange)
             } else if entry.version == AppInfo.version {
-                changelogBadge("지금 버전", tint: .accentColor)
+                pillBadge("지금 버전", tint: .accentColor)
             }
         }
     }
@@ -1069,7 +1100,7 @@ struct SettingsView: View {
                 // 묶음 자체가 이번에 생긴 기능이면 제목 옆에 붙는다. 항목마다 신규가
                 // 줄줄이 달리는 것보다 "이 기능이 새로 생겼다"가 한눈에 들어온다.
                 if group.isNew {
-                    changelogBadge(ChangeKind.new.title, tint: ChangeKind.new.tint)
+                    pillBadge(ChangeKind.new.title, tint: ChangeKind.new.tint)
                 }
                 Spacer(minLength: 0)
             }
@@ -1086,7 +1117,7 @@ struct SettingsView: View {
                             // **새로 생긴 기능에는 갈래를 안 붙인다.** 전부 새 것이라
                             // 가를 것이 없고, 제목 옆 "신규" 가 이미 그 말을 한다.
                             if !group.isNew {
-                                changelogBadge(note.kind.title, tint: note.kind.tint)
+                                pillBadge(note.kind.title, tint: note.kind.tint)
                                     // 갈래 이름이 전부 두 글자라 폭이 거의 같지만, 1pt만
                                     // 달라도 뒤따르는 글의 시작점이 줄마다 흔들린다.
                                     .frame(width: Self.badgeWidth, alignment: .leading)
