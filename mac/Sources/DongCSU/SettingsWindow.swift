@@ -297,8 +297,13 @@ struct SettingsView: View {
                 measureControls(now: context.date)
             }
         }
-        // 탭을 열자마자 최신 값을 보여준다. 타이머(1분)만 기다리면 멈춰 있는 것처럼 보인다.
+        // 탭을 열자마자, 그리고 열어 둔 동안에는 자주 다시 센다. 앱이 평소에 도는
+        // 주기(1분)는 창을 안 볼 때 기준이라, 보고 있는 동안에는 숫자가 멈춘 것처럼 보인다.
+        // 덧붙은 부분만 읽어서 값이 싸다.
         .onAppear { meter.scanTokens() }
+        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in
+            meter.scanTokens()
+        }
     }
 
     private func measureHeader(now: Date) -> some View {
@@ -365,17 +370,19 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             } else {
                 let tokens = meter.state.tokens
+                // **단위를 적는다.** `입력 4` 만 있으면 네 번 물었다는 뜻으로 읽힌다.
+                // 횟수인 것은 응답 하나뿐이다.
                 measureRow("응답", "\(TokenFormat.exact(tokens.responses))건")
-                measureRow("출력", TokenFormat.short(tokens.output))
-                measureRow("입력", TokenFormat.short(tokens.input))
-                measureRow("캐시 생성", TokenFormat.short(tokens.cacheCreation))
-                measureRow("캐시 읽기", TokenFormat.short(tokens.cacheRead))
+                measureRow("입력", "\(TokenFormat.short(tokens.input)) 토큰")
+                measureRow("출력", "\(TokenFormat.short(tokens.output)) 토큰")
+                measureRow("캐시 생성", "\(TokenFormat.short(tokens.cacheCreation)) 토큰")
+                measureRow("캐시 읽기", "\(TokenFormat.short(tokens.cacheRead)) 토큰")
 
                 if meter.state.tokensByModel.count > 1 {
                     Divider().padding(.vertical, 2)
                     measureLabel("모델별", note: "출력 토큰")
                     ForEach(modelBreakdown, id: \.0) { model, tally in
-                        measureRow(model, TokenFormat.short(tally.output), emphasised: false)
+                        measureRow(model, "\(TokenFormat.short(tally.output)) 토큰", emphasised: false)
                     }
                 }
             }
