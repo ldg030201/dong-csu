@@ -138,8 +138,6 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(mode.rawValue, forKey: Keys.mode) }
     }
 
-    var isCollapsed: Bool { mode == .collapsed }
-
     @Published var petRingDisplay: PetRingDisplay = .default {
         didSet { defaults.set(petRingDisplay.rawValue, forKey: Keys.petRingDisplay) }
     }

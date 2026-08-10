@@ -469,25 +469,19 @@ final class HUDController {
     ///
     /// 펫의 창은 링이 들어갈 만큼 크지만 그림은 그보다 작다. 창으로 따지면 아직
     /// 글자를 가리지도 않았는데 비켜서, 왜 움직였는지 알 수 없어진다.
+    ///
+    /// **자리 계산은 여기서 하지 않는다.** 같은 셈이 두 곳에 있으면 한쪽만 고쳐진다 —
+    /// 실제로 그랬다. 여기서는 뷰 좌표를 화면 좌표로 옮기기만 한다.
     private func mascotScreenRect() -> NSRect {
         let panelFrame = panel.frame
         guard settings.mode == .pet else { return panelFrame }
 
-        let height = UsageHUDView.petOwlHeight(scale: scale)
-        // 그리드 15열 중 몸통이 쓰는 건 가운데 11열이다. 나머지는 날개를 펼 여백이라
-        // 평소에는 비어 있어서, 그 폭까지 가린다고 치면 쓸데없이 멀리 비킨다.
-        let width = height * CGFloat(OwlMark.bodyColumns) / CGFloat(OwlMark.lines)
-
-        // **창 한가운데가 아니다.** 아래에 버튼 줄이 깔려 있어서 마스코트는 그 위
-        // 영역의 가운데다 — `UsageHUDView.petHitRect` 와 같은 셈이다. 창 기준으로
-        // 재면 버튼 줄의 절반(배율 1에서 16pt)만큼 아래로 밀려서, 머리 쪽 커서를
-        // 몸으로 안 보고 버튼 줄 바로 위 빈 자리를 몸으로 본다.
-        let row = UsageHUDView.basePetButtonRow * scale
+        let local = UsageHUDView.petMascotRect(scale: scale)
         return NSRect(
-            x: panelFrame.midX - width / 2,
-            y: panelFrame.minY + row + (panelFrame.height - row - height) / 2,
-            width: width,
-            height: height
+            x: panelFrame.minX + local.minX,
+            y: panelFrame.minY + local.minY,
+            width: local.width,
+            height: local.height
         )
     }
 

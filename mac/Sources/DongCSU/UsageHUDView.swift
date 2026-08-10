@@ -149,6 +149,26 @@ struct UsageHUDView: View {
 
     static func petOwlHeight(scale: CGFloat) -> CGFloat { basePetOwlHeight * scale }
 
+    /// 마스코트 그림이 실제로 덮는 자리(뷰 좌표, 아래가 0).
+    ///
+    /// **`petHitRect` 와 같은 셈을 쓴다.** 둘 다 "버튼 줄 위 영역의 가운데"인데,
+    /// 예전에는 이 계산이 `HUDPanel` 에 따로 적혀 있어서 버튼 줄이 생겼을 때 한쪽만
+    /// 고쳐졌다 — 판정이 배율 1에서 16pt 아래로 밀렸다. 같은 파일에 나란히 둔다.
+    static func petMascotRect(scale: CGFloat) -> CGRect {
+        let panel = size(mode: .pet, scale: scale)
+        let height = petOwlHeight(scale: scale)
+        // 그리드 15열 중 몸통이 쓰는 건 가운데 11열이다. 나머지는 날개를 펼 여백이라
+        // 평소에는 비어 있어서, 그 폭까지 가린다고 치면 쓸데없이 멀리 비킨다.
+        let width = height * CGFloat(OwlMark.bodyColumns) / CGFloat(OwlMark.lines)
+        let row = basePetButtonRow * scale
+        return CGRect(
+            x: (panel.width - width) / 2,
+            y: row + (panel.height - row - height) / 2,
+            width: width,
+            height: height
+        )
+    }
+
     /// 새로고침 버튼 자리. 이 영역만 드래그 오버레이가 클릭을 통과시킨다.
     static func refreshInset(scale: CGFloat) -> CGFloat { 4 * scale }
     static func refreshHitSize(scale: CGFloat) -> CGFloat { 20 * scale }
