@@ -133,6 +133,13 @@ enum Changelog {
                 .improve("캐시 포함 여부를 고를 수 있도록 개선 "
                          + "(기본은 미포함, 기록 상세에서는 따로 켜서 봄)"),
             ]),
+            ChangelogGroup(title: "계정", tab: "account", notes: [
+                .new("플랜·한도 등급·토큰 만료 표시 추가"),
+            ]),
+            ChangelogGroup(title: "사용량 조회", tab: "status", notes: [
+                .improve("다음 새로고침까지 남은 초를 버튼에 표시하도록 개선 "
+                         + "(HUD·펫은 마우스를 올리면 뜸)"),
+            ]),
         ]),
         ChangelogEntry(version: "2.3.0", date: "2026-08-10", groups: [
             ChangelogGroup(title: "측정", tab: "measure", isNew: true, notes: [

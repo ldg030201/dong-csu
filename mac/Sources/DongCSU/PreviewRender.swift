@@ -308,7 +308,9 @@ enum HUDPreviewRenderer {
             planName: "Max",
             fiveHour: UsageWindow(utilization: 34, resetsAt: Date().addingTimeInterval(3 * 3600)),
             sevenDay: UsageWindow(utilization: 61, resetsAt: Date().addingTimeInterval(26 * 3600)),
-            fetchedAt: Date()
+            fetchedAt: Date(),
+            rateLimitTier: "default_claude_max_5x",
+            tokenExpiresAt: Date().addingTimeInterval(6 * 3600 + 41 * 60)
         )
         let view = SettingsView(
             settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-csu.preview") ?? .standard),

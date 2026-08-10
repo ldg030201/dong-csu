@@ -125,11 +125,16 @@ final class UsageStore: ObservableObject {
     /// 서버 쪽 계산에는 똑같이 들어간다.
     private var lastFetchAt: Date?
 
-    /// 지금 조회를 내보낼 수 있는지. 버튼을 잠그는 데도 쓴다.
-    var canFetchNow: Bool {
-        guard let lastFetchAt else { return true }
-        return Date().timeIntervalSince(lastFetchAt) >= Self.minFetchInterval
+    /// 다음 조회까지 남은 초. 0이면 지금 할 수 있다. 버튼에 숫자로 보여준다.
+    ///
+    /// **눌렀는데 아무 일도 안 일어나면 고장으로 보인다.** 몇 초 뒤면 되는지 알려 준다.
+    func fetchCooldown(now: Date = Date()) -> TimeInterval {
+        guard let lastFetchAt else { return 0 }
+        return max(0, Self.minFetchInterval - now.timeIntervalSince(lastFetchAt))
     }
+
+    /// 지금 조회를 내보낼 수 있는지. 버튼을 잠그는 데도 쓴다.
+    var canFetchNow: Bool { fetchCooldown() <= 0 }
 
     func refresh(force: Bool = false) {
         if inFlight { return }

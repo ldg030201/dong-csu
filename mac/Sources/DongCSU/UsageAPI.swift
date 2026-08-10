@@ -41,6 +41,14 @@ struct UsageSnapshot: Sendable {
     let fetchedAt: Date
     /// 서버가 준 한도 전부. 옛 응답에는 없을 수 있어서 비어 있을 수 있다.
     var limits: [UsageLimit] = []
+
+    // 아래 둘은 서버가 아니라 **키체인 자격증명에서 온다.** 계정 탭이 보여준다.
+    // 조회할 때 자격증명을 이미 읽으므로 같이 실어 보내면 따로 읽을 일이 없다.
+
+    /// `default_claude_max_5x` 같은 요금제 등급 원문.
+    var rateLimitTier: String?
+    /// 지금 쓰는 액세스 토큰이 언제까지인지.
+    var tokenExpiresAt: Date?
 }
 
 enum UsageError: Error, CustomStringConvertible {
@@ -76,6 +84,8 @@ enum UsageError: Error, CustomStringConvertible {
 struct OAuthCredentials: Sendable {
     let accessToken: String
     let subscriptionType: String?
+    /// `default_claude_max_5x` 처럼 몇 배 플랜인지까지 들어 있다. 계정 탭이 쓴다.
+    var rateLimitTier: String?
     let expiresAt: Date?
     /// 만료됐을 때 이걸로 새 토큰을 받는다. 없으면 재로그인 말고 길이 없다.
     let refreshToken: String?
@@ -87,6 +97,7 @@ struct OAuthCredentials: Sendable {
         OAuthCredentials(
             accessToken: token.accessToken,
             subscriptionType: subscriptionType,
+            rateLimitTier: rateLimitTier,
             expiresAt: token.expiresAt,
             refreshToken: token.refreshToken ?? refreshToken,
             origin: origin
@@ -410,6 +421,7 @@ enum ClaudeKeychain {
         return OAuthCredentials(
             accessToken: token,
             subscriptionType: oauth["subscriptionType"] as? String,
+            rateLimitTier: oauth["rateLimitTier"] as? String,
             expiresAt: expiresAt,
             refreshToken: (oauth["refreshToken"] as? String).flatMap { $0.isEmpty ? nil : $0 },
             origin: item
@@ -476,7 +488,9 @@ enum UsageAPI {
             fiveHour: window(from: root["five_hour"]),
             sevenDay: window(from: root["seven_day"]),
             fetchedAt: Date(),
-            limits: limits(from: root["limits"])
+            limits: limits(from: root["limits"]),
+            rateLimitTier: credentials.rateLimitTier,
+            tokenExpiresAt: credentials.expiresAt
         )
     }
 

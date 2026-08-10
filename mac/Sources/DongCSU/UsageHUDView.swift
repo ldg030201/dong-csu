@@ -747,7 +747,10 @@ struct UsageHUDView: View {
         if let error = store.errorText {
             return "갱신 실패: \(error) — 클릭해서 다시 시도"
         }
-        return "새로고침"
+        // **잇달아 누르면 요청 제한에 걸린다.** 그 사이에는 눌러도 안 나가므로,
+        // 마우스를 올렸을 때 몇 초 남았는지 알려 준다.
+        let remaining = Int(store.fetchCooldown().rounded(.up))
+        return remaining > 0 ? "새로고침 — \(remaining)초 뒤에 가능" : "새로고침"
     }
 
     // MARK: - 링

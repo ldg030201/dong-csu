@@ -295,7 +295,7 @@ struct SettingsView: View {
 
                 // 바닥에 걸려 있는 동안은 눌러도 안 나간다. 눌리는데 아무 일도 안 일어나면
                 // 고장으로 보이므로 잠가 둔다. 이 줄은 1초마다 다시 그려져서 알아서 풀린다.
-                Button(store.isRefreshing ? "조회 중…" : "새로고침", action: actions.refresh)
+                Button(refreshTitle(now: context.date), action: actions.refresh)
                     .disabled(store.isRefreshing || !store.canFetchNow)
             }
         }
@@ -327,6 +327,13 @@ struct SettingsView: View {
             Text(value)
                 .font(.system(size: 11).monospacedDigit())
         }
+    }
+
+    /// 바닥에 걸려 있는 동안은 몇 초 남았는지 버튼에 적는다. 이 줄은 1초마다 다시 그려진다.
+    private func refreshTitle(now: Date) -> String {
+        if store.isRefreshing { return "조회 중…" }
+        let remaining = Int(store.fetchCooldown(now: now).rounded(.up))
+        return remaining > 0 ? "새로고침 (\(remaining)초)" : "새로고침"
     }
 
     private func fetchedText(now: Date) -> String {
@@ -1300,14 +1307,58 @@ struct SettingsView: View {
     // MARK: - 계정
 
     private var accountSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(accountDescription)
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        // 토큰 만료까지 남은 시간이 초 단위로 줄어든다.
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            VStack(alignment: .leading, spacing: 14) {
+                if let snapshot = store.snapshot {
+                    VStack(alignment: .leading, spacing: 5) {
+                        measureLabel("로그인", note: "Claude Code에서 가져옴")
+                        measureRow("플랜", snapshot.planName ?? "—")
+                        if let tier = Self.tierText(snapshot.rateLimitTier) {
+                            measureRow("한도 등급", tier)
+                        }
+                        measureRow("토큰 만료", Self.tokenExpiryText(
+                            snapshot.tokenExpiresAt, now: context.date
+                        ))
+                    }
+                    Divider()
+                } else {
+                    // 한 번도 성공하지 못했으면 보여줄 것이 없다. 아래 안내가 답한다.
+                    Text("아직 조회하지 못했습니다.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
 
-            Button("Claude Code 재로그인…", action: actions.login)
+                Text(accountDescription)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Claude Code 재로그인…", action: actions.login)
+            }
         }
+    }
+
+    /// `default_claude_max_5x` → `Max 5x`.
+    ///
+    /// **못 알아보는 값이면 원문을 그대로 둔다.** 서버가 형태를 바꿨을 때 빈칸이 되는
+    /// 것보다, 낯설어도 무엇인가 보이는 편이 낫다.
+    private static func tierText(_ raw: String?) -> String? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty
+        else { return nil }
+        // `default_claude_max_5x` 처럼 앞에 붙는 것들을 걷어내고 배수만 남긴다.
+        let parts = raw.split(separator: "_").map(String.init)
+        guard let multiple = parts.last, multiple.hasSuffix("x"),
+              multiple.dropLast().allSatisfy(\.isNumber),
+              let plan = parts.dropLast().last
+        else { return raw }
+        return "\(plan.prefix(1).uppercased() + plan.dropFirst()) \(multiple)"
+    }
+
+    private static func tokenExpiryText(_ expiresAt: Date?, now: Date) -> String {
+        guard let expiresAt else { return "—" }
+        guard expiresAt > now else { return "만료됨 (곧 갱신)" }
+        return "\(RemainingTime.clockText(until: expiresAt, now: now)) 뒤"
     }
 
     private var accountDescription: String {
