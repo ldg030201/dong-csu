@@ -36,6 +36,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 - ⏱️ 초기화까지 남은 시간, 다음 조회까지 남은 시간
 - 🔔 새 버전이 나오면 알려준다
 - 🦉 **[픽셀 마스코트](../docs/characters/README.md)** — 한도가 차면 지치고, 조회가 끊기면 색이 빠진다
+- 🎭 **[캐릭터를 바꿀 수 있다](../docs/characters/making.md)** — 그림 한 장이면 다른 캐릭터가 산다
 - 🖥️ 모든 Space와 전체화면 위에. Dock 아이콘 없이 메뉴바에만
 - 🔑 **로그인할 때 자동 시작** — 권한을 묻지 않는다
 
@@ -174,6 +175,7 @@ git -C "$(brew --repository ldg030201/dong-csu)" pull -q || brew update; brew up
 | [문제 해결](docs/troubleshooting.md) | 설치가 꼬였을 때, 앱이 안 뜰 때 |
 | [사용량과 토큰](docs/privacy.md) | 어디서 무엇을 읽는지, 토큰 만료 |
 | [캐릭터](../docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](../docs/characters/owl.md) |
+| [캐릭터 만들기](../docs/characters/making.md) | 그림 한 장으로 캐릭터 바꾸기 — 규격 · 프롬프트 · 다듬는 법 |
 | [개발](docs/development.md) | 빌드, 렌더 통로 |
 | [테스트판과 정식판](../docs/development.md) | 두 앱을 나눠 놓고 개발하는 방식 |
 | [작업 규칙](../CLAUDE.md) | 버전·변경 내역·커밋 규칙 |
