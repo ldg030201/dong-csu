@@ -124,6 +124,22 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.4.0", date: nil, groups: [
+            ChangelogGroup(title: "마스코트", notes: [
+                .change("부엉이를 새로 그린 그림으로 변경 "
+                        + "(설정 창 아이콘 탭에서 '오리지널'로 되돌릴 수 있음)"),
+                .improve("걷는 모습을 옆모습 두 박자로 개선 (다리를 벌렸다 모으며 걸음)"),
+                .improve("졸릴 때 졸린 얼굴로 걷도록 개선"),
+            ]),
+            ChangelogGroup(title: "캐릭터 바꾸기", isNew: true, notes: [
+                .new("그림 한 장으로 마스코트 교체 (mascot 폴더에 규격 시트를 넣으면 바뀜)"),
+                .new("공통 프롬프트와 견본 시트 제공 (그림 AI에게 그대로 넘겨 새 캐릭터를 뽑음)"),
+                .new("받은 그림을 규격에 맞춰 다듬기 (배경·칸 선·부스러기 제거, 자리 맞추기)"),
+            ]),
+            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
+                .change("탈진하면 혼자 걸어다니지 않도록 변경 (커서는 그대로 비킴)"),
+            ]),
+        ]),
         ChangelogEntry(version: "2.3.1", date: "2026-08-11", groups: [
             ChangelogGroup(title: "업데이트", tab: "version", notes: [
                 .improve("터미널 대신 앱 안에서 진행하도록 개선 "
