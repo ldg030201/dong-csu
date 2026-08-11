@@ -134,6 +134,7 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(iconStyle.rawValue, forKey: Keys.iconStyle) }
     }
 
+
     @Published var mode: HUDMode = .default {
         didSet { defaults.set(mode.rawValue, forKey: Keys.mode) }
     }
@@ -281,6 +282,9 @@ final class HUDSettings: ObservableObject {
 
         static let appearance = "hud.appearance"
         static let iconStyle = "hud.iconStyle"
+        /// 그림 부엉이로 한 번 옮겼는지. **한 번만 옮긴다** — 두 번 옮기면 그 사이에
+        /// 오리지널로 되돌려 놓은 사람의 선택을 매번 덮는다.
+        static let movedToSheetOwl = "hud.movedToSheetOwl"
         static let mode = "hud.mode"
         /// 모드가 생기기 전에 쓰던 접힘 여부. 새로 저장하지는 않고 읽기만 한다.
         static let collapsed = "hud.collapsed"
@@ -314,6 +318,14 @@ final class HUDSettings: ObservableObject {
     private func load() {
         appearance = HUDAppearance(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .default
         iconStyle = ClaudeIconStyle(rawValue: defaults.string(forKey: Keys.iconStyle) ?? "") ?? .default
+        // **쓰던 사람도 새 부엉이로 한 번 옮긴다.** 기본값만 바꾸면 아무도 안 바뀐다 —
+        // `load()` 가 읽자마자 didSet 으로 되쓰기 때문에, 손도 안 댄 사람까지 `owl` 이
+        // 저장돼 있다. 그래서 "고른 것"과 "그냥 깔린 것"을 가릴 방법이 없다.
+        // 오리지널을 일부러 쓰던 사람은 아이콘 탭에서 한 번에 되돌린다.
+        if !defaults.bool(forKey: Keys.movedToSheetOwl) {
+            defaults.set(true, forKey: Keys.movedToSheetOwl)
+            if iconStyle == .owl { iconStyle = .owlSheet }
+        }
         // 모드가 생기기 전에 접어 두고 쓰던 사람은 그대로 접힌 채로 시작한다.
         // 이걸 빠뜨리면 업데이트하는 순간 HUD가 제멋대로 펼쳐진다.
         if let stored = HUDMode(rawValue: defaults.string(forKey: Keys.mode) ?? "") {

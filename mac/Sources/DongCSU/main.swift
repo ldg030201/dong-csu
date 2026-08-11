@@ -231,6 +231,170 @@ if CommandLine.arguments.contains("--probe-upgrade") {
     exit(Upgrader.probe() ? 0 : 1)
 }
 
+// 부엉이를 그림 마스코트 형식으로 뽑는다: dong-csu --dump-sprites <디렉터리>
+//
+// **그림 없이 커스텀 통로를 검증하려는 자리다.** 뽑아서 mascot 폴더에 넣고
+// 아이콘 탭에서 "내 그림"을 고르면, 격자로 그린 부엉이와 같아야 한다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--dump-sprites"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let directory = CommandLine.arguments[flagIndex + 1]
+    // 뒤에 `tint=RRGGBB` 를 붙이면 그 색으로 뽑는다. 통로가 살아 있는지 눈으로 가를 때 쓴다.
+    let tint = CommandLine.arguments
+        .first { $0.hasPrefix("tint=") }
+        .map { String($0.dropFirst("tint=".count)) }
+        .flatMap { hex -> NSColor? in
+            guard hex.count == 6, let value = Int(hex, radix: 16) else { return nil }
+            return NSColor(
+                srgbRed: CGFloat((value >> 16) & 0xFF) / 255,
+                green: CGFloat((value >> 8) & 0xFF) / 255,
+                blue: CGFloat(value & 0xFF) / 255,
+                alpha: 1
+            )
+        }
+    // `cell=32` 처럼 붙이면 한 칸을 그만큼 크게 뽑는다. 예시로 넘길 때 쓴다.
+    let cell = CommandLine.arguments
+        .first { $0.hasPrefix("cell=") }
+        .flatMap { CGFloat(Int(String($0.dropFirst("cell=".count))) ?? 0) }
+        .flatMap { $0 > 0 ? $0 : nil } ?? MascotSpriteExport.cell
+    // `sheet` 를 붙이면 규격 크기 한 장으로 뽑는다. 그게 사용자에게 줄 형식이다.
+    // `rules` 를 붙이면 칸 경계에 선을 긋고, `empty` 를 붙이면 그림 없이 틀만 뽑는다.
+    // `x2` 처럼 배율을 붙이면 규격의 정수배로 뽑는다.
+    if CommandLine.arguments.contains("sheet") {
+        let path = directory.hasSuffix(".png") ? directory : directory + "/" + MascotSheet.fileName
+        try? FileManager.default.createDirectory(
+            at: URL(fileURLWithPath: path).deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let multiple = CommandLine.arguments
+            .first { $0.hasPrefix("x") && Int($0.dropFirst()) != nil }
+            .flatMap { Int($0.dropFirst()) }
+            .flatMap { $0 > 0 ? $0 : nil } ?? 1
+        let rules = CommandLine.arguments.contains("rules")
+        let empty = CommandLine.arguments.contains("empty")
+        // `labels` 를 붙이면 칸마다 이름을 박는다. **그리는 쪽에 줄 규격 그림용이다** —
+        // 앱이 읽는 시트에 넣으면 글자가 마스코트에 딸려 들어간다.
+        let labels = CommandLine.arguments.contains("labels")
+        let ok = MainActor.assumeIsolated {
+            MascotSpriteExport.writeSheet(
+                to: path, tint: tint, multiple: multiple,
+                rules: rules, empty: empty, labels: labels
+            )
+        }
+        // 이름표를 붙이면 칸 위에 띠가 생겨서 규격 크기가 아니다. **문서용 그림이라
+        // 그래도 된다** — 앱에 넣는 시트는 이름표 없이 뽑는다.
+        let size = labels
+            ? "규격 아님 (문서용)"
+            : "\(Int(MascotSheet.canonicalSize.width) * multiple)x"
+              + "\(Int(MascotSheet.canonicalSize.height) * multiple)"
+        print(ok ? "시트: \(path) (\(size))" : "뽑지 못했다: \(path)")
+        exit(ok ? 0 : 1)
+    }
+
+    let written = MainActor.assumeIsolated {
+        MascotSpriteExport.writeAll(to: directory, tint: tint, cell: cell)
+    }
+    guard let written else {
+        print("뽑지 못했다: \(directory)")
+        exit(1)
+    }
+    print("\(written.count)장:")
+    for path in written { print("  \(path)") }
+    exit(0)
+}
+
+// 번들에 든 마스코트 시트를 확인한다: dong-csu --probe-mascot
+//
+// 몇 칸이 읽혔는지, 어떤 방법으로 읽었는지, 안 그린 칸이 어디로 떨어지는지 본다.
+// 새 그림을 `Resources/mascot.png` 에 넣고 빌드한 뒤 이걸로 확인한다.
+if CommandLine.arguments.contains("--probe-mascot") {
+    MainActor.assumeIsolated {
+        guard let set = MascotSpriteStore.bundled else {
+            print("번들에 mascot.png 가 없다 — 빌드가 깨졌다")
+            exit(1)
+        }
+        print("읽은 방법: \(set.readingMethod)")
+        print("크기: \(Int(set.extent.width))x\(Int(set.extent.height))")
+        print("칸 \(set.available.count)개: \(set.available.map(\.rawValue).joined(separator: ", "))")
+        // 안 넣은 칸이 어디로 떨어지는지도 같이 본다. 대체 사슬이 끊기면 여기서 드러난다.
+        let missing = MascotSprite.allCases.filter { !set.available.contains($0) }
+        if !missing.isEmpty {
+            print("없는 칸 \(missing.count)개:")
+            for sprite in missing {
+                var chain: [String] = []
+                var step = sprite.fallback
+                while let current = step {
+                    chain.append(current.rawValue)
+                    if set.available.contains(current) { break }
+                    step = current.fallback
+                }
+                print("  \(sprite.rawValue) → \(chain.isEmpty ? "떨어질 곳 없음" : chain.joined(separator: " → "))")
+            }
+        }
+    }
+    exit(0)
+}
+
+// 그려 받은 시트를 규격 시트로 만든다:
+//   dong-csu --prep-sheet <받은.png> <나올.png> [cols=6] [rows=4] [keep=4] [noalign]
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--prep-sheet"),
+   flagIndex + 2 < CommandLine.arguments.count {
+    func number(_ key: String, _ fallback: Int) -> Int {
+        CommandLine.arguments
+            .first { $0.hasPrefix("\(key)=") }
+            .flatMap { Int($0.dropFirst(key.count + 1)) } ?? fallback
+    }
+    var options = SheetPrep.Options()
+    options.columns = number("cols", options.columns)
+    options.rows = number("rows", options.rows)
+    options.keep = number("keep", options.keep)
+    options.speck = number("speck", options.speck)
+    options.aligns = !CommandLine.arguments.contains("noalign")
+
+    let ok = MainActor.assumeIsolated {
+        SheetPrep.run(
+            from: CommandLine.arguments[flagIndex + 1],
+            to: CommandLine.arguments[flagIndex + 2],
+            options: options
+        )
+    }
+    exit(ok ? 0 : 1)
+}
+
+// 그린 시트에서 칸 좌표를 뽑는다: dong-csu --fit-sheet <시트.png> [나올.json]
+//
+// **좌표를 손으로 적지 않게 하려고 둔 자리다.** 그리는 쪽이 격자를 정확히 못 맞추므로,
+// 나온 그림에서 칸이 실제로 어디 있는지 찾아 적어 둔다.
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--fit-sheet"),
+   flagIndex + 1 < CommandLine.arguments.count {
+    let source = CommandLine.arguments[flagIndex + 1]
+    let destination = flagIndex + 2 < CommandLine.arguments.count
+        && !CommandLine.arguments[flagIndex + 2].hasPrefix("-")
+        ? CommandLine.arguments[flagIndex + 2]
+        : URL(fileURLWithPath: source)
+            .deletingLastPathComponent()
+            .appendingPathComponent(MascotAtlas.fileName).path
+
+    let result: SheetFit.Result
+    switch SheetFit.fit(imageAt: source) {
+    case .success(let found):
+        result = found
+    case .failure(let why):
+        print("칸을 못 찾았다: \(source)")
+        print(why.advice)
+        exit(1)
+    }
+    print("찾은 방법: \(result.method)")
+    for line in result.report { print(line) }
+    for warning in result.warnings { print("주의: \(warning)") }
+    guard result.atlas.write(to: URL(fileURLWithPath: destination)) else {
+        print("적지 못했다: \(destination)")
+        exit(1)
+    }
+    print("적었다: \(destination)")
+    // 눈으로 맞춰 볼 것이 있으면 0이 아닌 값으로 알린다.
+    exit(result.warnings.isEmpty ? 0 : 2)
+}
+
 // 설정 창이 탭마다 얼마나 길어지는지 잰다: dong-csu --probe-layout
 //
 // 렌더 통로는 스크롤을 벗겨서 그리므로 **스크롤이 걸렸는지는 이걸로만 알 수 있다.**
@@ -333,8 +497,14 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
     let arguments = CommandLine.arguments
     let directory = arguments[flagIndex + 1]
     let cell = arguments.count > flagIndex + 2 ? Double(arguments[flagIndex + 2]) ?? 120 : 120
+    // `grid` 를 붙이면 코드로 그리는 오리지널 부엉이로 뽑는다. 기본은 기본 캐릭터와
+    // 같은 그림 마스코트다 — 문서가 화면과 다른 부엉이를 보여주면 안 된다.
+    let usesGrid = arguments.contains("grid")
     let written = MainActor.assumeIsolated {
-        OwlGIFRenderer.writeAll(to: directory, cell: cell)
+        OwlGIFRenderer.writeAll(
+            to: directory, cell: cell,
+            sheet: usesGrid ? nil : MascotSpriteStore.bundled
+        )
     }
     guard let written else {
         print("render failed")

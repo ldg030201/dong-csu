@@ -75,7 +75,7 @@ enum OwlSheetRenderer {
 @MainActor
 enum OwlGIFRenderer {
     /// 만들어진 파일 경로들. 하나라도 실패하면 nil.
-    static func writeAll(to directory: String, cell: CGFloat) -> [String]? {
+    static func writeAll(to directory: String, cell: CGFloat, sheet: MascotSpriteSet? = nil) -> [String]? {
         let base = URL(fileURLWithPath: directory, isDirectory: true)
         do {
             try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
@@ -86,13 +86,15 @@ enum OwlGIFRenderer {
         var written: [String] = []
         for animation in OwlAnimation.all {
             let url = base.appendingPathComponent("\(animation.name).gif")
-            guard write(animation, to: url, cell: cell) else { return nil }
+            guard write(animation, to: url, cell: cell, sheet: sheet) else { return nil }
             written.append(url.path)
         }
         return written
     }
 
-    private static func write(_ animation: OwlAnimation, to url: URL, cell: CGFloat) -> Bool {
+    private static func write(
+        _ animation: OwlAnimation, to url: URL, cell: CGFloat, sheet: MascotSpriteSet? = nil
+    ) -> Bool {
         let frames = animation.frames
         guard let destination = CGImageDestinationCreateWithURL(
             url as CFURL,
@@ -106,10 +108,29 @@ enum OwlGIFRenderer {
             kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0],
         ] as CFDictionary)
 
-        for frame in frames {
+        for (beat, frame) in frames.enumerated() {
             // 투명 배경으로 두면 프레임이 지워지는 방식에 따라 잔상이 남는다.
             // 배경을 칠해서 프레임마다 화면을 통째로 덮게 한다.
-            let content = OwlMarkView(pose: frame.pose, palette: animation.palette)
+            let body = ZStack {
+                if let sheet {
+                    // **앱과 같은 판단으로 칸을 고른다.** 여기서 따로 고르면 문서의
+                    // 부엉이가 화면의 부엉이와 다른 자세를 한다.
+                    MascotSpriteView(
+                        set: sheet,
+                        sprite: MascotSprite.resolve(
+                            mood: animation.mood, pose: frame.pose,
+                            gait: animation.gait, beat: beat
+                        ),
+                        flipped: false,
+                        // 문서용이라 번들이 무엇이든 정식판 색으로 뽑는다.
+                        testLook: false,
+                        size: cell
+                    )
+                } else {
+                    OwlMarkView(pose: frame.pose, palette: .normal)
+                }
+            }
+            let content = body
                 .frame(height: cell)
                 .padding(cell * 0.22)
                 .background(Color(white: 0.13))
@@ -136,6 +157,242 @@ enum OwlGIFRenderer {
         // 뷰어가 제멋대로 100ms로 바꿔 잡으므로 눈에 띄는 값을 준다.
         guard frame.duration > 0 else { return 1 }
         return frame.duration + frame.jitter / 2
+    }
+}
+
+/// `dong-csu --dump-sprites <경로>` — 격자 부엉이를 규격 시트로 굽는다.
+///
+/// **빌드가 이걸 불러서 번들에 넣는다.** HUD·펫의 마스코트는 예외 없이 파일에서
+/// 읽으므로, 기본으로 깔리는 부엉이도 여기서 구운 파일이다. 색이 변형마다 달라서
+/// (테스트판은 보라) 소스에 넣어 둘 수가 없고, 자세를 고치면 시트도 같이 바뀌어야
+/// 해서 빌드 때 굽는 것이 유일하게 어긋나지 않는 길이다.
+///
+/// 그리는 사람에게 줄 빈 틀(`rules empty`)과 예시(`rules`)도 여기서 나온다.
+@MainActor
+enum MascotSpriteExport {
+    /// 상태마다 어느 자세·팔레트로 그릴지.
+    ///
+    /// `tint` 로 몸 색을 강제로 바꿔서 뽑을 수 있다. 통로가 살아 있는지 눈으로 가를 때
+    /// 쓴다 — 부엉이를 그대로 뽑으면 격자로 그린 것과 똑같이 나와서, 파일에서 그리는
+    /// 중인지 코드로 그리는 중인지 알 수 없다.
+    static func pose(for sprite: MascotSprite, tint: NSColor? = nil) -> (OwlPose, OwlPalette) {
+        let (pose, palette) = basePose(for: sprite)
+        // **죽음은 회색 그대로 둔다.** 거기 색은 장식이 아니라 정보다.
+        guard let tint, sprite != .dead else { return (pose, palette) }
+        return (pose, .tinted(body: tint))
+    }
+
+    private static func basePose(for sprite: MascotSprite) -> (OwlPose, OwlPalette) {
+        switch sprite {
+        case .idle:       return (OwlMood.idle.frames[0].pose, OwlMood.idle.palette)
+        case .sleepy:     return (OwlMood.tired.frames[0].pose, OwlMood.tired.palette)
+        case .exhausted:  return (OwlMood.exhausted.frames[0].pose, OwlMood.exhausted.palette)
+        case .walkA:      return (walk(phase: 0), OwlMood.idle.palette)
+        case .walkB:      return (walk(phase: 2), OwlMood.idle.palette)
+        // 격자 부엉이의 달리기는 날개를 펴는 것으로 표현한다.
+        case .runA:       return (walk(phase: 0, gait: .run), OwlMood.idle.palette)
+        case .runB:       return (walk(phase: 2, gait: .run), OwlMood.idle.palette)
+        // 벽에 붙은 자세도 격자에는 없다. 날개를 편 매달림으로 대신 굽는다.
+        case .cling:      return (.carried(lean: 1, face: 1, feet: 1, wings: .spread),
+                                  OwlMood.dragged.palette)
+        case .blinkCling: return (closedEyes(basePose(for: .cling).0), OwlMood.dragged.palette)
+        // 날개를 든 채 다리를 모아 늘어뜨린 모습. 목덜미를 잡혀 매달린 것이다.
+        case .held:       return (.carried(lean: 0, face: 0, feet: 0, wings: .lift),
+                                  OwlMood.dragged.palette)
+        case .dizzy:      return (OwlMood.dizzy.frames[0].pose, OwlMood.dizzy.palette)
+        // **아직 앱이 안 쓰는 자세다.** 격자 부엉이에는 앉기도 가장자리 매달리기도
+        // 없어서, 가장 가까운 것으로 굽는다 — 예시 그림의 그 칸이 비지 않게 하려는 것뿐이다.
+        case .sit:        return (OwlMood.exhausted.frames[0].pose, OwlMood.idle.palette)
+        case .blinkSit:   return (OwlMood.exhausted.frames[0].pose, OwlMood.idle.palette)
+        case .ledge:      return (.carried(lean: 0, face: 0, feet: 0, wings: .spread),
+                                  OwlMood.dragged.palette)
+        case .blinkHeld:  return (closedEyes(basePose(for: .held).0), OwlMood.dragged.palette)
+        case .blinkLedge: return (closedEyes(basePose(for: .ledge).0), OwlMood.dragged.palette)
+        case .dead:       return (OwlMood.offline.frames[0].pose, OwlMood.offline.palette)
+        case .walkSleepyA:   return (sleepyWalk(phase: 0), OwlMood.tired.palette)
+        case .walkSleepyB:   return (sleepyWalk(phase: 2), OwlMood.tired.palette)
+        case .blink:
+            return (OwlPose(eyes: .closed), OwlMood.idle.palette)
+        case .blinkSleepy:
+            return (closedEyes(OwlMood.tired.frames[0].pose), OwlMood.tired.palette)
+        }
+    }
+
+    /// 한 칸을 몇 픽셀로 뽑을지. **정수여야 한다** — 나누어떨어지지 않으면 어떤 행은
+    /// 2px, 어떤 행은 3px가 되어 자리마다 다른 얼굴이 된다.
+    static let cell: CGFloat = 8
+
+    /// 걷는 자세. **기울기는 빼고 굽는다.**
+    ///
+    /// 몸을 좌우로 미는 건 화면에서 코드가 넣는다(`OwlAnimator.spriteSway`). 그림에도
+    /// 구워 두면 두 번 밀린다. 받은 그림은 규격으로 만들 때 자리를 맞춰서 어차피
+    /// 기울기가 없으므로, 여기서도 빼야 두 갈래가 같아진다.
+    private static func walk(
+        phase: Int,
+        base: OwlPose = OwlPose(),
+        gait: OwlGait = .walk
+    ) -> OwlPose {
+        var pose = OwlAnimator.gaitPose(base: base, phase: phase, gait: gait)
+        pose.lean = 0
+        return pose
+    }
+
+    /// 졸린 채로 걷는 자세. 지침의 기본 자세(실눈·처진 날개) 위에 걸음을 얹는다.
+    private static func sleepyWalk(phase: Int) -> OwlPose {
+        walk(phase: phase, base: OwlMood.tired.frames[0].pose)
+    }
+
+    /// 같은 자세에 눈만 감긴 것.
+    private static func closedEyes(_ pose: OwlPose) -> OwlPose {
+        var pose = pose
+        pose.eyes = .closed
+        return pose
+    }
+
+    /// 한 상태를 그리는 뷰. 어느 칸이든 **자세를 통째로** 그린다.
+    static func view(pose: OwlPose, palette: OwlPalette, cell: CGFloat) -> some View {
+        OwlMarkView(pose: pose, palette: palette)
+            .frame(width: cell * CGFloat(OwlMark.columns), height: cell * CGFloat(OwlMark.lines))
+    }
+
+    /// 한 장에 칸을 나눠 담아 뽑는다. 사용자에게 예시로 줄 형식이다.
+    static func writeSheet(
+        to path: String,
+        tint: NSColor? = nil,
+        multiple: Int = 1,
+        rules: Bool = false,
+        empty: Bool = false,
+        labels: Bool = false
+    ) -> Bool {
+        let side = CGFloat(MascotSheet.canonicalCell * multiple)
+        let rule = CGFloat(MascotSheet.canonicalRule * multiple)
+        // 한 칸 안에서 부엉이를 몇 픽셀짜리 칸으로 그릴지. **정수여야 한다** —
+        // 나누어떨어지지 않으면 어떤 행은 2px, 어떤 행은 3px가 되어 자리마다 얼굴이 다르다.
+        let owlCell = (side / CGFloat(OwlMark.columns)).rounded(.down)
+
+        // 이름표는 **칸 위에 따로 띠를 두고** 거기 적는다. 그림 위에 얹으면 이미지
+        // 모델이 그 글자까지 캐릭터의 일부로 보고 따라 그린다.
+        let strip = labels ? side * 0.2 : 0
+        let content = VStack(spacing: 0) {
+            ruleLine(rules, length: nil, thickness: rule)
+            ForEach(MascotSheet.rowIndices, id: \.self) { row in
+                if labels {
+                    HStack(spacing: 0) {
+                        ruleLine(false, length: strip, thickness: rule)
+                        ForEach(MascotSheet.columnIndices, id: \.self) { column in
+                            label(row: row, column: column, side: side)
+                                .frame(width: side, height: strip, alignment: .bottomLeading)
+                            ruleLine(false, length: strip, thickness: rule)
+                        }
+                    }
+                }
+                HStack(spacing: 0) {
+                    ruleLine(rules, length: side, thickness: rule)
+                    ForEach(MascotSheet.columnIndices, id: \.self) { column in
+                        cellView(
+                            empty ? nil : MascotSheet.layout[row][column],
+                            tint: tint,
+                            cell: owlCell
+                        )
+                        // 칸은 정사각으로 둔다. 캐릭터 비율과 무관하게 격자가 고르다.
+                        .frame(width: side, height: side)
+                        ruleLine(rules, length: side, thickness: rule)
+                    }
+                }
+                ruleLine(rules, length: nil, thickness: rule)
+            }
+        }
+        .frame(
+            width: CGFloat(MascotSheet.columns) * side + CGFloat(MascotSheet.columns + 1) * rule,
+            height: CGFloat(MascotSheet.rows) * (side + strip)
+                + CGFloat(MascotSheet.rows + 1) * rule
+        )
+        .background(labels ? Color.white : Color.clear)
+        return ImageRenderer(content: content).writePNG(to: path, scale: 1)
+    }
+
+    /// 칸에 붙이는 이름표. **그리는 쪽에 줄 규격 그림에만 넣는다** —
+    /// 앱이 읽는 시트에 글자가 들어가면 그게 그림의 일부가 된다.
+    ///
+    /// 이미지 모델에게는 긴 글보다 이 한 장이 훨씬 잘 먹는다.
+    @ViewBuilder
+    private static func label(row: Int, column: Int, side: CGFloat) -> some View {
+        let sprite = MascotSheet.layout[row][column]
+        // **"워터마크" 라고 적지 않는다.** 그렇게 적어 뒀더니 그리는 쪽이 거기에
+        // 진짜 워터마크를 그려 넣었다. 비우라고만 하면 비운다.
+        let text = sprite?.rawValue ?? "비움"
+        HStack(alignment: .firstTextBaseline, spacing: side * 0.03) {
+            Text(text)
+                .font(.system(size: side * 0.062, weight: .semibold, design: .monospaced))
+                .foregroundStyle(sprite == nil ? Color(white: 0.55) : Color(white: 0.15))
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, side * 0.03)
+        .padding(.bottom, side * 0.035)
+    }
+
+    /// 칸을 가르는 선. **어느 칸에도 안 들어간다** — 칸 자리를 이만큼 밀어 놨다.
+    /// 그리는 사람이 지우든 남기든 그림에는 영향이 없다.
+    @ViewBuilder
+    private static func ruleLine(_ shown: Bool, length: CGFloat?, thickness: CGFloat) -> some View {
+        if let length {
+            Rectangle()
+                .fill(shown ? Color(white: 0.45) : Color.clear)
+                .frame(width: thickness, height: length)
+        } else {
+            Rectangle()
+                .fill(shown ? Color(white: 0.45) : Color.clear)
+                .frame(height: thickness)
+        }
+    }
+
+    /// 칸 하나. 빈칸은 투명하게 둔다.
+    @ViewBuilder
+    private static func cellView(
+        _ sprite: MascotSprite?,
+        tint: NSColor?,
+        cell: CGFloat
+    ) -> some View {
+        if let sprite {
+            spriteView(sprite, tint: tint, cell: cell)
+        } else {
+            Color.clear
+        }
+    }
+
+    /// **일반 함수여야 한다.** `ViewBuilder` 안에서는 튜플을 풀 수 없다.
+    private static func spriteView(
+        _ sprite: MascotSprite,
+        tint: NSColor?,
+        cell: CGFloat
+    ) -> some View {
+        let (pose, palette) = Self.pose(for: sprite, tint: tint)
+        return Self.view(pose: pose, palette: palette, cell: cell)
+    }
+
+    /// 낱장으로도 뽑는다. 시트를 못 만드는 도구를 쓰는 사람을 위한 길이다.
+    static func writeAll(
+        to directory: String,
+        tint: NSColor? = nil,
+        cell: CGFloat = MascotSpriteExport.cell
+    ) -> [String]? {
+        let base = URL(fileURLWithPath: directory, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        } catch {
+            return nil
+        }
+
+        var written: [String] = []
+        for sprite in MascotSprite.allCases {
+            let (pose, palette) = pose(for: sprite, tint: tint)
+            let url = base.appendingPathComponent("\(sprite.rawValue).png")
+            // 배경은 투명하게 둔다. 펫 모드가 그걸 그대로 뚫는다.
+            let content = view(pose: pose, palette: palette, cell: cell)
+            guard ImageRenderer(content: content).writePNG(to: url.path, scale: 1) else { return nil }
+            written.append(url.path)
+        }
+        return written
     }
 }
 
@@ -195,11 +452,13 @@ enum HUDPreviewRenderer {
         animator.setMood(OwlMood.resolve(store: store, isDragging: false))
         // 실제 화면과 같은 규칙으로 색을 뺀다. 안 그러면 미리보기만 멀쩡해 보인다.
         animator.setUnusable(store.isWeeklySpent)
-        // 테스트판 모습을 그릴 때는 마스코트 색도 함께 바꾼다. 실제 테스트 번들에서는
-        // `AppInfo.owlPalette`가 같은 색을 주므로 미리보기가 어긋나지 않는다.
-        if versionBadgeIsTest {
-            animator.paletteOverride = .tinted(body: AppInfo.testBuildTint)
-        }
+        // **색을 반드시 꽂고 들어간다.** 안 꽂으면 `OwlMood.palette` 가 번들을 보고
+        // 고르는데, 문서 그림은 테스트 바이너리로 뽑기 때문에 `test` 를 안 붙여도
+        // 부엉이가 보라색으로 나온다. 실제로 그렇게 나왔다.
+        animator.paletteOverride = versionBadgeIsTest
+            ? .tinted(body: AppInfo.testBuildTint)
+            : .normal
+        animator.testLookOverride = versionBadgeIsTest
 
         let palette = HUDPalette(isDark: isDark)
         let content = UsageHUDView(
@@ -232,7 +491,9 @@ enum HUDPreviewRenderer {
                 )
             )
 
-        return ImageRenderer(content: content).writePNG(to: path, scale: 3)
+        // **번들이 아니라 인자가 정한다.** 문서 그림은 테스트 바이너리로 뽑는다.
+        return ImageRenderer(content: content.environment(\.mascotTestLook, versionBadgeIsTest))
+            .writePNG(to: path, scale: 3)
     }
 
     /// 설정 창을 PNG로 렌더한다. 탭마다 화면이 달라서 어느 탭을 그릴지 받는다.
@@ -322,13 +583,17 @@ enum HUDPreviewRenderer {
             ),
             meter: UsageMeter(preview: meterState()),
             actions: SettingsActions(refresh: {}, resetPosition: {}, login: {}, quit: {}),
-            version: AppInfo.displayVersion,
+            // **번들 이름을 쓰지 않는다.** 문서 그림은 테스트 바이너리로 뽑기 때문에
+            // 창 바닥에 `DongCSU-Test` 가 박힌다.
+            version: "DongCSU \(dongCSUVersion)",
             initialTab: tab,
             isPreviewRender: true
         )
         .content
         .preferredColorScheme(isDark ? .dark : .light)
         .background(Color(nsColor: .windowBackgroundColor))
+        // 설정 창 그림도 정식판 모습으로 뽑는다. 아이콘 타일이 여기 딸려 있다.
+        .environment(\.mascotTestLook, false)
 
         return ImageRenderer(content: view).writePNG(to: path, scale: 2)
     }

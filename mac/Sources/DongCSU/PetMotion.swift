@@ -22,7 +22,9 @@ final class PetMotionController {
     /// 움직임이 끝났다. 위치를 저장할 자리.
     var didSettle: () -> Void = {}
     /// 걷는·뛰는 모습을 켜고 끈다. nil이면 서 있다.
-    var setGait: (OwlGait?) -> Void = { _ in }
+    /// 걸음걸이와 **바라보는 쪽**. 방향은 그림 마스코트가 좌우를 뒤집는 데 쓴다
+    /// (격자 부엉이는 정면 대칭이라 아무 일도 안 한다).
+    var setGait: (OwlGait?, Bool?) -> Void = { _, _ in }
 
     // MARK: - 설정
 
@@ -30,6 +32,11 @@ final class PetMotionController {
     var wanders = false
     /// 커서를 위에 올려두고 잡지 않으면 비킨다.
     var dodgesCursor = false
+    /// 탈진했는지.
+    ///
+    /// **배회만 끊는다.** 지쳐서 제 발로 산책 나갈 기운은 없어도, 커서가 밀고 들어오면
+    /// 비켜야 한다 — 안 비키면 지친 게 아니라 멎은 것으로 보이고 화면도 가린다.
+    var isDrained = false
 
     // MARK: - 치수
 
@@ -123,8 +130,8 @@ final class PetMotionController {
                 halt()
             }
         }
-        // 배회를 끄면 걷던 것도 그 자리에 멈춘다.
-        if !wanders, case .walking = motion { halt() }
+        // 배회를 끄면(탈진 포함) 걷던 것도 그 자리에 멈춘다.
+        if !canWander, case .walking = motion { halt() }
         syncTimer()
     }
 
@@ -132,7 +139,7 @@ final class PetMotionController {
     private func halt() {
         let wasMoving = isMoving
         motion = isActive ? .resting(until: Date().addingTimeInterval(.random(in: Self.restRange))) : .still
-        setGait(nil)
+        setGait(nil, nil)
         if wasMoving { didSettle() }
         syncTimer()
     }
@@ -147,7 +154,7 @@ final class PetMotionController {
         case .still:
             return nil
         case .resting(let until):
-            guard wanders else { return nil }
+            guard canWander else { return nil }
             // 글을 쓰는 중이면 그게 멎을 때까지도 기다린다. 쓰는 내내 깨어나서
             // 시계만 확인할 이유가 없다.
             let quiet = Self.typingQuiet - Self.secondsSinceKey
@@ -188,7 +195,7 @@ final class PetMotionController {
             syncTimer()
 
         case .resting(let until):
-            guard wanders else { return syncTimer() }
+            guard canWander else { return syncTimer() }
             // 글을 쓰는 동안에는 새로 걸어나가지 않는다.
             guard !isTypingQuiet, Date() >= until else { return }
             guard let target = wanderTarget() else { return rest() }
@@ -240,14 +247,18 @@ final class PetMotionController {
         guard Self.distance(origin, bounded) > 0.5 else { return onArrive() }
 
         move(bounded)
-        setGait(gait)
+        // 목표가 오른쪽이면 오른쪽을 본다. **가로로 안 움직이면 보던 쪽 그대로다** —
+        // `dx >= 0` 으로 두면 세로로만 걷는 동안 내내 오른쪽으로 덮여서, 옆모습
+        // 캐릭터가 왼쪽을 보고 있다가 반대로 돌아버린다. 화면 가장자리에 붙어 있으면
+        // 목표가 잘려 dx == 0 이 되므로 드물지도 않다.
+        setGait(gait, dx == 0 ? nil : dx > 0)
     }
 
     /// 다 왔다. 자리를 저장하고 다음 산책까지 쉰다.
     private func rest() {
         let wasMoving = isMoving
         motion = .resting(until: Date().addingTimeInterval(.random(in: Self.restRange)))
-        setGait(nil)
+        setGait(nil, nil)
         if wasMoving { didSettle() }
         syncTimer()
     }
@@ -300,6 +311,9 @@ final class PetMotionController {
     }
 
     // MARK: - 배회
+
+    /// 지금 혼자 걸어다녀도 되는지.
+    private var canWander: Bool { wanders && !isDrained }
 
     private func wanderTarget() -> NSPoint? {
         guard walkArea() != nil else { return nil }

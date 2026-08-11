@@ -47,8 +47,12 @@ enum OwlMood: String, CaseIterable {
         case .idle:
             // 눈을 뜬 채 한참 있다가 두어 프레임만 깜빡인다.
             // 지터가 없으면 정확히 같은 박자로 깜빡여서 시계처럼 보인다.
+            //
+            // **2.0+1.6 이었다가 늘렸다.** 격자로 그릴 때는 실눈 두 프레임이 앞뒤로
+            // 붙어서 부드럽게 지나갔는데, 그림으로 그리면 뜬 얼굴과 감은 얼굴이
+            // 딱 바뀌어서 훨씬 도드라진다 — 같은 간격이 훨씬 잦게 느껴진다.
             return [
-                OwlFrame(OwlPose(), duration: 2.0, jitter: 1.6),
+                OwlFrame(OwlPose(), duration: 3.4, jitter: 3.2),
                 OwlFrame(OwlPose(eyes: .half), duration: 0.05),
                 OwlFrame(OwlPose(eyes: .closed), duration: 0.08),
                 OwlFrame(OwlPose(eyes: .half), duration: 0.05),
@@ -58,7 +62,7 @@ enum OwlMood: String, CaseIterable {
             // 날개를 늘어뜨리고 눈을 반쯤 뜬 게 기본. 이따금 길게 감았다 뜬다.
             // 날개는 탈진까지 늘어진 채로 이어져서, 평소 → 지침 → 탈진이 단계로 읽힌다.
             return [
-                OwlFrame(OwlPose(eyes: .half, wings: .droop), duration: 2.4, jitter: 2.2),
+                OwlFrame(OwlPose(eyes: .half, wings: .droop), duration: 3.6, jitter: 3.0),
                 OwlFrame(OwlPose(eyes: .closed, wings: .droop), duration: 0.9),
             ]
 
@@ -126,11 +130,15 @@ enum OwlGait: String, CaseIterable {
         }
     }
 
-    /// 한 칸에 머무는 시간. 걷기는 이보다 빠르면 종종거리고, 느리면 미끄러져 보인다.
+    /// 한 칸에 머무는 시간.
+    ///
+    /// **두 박자짜리 걸음은 느려야 읽힌다.** 프레임이 적을수록 한 장을 오래 보여줘야
+    /// 자세가 눈에 들어온다 — 0.14초로 돌렸더니 다리가 바뀌는 게 안 보이고 몸만
+    /// 떨리는 것으로 읽혔다. 그림 넉 장짜리 걸음이면 이보다 빨라도 된다.
     var tick: TimeInterval {
         switch self {
-        case .walk: return 0.14
-        case .run: return 0.08
+        case .walk: return 0.26
+        case .run: return 0.15
         }
     }
 
@@ -162,19 +170,29 @@ struct OwlAnimation {
     let title: String
     let frames: [OwlFrame]
     let palette: OwlPalette
+    /// 어느 기분·걸음에서 나온 것인지. **그림 마스코트 쪽 GIF가 이걸로 칸을 고른다** —
+    /// 자세만 들고 있으면 `MascotSprite.resolve` 에 넘길 것이 없어서, 문서용 그림이
+    /// 화면과 다른 판단을 하게 된다.
+    let mood: OwlMood
+    let gait: OwlGait?
 
     /// 걸음걸이 한 바퀴가 `OwlAnimator`(메인 액터)에 있어서 여기도 메인 액터다.
     /// 부르는 쪽은 전부 렌더 통로라 문제되지 않는다.
     @MainActor
     static var all: [OwlAnimation] {
         OwlMood.allCases.map {
-            OwlAnimation(name: $0.rawValue, title: $0.title, frames: $0.frames, palette: $0.palette)
+            OwlAnimation(
+                name: $0.rawValue, title: $0.title, frames: $0.frames, palette: $0.palette,
+                mood: $0, gait: nil
+            )
         } + OwlGait.allCases.map {
             OwlAnimation(
                 name: $0.rawValue,
                 title: $0.title,
                 frames: $0.cycle,
-                palette: OwlMood.idle.palette
+                palette: OwlMood.idle.palette,
+                mood: .idle,
+                gait: $0
             )
         }
     }
@@ -262,9 +280,9 @@ final class OwlAnimator: ObservableObject {
     private static let wingLiftSpeed: CGFloat = 200
     private static let wingSpreadSpeed: CGFloat = 620
     /// 몇 틱마다 깜빡일지. 눈을 붙박아 두기만 하면 노려보는 것처럼 보인다.
-    private static let blinkInterval = 22
+    private static let blinkInterval = 36
     /// 그 간격에 얹는 지터(틱). 없으면 시계처럼 정확한 박자로 깜빡인다.
-    private static let blinkJitter = 12
+    private static let blinkJitter = 20
 
     // MARK: - 어지러움
     //
@@ -300,8 +318,18 @@ final class OwlAnimator: ObservableObject {
     /// 지금 걸음걸이. nil이면 서 있다.
     private var gait: OwlGait?
 
+    /// 지금 바라보는 쪽. **격자 부엉이는 정면 대칭이라 쓰지 않는다** —
+    /// 그림 마스코트가 좌우를 뒤집을 때만 뜻이 있다.
+    private(set) var facingRight = true
+
     /// 걷는·뛰는 모습을 켜고 끈다.
-    func setGait(_ next: OwlGait?) {
+    /// `facingRight` 가 nil 이면 보던 쪽을 그대로 둔다.
+    ///
+    /// **멈출 때와 세로로만 걸을 때가 그렇다.** 여기서 덮으면 오른쪽으로 걷다 선
+    /// 캐릭터가 서는 순간 왼쪽으로 홱 돌고, 화면 가장자리에 붙어 세로로만 움직일 때도
+    /// 내내 오른쪽을 보게 된다.
+    func setGait(_ next: OwlGait?, facingRight: Bool? = nil) {
+        if let facingRight { self.facingRight = facingRight }
         guard next != gait else { return }
         let wasMoving = gait != nil
         gait = next
@@ -389,6 +417,14 @@ final class OwlAnimator: ObservableObject {
     /// 뒤에 바꿔도 다시 그려지지 않는다. 그리기 전에 한 번만 꽂는다.
     var paletteOverride: OwlPalette?
 
+    /// 그림 마스코트를 테스트판 색으로 그릴지. **렌더 통로가 반드시 꽂는다.**
+    ///
+    /// 격자 부엉이는 팔레트로 색을 갈아 끼우지만 그림은 그럴 수가 없어서, 그리는
+    /// 쪽에서 색상만 돌린다. 번들(`AppInfo.isTestBuild`)을 바로 보면 안 된다 —
+    /// 문서 그림을 테스트 바이너리로 뽑기 때문에 전부 보라색이 된다.
+    var testLookOverride: Bool?
+    var usesTestLook: Bool { testLookOverride ?? AppInfo.isTestBuild }
+
     /// 다 써서 쓸 수 없는 상태. 켜면 자세는 그대로 두고 색만 뺀다.
     ///
     /// 기분을 따로 만들지 않는 이유: `owl.json` 에 애니메이션이 하나 더 생기고
@@ -410,6 +446,52 @@ final class OwlAnimator: ObservableObject {
     ///
     /// 가로는 몸이 처지는 방향을 정한다 — 오른쪽으로 가면 몸이 왼쪽으로 뒤처진다.
     /// 세로는 날개 높이를 정한다 — 들어 올리면 날개를 들고, 세게 내리면 활짝 편다.
+    // MARK: - 그림 마스코트가 쓸 상태
+
+    /// 지금 자세를 **그림 한 장으로 바꾼다면** 어느 것인가.
+    ///
+    /// **자세를 만드는 것과 같은 신호에서 나온다.** 격자 부엉이와 그림 마스코트가
+    /// 서로 다른 판단을 하면, 같은 상황에서 하나는 졸고 하나는 걷는다.
+    /// 그림 쪽이 훨씬 성기므로(수백 → 열) 여기서 뭉뚱그린다.
+    var spriteState: MascotSprite {
+        // 조회가 통째로 막힌 것은 애니메이터만 아는 상태라 여기서 가른다.
+        if isUnusable { return .dead }
+        return MascotSprite.resolve(mood: mood, pose: pose, gait: gait, beat: frameIndex)
+    }
+
+    /// 몸을 좌우로 미는 양(칸).
+    ///
+    /// **걸을 때는 안 민다.** 걸음은 그림이 담고 있다 — 옆모습 두 박자가 다리를
+    /// 번갈아 딛는 것으로 이미 걷는다. 거기에 코드가 몸까지 밀면 다리 움직임보다
+    /// 미는 폭이 커져서 **발이 아니라 몸이 앞뒤로 미끄러지는 것으로 보인다.**
+    ///
+    /// 정면 그림을 쓰던 때는 반대였다 — 그림에 걸음이 없어서 몸이라도 흔들어야
+    /// 걷는 것으로 읽혔다. 그림이 바뀌면 코드가 할 일도 바뀐다.
+    var spriteSway: Int {
+        guard gait == nil else { return 0 }
+        // **어지러움은 밀지 않는다.** 기울기를 좌우 반전으로 나타내는데, 밀기까지 하면
+        // 비틀거리는 게 아니라 옆으로 미끄러지는 것으로 보인다.
+        guard pose.eyes != .dizzy else { return 0 }
+        // **들려 있을 때도 안 민다.** `pose.lean` 은 마우스 속도에서 나오는 값이라,
+        // 그림이 한 장뿐인데도 좌우로 밀린다 — 방향 판정을 지운 뜻이 없어진다.
+        guard mood != .dragged else { return 0 }
+        return pose.lean
+    }
+
+    /// 그림을 좌우로 뒤집을지. 오른쪽으로 끌리거나 오른쪽으로 걸을 때.
+    ///
+    /// **부엉이에는 아무 일도 안 한다** — 정면 대칭이라 뒤집어도 같은 그림이다.
+    /// 옆으로 그린 사용자 그림에서만 뜻이 생긴다.
+    var spriteFlipped: Bool {
+        // **어지러울 때는 기울어진 쪽을 반전으로 만든다.** 그림이 한쪽으로 기운 채
+        // 한 장뿐이라, 뒤집어서 반대쪽 기울기를 얻는다. 걷던 방향을 그대로 쓰면
+        // 늘 같은 쪽으로만 기울어 "비틀거린다"가 아니라 "기대 있다"로 보인다.
+        if pose.eyes == .dizzy { return pose.lean + pose.faceLean > 0 }
+        // 들려 있는 동안에는 보던 쪽 그대로. 매달린 것에 방향이 있을 이유가 없다.
+        return facingRight
+    }
+
+
     func setDragVelocity(_ velocity: CGVector) {
         dragVelocity = velocity
         dragVelocityAt = Date()
@@ -469,6 +551,9 @@ final class OwlAnimator: ObservableObject {
         // 지난번에 끌던 기울기가 남아 있으면 집어 든 순간 몸이 한쪽으로 튄다.
         previousLean = 0
         olderLean = 0
+        // 속도까지 지운다. 시각만 되돌리면 `liveDragVelocity` 는 0을 내지만,
+        // 다음 이벤트 전까지 값이 남아 있어서 읽는 자리가 늘면 또 새어 나온다.
+        dragVelocity = .zero
         dragVelocityAt = .distantPast
         blinkCountdown = Self.blinkInterval
         // 흔들림 점수는 끌 때마다 새로 센다. 사이를 두고 조금씩 흔든 게 쌓여서

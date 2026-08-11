@@ -341,7 +341,9 @@ final class HUDController {
         motion.frame = { [weak self] in self?.panel.frame ?? .zero }
         motion.visualFrame = { [weak self] in self?.mascotScreenRect() ?? .zero }
         motion.move = { [weak self] origin in self?.panel.setFrameOrigin(origin) }
-        motion.setGait = { [weak self] gait in self?.owlAnimator.setGait(gait) }
+        motion.setGait = { [weak self] gait, facingRight in
+            self?.owlAnimator.setGait(gait, facingRight: facingRight)
+        }
         motion.didSettle = { [weak self] in
             guard let self else { return }
             self.saveOrigin()
@@ -496,6 +498,9 @@ final class HUDController {
             && !store.isWeeklySpent
 
         motion.wanders = settings.petWanders
+        // **기분을 그대로 쓴다.** 여기서 임계값을 따로 견주면 마스코트는 주저앉았는데
+        // 산책은 계속 나가는 어긋남이 생긴다.
+        motion.isDrained = OwlMood.resolve(store: store, isDragging: false) == .exhausted
         motion.dodgesCursor = settings.petDodgesCursor
         motion.update(active: canMove)
     }
@@ -511,7 +516,7 @@ final class HUDController {
         let panelFrame = panel.frame
         guard settings.mode == .pet else { return panelFrame }
 
-        let local = UsageHUDView.petMascotRect(scale: scale)
+        let local = UsageHUDView.petMascotRect(scale: scale, style: settings.iconStyle)
         return NSRect(
             x: panelFrame.minX + local.minX,
             y: panelFrame.minY + local.minY,

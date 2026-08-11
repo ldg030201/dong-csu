@@ -41,6 +41,22 @@ if [[ -f "$ROOT/Resources/AppIcon.icns" ]]; then
   cp "$ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 fi
 
+# 기본 마스코트 시트. **그림으로 도는 부엉이는 언제나 이 파일에서 읽는다.**
+#
+# 그린 그림을 Resources/mascot.png 에 두면 그걸 쓰고, 없으면 격자 부엉이에서 굽는다.
+# 그림을 갈아끼우는 것이 파일 하나를 바꾸는 일이 되게 하려는 것이다.
+#
+# **구울 때는 방금 만든 바이너리로 뽑는다.** 색이 변형마다 달라서(테스트판은 보라)
+# 소스에 넣어 둘 수가 없고, 자세를 고치면 시트도 같이 바뀌어야 하기 때문이다.
+if [[ -f "$ROOT/Resources/mascot.png" ]]; then
+  cp "$ROOT/Resources/mascot.png" "$APP/Contents/Resources/mascot.png"
+  echo "mascot: Resources/mascot.png 를 넣었다"
+else
+  "$APP/Contents/MacOS/$APP_NAME" --dump-sprites "$APP/Contents/Resources/mascot.png" sheet \
+    >/dev/null
+  echo "mascot: 격자 부엉이에서 구웠다"
+fi
+
 # 개발자 계정 없이 로컬 실행에 필요한 최소 서명.
 #
 # 자체 서명 인증서가 있으면 그걸 쓴다 — **손쉬운 사용 권한이 서명 신원에 걸리기**

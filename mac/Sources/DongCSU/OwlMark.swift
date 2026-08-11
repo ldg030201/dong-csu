@@ -591,6 +591,7 @@ struct OwlPose: Equatable {
 struct OwlMarkView: View {
     var pose: OwlPose = .idle
     var palette: OwlPalette = .normal
+    /// 자세 대신 이 그리드를 그린다. 레이어 하나만 뽑아 볼 때 쓴다
 
     var body: some View {
         Canvas { context, size in

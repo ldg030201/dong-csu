@@ -154,12 +154,11 @@ struct UsageHUDView: View {
     /// **`petHitRect` 와 같은 셈을 쓴다.** 둘 다 "버튼 줄 위 영역의 가운데"인데,
     /// 예전에는 이 계산이 `HUDPanel` 에 따로 적혀 있어서 버튼 줄이 생겼을 때 한쪽만
     /// 고쳐졌다 — 판정이 배율 1에서 16pt 아래로 밀렸다. 같은 파일에 나란히 둔다.
-    static func petMascotRect(scale: CGFloat) -> CGRect {
+    @MainActor
+    static func petMascotRect(scale: CGFloat, style: ClaudeIconStyle = .owl) -> CGRect {
         let panel = size(mode: .pet, scale: scale)
         let height = petOwlHeight(scale: scale)
-        // 그리드 15열 중 몸통이 쓰는 건 가운데 11열이다. 나머지는 날개를 펼 여백이라
-        // 평소에는 비어 있어서, 그 폭까지 가린다고 치면 쓸데없이 멀리 비킨다.
-        let width = height * CGFloat(OwlMark.bodyColumns) / CGFloat(OwlMark.lines)
+        let width = height * mascotAspect(style: style)
         let row = basePetButtonRow * scale
         return CGRect(
             x: (panel.width - width) / 2,
@@ -167,6 +166,21 @@ struct UsageHUDView: View {
             width: width,
             height: height
         )
+    }
+
+    /// 마스코트가 세로 한 칸당 가로로 얼마나 퍼지는지.
+    ///
+    /// 부엉이는 그리드 15열 중 몸통이 가운데 11열만 쓴다. 나머지는 날개를 펼 여백이라
+    /// 평소에는 비어 있어서, 그 폭까지 가린다고 치면 쓸데없이 멀리 비킨다.
+    ///
+    /// **그림으로 도는 쪽은 그 그림에서 잰다.** 격자 비율을 그대로 쓰면, 옆으로 퍼진
+    /// 캐릭터는 실제로 글자를 덮고 있는데도 안 비키고, 홀쭉한 캐릭터는 아직 멀었는데
+    /// 비킨다.
+    @MainActor
+    static func mascotAspect(style: ClaudeIconStyle) -> CGFloat {
+        let owl = CGFloat(OwlMark.bodyColumns) / CGFloat(OwlMark.lines)
+        guard style == .owlSheet, let set = MascotSpriteStore.bundled else { return owl }
+        return set.extent.width / max(set.extent.height, 1)
     }
 
     /// 새로고침 버튼 자리. 이 영역만 드래그 오버레이가 클릭을 통과시킨다.
@@ -793,13 +807,17 @@ struct UsageHUDView: View {
     private var rings: some View {
         ZStack {
             ringPair(diameter: ringDiameter, outerWidth: outerLineWidth, innerWidth: innerLineWidth)
+            // **폭까지 막는다.** HUD 아이콘은 작은 링 안에 갇혀 있어서, 옆으로 퍼진
+            // 그림이 그대로 나오면 원을 뚫고 숫자 위로 올라온다.
+            let iconSize = Self.innerDiameter(
+                outer: ringDiameter,
+                outerWidth: outerLineWidth,
+                gap: s(7)
+            ) - innerLineWidth * 2 - s(4)
             ClaudeIconView(
                 style: iconStyle,
-                size: Self.innerDiameter(
-                    outer: ringDiameter,
-                    outerWidth: outerLineWidth,
-                    gap: s(7)
-                ) - innerLineWidth * 2 - s(4),
+                size: iconSize,
+                widthLimit: iconSize,
                 eyeColor: palette.markEye,
                 owlAnimator: owlAnimator
             )

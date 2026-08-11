@@ -82,6 +82,8 @@ struct SettingsView: View {
     @State private var isConfirmingRecordDelete = false
     /// 업데이트는 앱을 껐다 켠다. 지우는 건 아니지만 같은 이유로 먼저 묻는다.
     @State private var isConfirmingUpgrade = false
+    /// 사람이 손으로 펼쳐 놓은 아이콘 묶음. 접힌 것만 여기 들어온다.
+    @State private var openedIconGroups: Set<IconStyleGroup> = []
 
     /// 앱 수명만큼 산다. 설정 창을 닫아도 받던 것이 끊기지 않는다.
     @ObservedObject private var upgrader = Upgrader.shared
@@ -941,16 +943,26 @@ struct SettingsView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
-            ForEach(IconStyleGroup.allCases, id: \.self) { group in
+            ForEach(IconStyleGroup.allCases.filter { !$0.isCollapsed }, id: \.self) { group in
                 VStack(alignment: .leading, spacing: 5) {
                     sectionTitle(group.title)
-                    HStack(spacing: 10) {
-                        ForEach(group.styles, id: \.self) { style in
-                            iconTile(style)
-                        }
-                        // 묶음마다 개수가 달라도 타일 크기가 흔들리지 않게 남는 폭을 밀어낸다.
-                        Spacer(minLength: 0)
+                    iconRow(group)
+                }
+            }
+
+            // 접어 두는 묶음. **고른 것이 그 안에 있으면 펼쳐 놓는다** — 접힌 채로 두면
+            // 지금 무엇을 쓰고 있는지 화면에 아무 데도 안 보인다.
+            ForEach(IconStyleGroup.allCases.filter(\.isCollapsed), id: \.self) { group in
+                DisclosureGroup(isExpanded: expandedIconGroup(group)) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        iconRow(group)
+                        Text("처음에 코드로 그렸던 부엉이다. 지금 부엉이와 자세가 조금 다르다.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     }
+                    .padding(.top, 6)
+                } label: {
+                    sectionTitle(group.title)
                 }
             }
 
@@ -960,6 +972,26 @@ struct SettingsView: View {
             Toggle("캐릭터 애니메이션", isOn: $settings.animatesIcon)
                 .disabled(!settings.iconStyle.isAnimated)
         }
+    }
+
+    private func iconRow(_ group: IconStyleGroup) -> some View {
+        HStack(spacing: 10) {
+            ForEach(group.styles, id: \.self) { style in
+                iconTile(style)
+            }
+            // 묶음마다 개수가 달라도 타일 크기가 흔들리지 않게 남는 폭을 밀어낸다.
+            Spacer(minLength: 0)
+        }
+    }
+
+    /// 접힌 묶음을 펼쳐 놓을지. 사람이 연 것이 우선이고, 안 열었으면 지금 고른 것을 본다.
+    private func expandedIconGroup(_ group: IconStyleGroup) -> Binding<Bool> {
+        Binding(
+            get: { openedIconGroups.contains(group) || settings.iconStyle.group == group },
+            set: { isOpen in
+                if isOpen { openedIconGroups.insert(group) } else { openedIconGroups.remove(group) }
+            }
+        )
     }
 
     private func iconTile(_ style: ClaudeIconStyle) -> some View {
