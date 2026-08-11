@@ -579,7 +579,10 @@ struct SettingsView: View {
                 isPresented: $isConfirmingClearHistory,
                 titleVisibility: .visible
             ) {
+                // **주 버튼을 기본 버튼으로 만든다.** 안 걸어 두면 SwiftUI 가 취소를
+                // 기본으로 잡아서, 파란 버튼이 취소이고 정작 할 일이 흰 버튼이 된다.
                 Button("전체 지우기", role: .destructive) { meter.clearHistory() }
+                    .keyboardShortcut(.defaultAction)
                 Button("취소", role: .cancel) {}
             } message: {
                 Text("기록 \(meter.state.history.count)개가 지워집니다. 되돌릴 수 없습니다.")
@@ -719,6 +722,7 @@ struct SettingsView: View {
                 // 지운 기록의 팝업을 띄워 둘 수 없다. 같이 닫는다.
                 selectedRecord = nil
             }
+            .keyboardShortcut(.defaultAction)
             Button("취소", role: .cancel) {}
         } message: {
             Text("\(Self.recordFormatter.string(from: record.stoppedAt)) 기록이 지워집니다. "
@@ -859,6 +863,7 @@ struct SettingsView: View {
                     // 창 위치는 설정 객체가 아니라 패널이 들고 있다. 함께 되돌린다.
                     actions.resetPosition()
                 }
+                .keyboardShortcut(.defaultAction)
                 Button("취소", role: .cancel) {}
             } message: {
                 Text("되돌릴 수 없습니다. 로그인할 때 자동 시작도 함께 꺼집니다.")
@@ -1197,6 +1202,7 @@ struct SettingsView: View {
             titleVisibility: .visible
         ) {
             Button("강제 종료", role: .destructive) { upgrader.forceQuit() }
+                .keyboardShortcut(.defaultAction)
             Button("취소", role: .cancel) {}
         } message: {
             Text("**갈아끼우는 도중이라 앱이 반쯤 바뀐 채로 남을 수 있습니다.** "

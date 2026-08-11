@@ -214,9 +214,9 @@ struct OwlFrame {
 
 extension OwlMood {
     /// 이 사용률부터 지쳐 보이기 시작한다.
-    static let tiredThreshold: Double = 80
+    static let tiredThreshold: Double = 75
     /// 이 사용률부터 주저앉는다.
-    static let exhaustedThreshold: Double = 95
+    static let exhaustedThreshold: Double = 90
 
     /// 지금 상태에서 어떤 기분이어야 하는지.
     ///

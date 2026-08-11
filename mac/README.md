@@ -65,8 +65,8 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 <table>
 <tr>
 <td align="center" width="20%"><img src="../docs/characters/owl/idle.gif" width="96" alt="평소"><br><sub><b>평소</b></sub></td>
-<td align="center" width="20%"><img src="../docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 80%↑</sub></td>
-<td align="center" width="20%"><img src="../docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 95%↑</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 75%↑</sub></td>
+<td align="center" width="20%"><img src="../docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 90%↑</sub></td>
 <td align="center" width="20%"><img src="../docs/characters/owl/offline.gif" width="96" alt="끊김"><br><sub><b>끊김</b><br>조회 실패</sub></td>
 <td align="center" width="20%"><img src="../docs/characters/owl/dragged.gif" width="96" alt="끌림"><br><sub><b>끌림</b><br>드래그 중</sub></td>
 </tr>

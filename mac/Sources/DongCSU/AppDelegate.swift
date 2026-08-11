@@ -91,14 +91,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alert.messageText = "\(AppInfo.name)를 종료할까요?"
         alert.informativeText = "종료하면 사용량 표시와 메뉴바 아이콘이 모두 사라집니다."
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "종료")
+        // **먼저 더한 것이 오른쪽에 놓인다.** 주 버튼(종료)을 왼쪽에 두려고 취소를 먼저
+        // 더한다. 기본 버튼 표시(파란색)도 종료 쪽으로 옮겨서, 파란 버튼이 곧 할 일이 되게 한다.
         alert.addButton(withTitle: "취소")
-        // 실수로 Enter를 눌러도 종료되지 않게 취소를 기본 버튼으로 둔다.
+        alert.addButton(withTitle: "종료")
         alert.buttons.first?.keyEquivalent = ""
         alert.buttons.last?.keyEquivalent = "\r"
 
         NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
+        if alert.runModal() == .alertSecondButtonReturn {
             NSApp.terminate(nil)
         }
     }
