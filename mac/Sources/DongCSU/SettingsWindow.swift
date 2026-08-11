@@ -81,7 +81,7 @@ struct SettingsView: View {
     @State private var isConfirmingClearHistory = false
     @State private var isConfirmingRecordDelete = false
     /// 업데이트는 앱을 껐다 켠다. 지우는 건 아니지만 같은 이유로 먼저 묻는다.
-    @State private var isConfirmingUpgrade = false
+    @State private var isConfirmingForceQuit = false
     /// 사람이 손으로 펼쳐 놓은 아이콘 묶음. 접힌 것만 여기 들어온다.
     @State private var openedIconGroups: Set<IconStyleGroup> = []
 
@@ -223,6 +223,13 @@ struct SettingsView: View {
                                 .foregroundStyle(.orange)
                         }
                         Spacer(minLength: 0)
+                        // **새 버전이 있을 때만.** 설정 창을 열어도 어느 탭을 봐야 하는지
+                        // 알 방법이 없었다 — HUD 딱지는 창을 열면 사라진다.
+                        if item == .version, updates.hasUpdate {
+                            Image(systemName: "arrow.down.circle.fill")
+                                .font(.system(size: 11))
+                                .foregroundStyle(Color.accentColor)
+                        }
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 6)
@@ -1025,18 +1032,10 @@ struct SettingsView: View {
 
     private func versionSection(viewportHeight: CGFloat) -> some View {
         VStack(alignment: .leading, spacing: 12) {
+            // **누르면 바로 받기 시작한다.** 예전에는 여기서 "앱이 꺼졌다 다시 뜹니다"를
+            // 먼저 물었는데, 정작 꺼지는 건 30초 넘게 받은 뒤라 물어보는 시점이 어긋났다.
+            // 확인은 진짜로 꺼지기 직전(`.ready`)에 받는다. 받는 동안은 그대로 쓸 수 있다.
             updateBox
-                .confirmationDialog(
-                    "지금 업데이트할까요?",
-                    isPresented: $isConfirmingUpgrade,
-                    titleVisibility: .visible
-                ) {
-                    Button("업데이트") { upgrader.start() }
-                    Button("취소", role: .cancel) {}
-                } message: {
-                    Text("새 버전을 받은 뒤 **앱이 한 번 꺼졌다 다시 뜹니다.** "
-                         + "받는 동안에는 그대로 쓸 수 있습니다.")
-                }
                 .sheet(isPresented: Binding(
                     get: { upgrader.phase != .idle },
                     set: { if !$0 { upgrader.dismiss() } }
@@ -1099,7 +1098,7 @@ struct SettingsView: View {
 
             HStack(spacing: 8) {
                 if updates.hasUpdate {
-                    Button("업데이트") { isConfirmingUpgrade = true }
+                    Button("업데이트") { upgrader.start() }
                         .buttonStyle(.borderedProminent)
                         .disabled(upgrader.isBusy)
                 }
@@ -1167,13 +1166,22 @@ struct SettingsView: View {
                     .fill(Color(nsColor: .underPageBackgroundColor).opacity(0.6))
             }
 
-            HStack {
+            HStack(spacing: 8) {
+                // **갈아끼우는 동안 빠져나갈 길을 둔다.** 여기서 멈추면 화면에 누를
+                // 것이 하나도 없어서 앱을 강제 종료하는 수밖에 없었다.
+                if upgrader.phase == .swapping {
+                    Button("강제 종료") { isConfirmingForceQuit = true }
+                        .foregroundStyle(.red)
+                }
                 Spacer()
                 switch upgrader.phase {
                 case .running:
                     Button("취소") { upgrader.cancel() }
+                case .ready:
+                    Button("나중에") { upgrader.dismiss() }
+                    Button("지금 다시 띄우기") { upgrader.swap() }
+                        .keyboardShortcut(.defaultAction)
                 case .swapping:
-                    // 곧 꺼진다. 여기서 누를 것이 없다.
                     EmptyView()
                 default:
                     Button("닫기") { upgrader.dismiss() }
@@ -1183,12 +1191,26 @@ struct SettingsView: View {
         }
         .padding(18)
         .frame(width: 460)
+        .confirmationDialog(
+            "앱을 강제로 끌까요?",
+            isPresented: $isConfirmingForceQuit,
+            titleVisibility: .visible
+        ) {
+            Button("강제 종료", role: .destructive) { upgrader.forceQuit() }
+            Button("취소", role: .cancel) {}
+        } message: {
+            Text("**갈아끼우는 도중이라 앱이 반쯤 바뀐 채로 남을 수 있습니다.** "
+                 + "다시 띄웠을 때 이상하면 터미널에서 다음을 실행해 주세요:\n"
+                 + "rm -rf /Applications/DongCSU.app && "
+                 + "cp -R \"$(brew --prefix dong-csu)/DongCSU.app\" /Applications/")
+        }
     }
 
     private var upgradeTitle: String {
         switch upgrader.phase {
         case .idle: return "업데이트"
         case .running: return "새 버전을 받는 중…"
+        case .ready: return "다 받았습니다 — 앱을 껐다 다시 띄우면 끝납니다"
         case .swapping: return "앱을 갈아끼우는 중 — 곧 다시 뜹니다"
         case .failed: return "업데이트하지 못했습니다"
         }

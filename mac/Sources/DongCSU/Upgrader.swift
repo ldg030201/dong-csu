@@ -23,7 +23,14 @@ final class Upgrader: ObservableObject {
         case idle
         /// brew 가 도는 중.
         case running
-        /// 다 받았고, 갈아끼우려고 곧 꺼진다.
+        /// 다 받았다. **여기서 멈춰서 사람에게 물어본다.**
+        ///
+        /// 예전에는 곧바로 갈아끼우고 스스로 껐는데, 갈아끼우는 쪽이 "앱이 꺼지기"를
+        /// 10초만 기다리고 포기하게 되어 있었다. 앱이 그 안에 안 꺼지면 옛 앱이 그대로
+        /// 남고 화면은 "곧 다시 뜹니다"에서 멈춘다 — 실제로 그렇게 멈췄다.
+        /// 사람이 누른 뒤에 갈아끼우기를 띄우면 그 겨루기 자체가 없어진다.
+        case ready
+        /// 갈아끼우기를 띄웠고 곧 꺼진다.
         case swapping
         case failed(String)
     }
@@ -33,6 +40,8 @@ final class Upgrader: ObservableObject {
     @Published private(set) var log = ""
 
     var isBusy: Bool { phase == .running || phase == .swapping }
+    /// 받아 둔 새 버전을 갈아끼울 때 쓸 brew 자리. `.ready` 동안만 값이 있다.
+    private var readyBrew: String?
 
     /// 로그를 이만큼까지만 들고 있는다. 소스 빌드로 떨어지면 컴파일 줄이 수천 줄 쏟아진다.
     private static let logLimit = 40_000
@@ -136,6 +145,14 @@ final class Upgrader: ObservableObject {
             return
         }
 
+        readyBrew = brew
+        phase = .ready
+        append("\n새 버전을 받았습니다. 앱을 껐다 다시 띄우면 끝납니다.\n")
+    }
+
+    /// 받아 둔 새 버전으로 갈아끼우고 앱을 끈다. **사람이 눌러야 여기 온다.**
+    func swap() {
+        guard phase == .ready, let brew = readyBrew else { return }
         phase = .swapping
         append("\n앱을 새 버전으로 갈아끼웁니다. 잠시 뒤 다시 뜹니다.\n")
 
@@ -151,6 +168,17 @@ final class Upgrader: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             NSApp.terminate(nil)
         }
+        // **안 꺼지면 끊는다.** `NSApp.terminate` 는 창이나 시트가 붙잡고 있으면 조용히
+        // 삼켜진다 — 실제로 그래서 옛 앱이 남았다. 갈아끼우는 쪽은 우리가 꺼졌다고 보고
+        // 이미 파일을 바꿔 놓은 뒤라, 여기서 안 끊으면 옛 바이너리가 계속 돈다.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            exit(0)
+        }
+    }
+
+    /// 갈아끼우기가 멈춘 것 같을 때 손으로 끊는다. **화면에서 확인을 받고 부른다.**
+    func forceQuit() {
+        exit(0)
     }
 
     // MARK: - brew 찾기
@@ -286,11 +314,27 @@ enum Handoff {
         BREW=\(quotedBrew)
         APP="/Applications/DongCSU.app"
 
+        BIN="$APP/Contents/MacOS/DongCSU"
+
         # 앱이 완전히 꺼질 때까지 기다린다. 열려 있는 파일을 지우면 반쯤 깨진 번들이 남는다.
         for _ in $(seq 1 100); do
-          pgrep -f "$APP/Contents/MacOS/DongCSU" >/dev/null 2>&1 || break
+          pgrep -f "$BIN" >/dev/null 2>&1 || break
           sleep 0.1
         done
+
+        # **기다리다 포기하지 않는다.** 예전에는 10초 뒤 그냥 진행했는데, 그러면 옛 앱이
+        # 살아 있는 채로 파일만 바뀌고 아래 `open` 이 "이미 떠 있다"며 옛 프로세스를
+        # 앞으로 가져오기만 한다. 사용자에게는 멈춘 창만 남는다 — 실제로 그렇게 멈췄다.
+        if pgrep -f "$BIN" >/dev/null 2>&1; then
+          echo "안 꺼져서 직접 끊는다"
+          pkill -f "$BIN"
+          for _ in $(seq 1 50); do
+            pgrep -f "$BIN" >/dev/null 2>&1 || break
+            sleep 0.1
+          done
+          pkill -9 -f "$BIN" 2>/dev/null
+          sleep 0.5
+        fi
 
         NEW="$("$BREW" --prefix dong-csu)/DongCSU.app"
         # **지우기 전에 새것부터 확인한다.** 지운 뒤에 복사가 실패하면 앱이 통째로 사라진다.
@@ -302,11 +346,16 @@ enum Handoff {
         if [ -d "$APP" ]; then
           rm -rf "$APP" || exit 1
           cp -R "$NEW" /Applications/ || exit 1
-          open "$APP"
+          TARGET="$APP"
         else
           # /Applications 에 복사본이 없으면 brew 쪽에서 바로 쓰고 있던 것이다.
-          open "$NEW"
+          TARGET="$NEW"
         fi
+
+        # **`-n` 을 붙인다.** 그냥 `open` 은 같은 번들 ID 가 이미 떠 있다고 판단되면
+        # 새로 띄우지 않고 그 프로세스를 앞으로 가져오기만 한다. 방금 끊었더라도
+        # LaunchServices 가 아직 그렇게 알고 있을 수 있다.
+        open -n "$TARGET" || open "$TARGET"
         echo "=== 끝 ==="
         """
     }

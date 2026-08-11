@@ -124,6 +124,15 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.4.0.1", date: "2026-08-12", groups: [
+            ChangelogGroup(title: "업데이트", tab: "version", notes: [
+                .fix("새 버전을 다 받고도 \"곧 다시 뜹니다\"에서 멈추던 문제 수정"),
+                .change("다 받은 뒤에 다시 띄울지 물어보도록 변경 "
+                        + "(누르기 전에는 앱이 꺼지지 않고, 받는 동안 그대로 씀)"),
+                .new("갈아끼우는 중에 쓰는 강제 종료 버튼 추가 (누르기 전에 한 번 물어봄)"),
+                .new("새 버전이 있으면 설정 창 사이드바의 '버전'에 표시 추가"),
+            ]),
+        ]),
         ChangelogEntry(version: "2.4.0", date: "2026-08-11", groups: [
             ChangelogGroup(title: "마스코트", notes: [
                 .change("부엉이를 새로 그린 그림으로 변경 "
