@@ -7,7 +7,7 @@
 **Claude 사용량을 화면 위에 항상 띄워두는 앱**
 
 [![macOS](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=macOS*&display_name=release&label=%20&logo=apple&logoColor=white&labelColor=0E1B2E&color=3A72C4)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Amac-v)
-[![Windows](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%20&labelColor=0078D4&color=F6A623&logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BPHBhdGggZD0iTTAgMy41IDkuNSAyLjJ2OS4zSDB6TTEwLjggMiAyNCAwdjExLjVIMTAuOHpNMCAxMi41aDkuNXY5LjNMMCAyMC41ek0xMC44IDEyLjVIMjRWMjRsLTEzLjItMS44eiIvPjwvc3ZnPgo%3D)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
+[![Windows](https://img.shields.io/github/v/release/ldg030201/dong-csu?filter=Windows*&display_name=release&label=%20&labelColor=0E1B2E&color=3A72C4&logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BPHBhdGggZD0iTTAgMy41IDkuNSAyLjJ2OS4zSDB6TTEwLjggMiAyNCAwdjExLjVIMTAuOHpNMCAxMi41aDkuNXY5LjNMMCAyMC41ek0xMC44IDEyLjVIMjRWMjRsLTEzLjItMS44eiIvPjwvc3ZnPgo%3D)](https://github.com/ldg030201/dong-csu/releases?q=tag%3Awin-v)
 ![License](https://img.shields.io/badge/license-MIT-9FC4EE?labelColor=0E1B2E)
 ![Dependencies](https://img.shields.io/badge/dependencies-0-57CC85?labelColor=0E1B2E)
 
@@ -22,9 +22,15 @@
 Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁금해진다. 확인하려면
 하던 걸 멈추고 `/usage`를 쳐야 한다. 그 숫자를 화면 구석에 그냥 띄워둔다.
 
+- 🔵 **이중 링** — 바깥이 5시간 세션, 안쪽이 7일 주간
+- 🎨 사용률이 오를수록 **초록 → 노랑 → 빨강**으로 연속해서 변한다
+- ⏱️ 초기화까지 남은 시간, 다음 조회까지 남은 시간
+- 🦉 **픽셀 마스코트** — 한도가 차면 지치고, 조회가 끊기면 색이 빠진다
+- 🖥️ 모든 화면 위에. 작업 표시줄·Dock 을 차지하지 않는다
+
 ## 어느 쪽을 쓰시나요
 
-| | [![macOS](https://img.shields.io/badge/macOS-0E1B2E?logo=apple&logoColor=white)](mac/README.md) | [![Windows](https://img.shields.io/badge/Windows-0078D4?logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BPHBhdGggZD0iTTAgMy41IDkuNSAyLjJ2OS4zSDB6TTEwLjggMiAyNCAwdjExLjVIMTAuOHpNMCAxMi41aDkuNXY5LjNMMCAyMC41ek0xMC44IDEyLjVIMjRWMjRsLTEzLjItMS44eiIvPjwvc3ZnPgo%3D)](win/README.md) |
+| | [![macOS](https://img.shields.io/badge/macOS-0E1B2E?logo=apple&logoColor=white)](mac/README.md) | [![Windows](https://img.shields.io/badge/Windows-0E1B2E?logo=data:image%2Fsvg%2Bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZmZmZiI%2BPHBhdGggZD0iTTAgMy41IDkuNSAyLjJ2OS4zSDB6TTEwLjggMiAyNCAwdjExLjVIMTAuOHpNMCAxMi41aDkuNXY5LjNMMCAyMC41ek0xMC44IDEyLjVIMjRWMjRsLTEzLjItMS44eiIvPjwvc3ZnPgo%3D)](win/README.md) |
 | --- | --- | --- |
 | **필요한 버전** | **macOS 14 (Sonoma) 이상** | **Windows 10 1809 이상** 또는 Windows 11 |
 | 상주하는 곳 | 메뉴바 | 트레이 |
@@ -36,48 +42,70 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 **어느 쪽이든 Claude Code에 로그인되어 있어야 합니다.** 이 앱은 Claude Code가 저장해 둔
 자격 증명을 읽어서 사용량을 조회합니다. 따로 로그인하지 않습니다.
 
-## 저장소 구조
+## 이렇게 생겼습니다
 
-두 판은 **각자 만들고 각자 버전을 매긴다.** 고쳐야 할 버그가 서로 다르기 때문이다.
-맥에서 먼저 만들고 윈도우로 옮긴다.
+<sub>아래 화면은 전부 macOS 판입니다. 윈도우 판은 [윈도우 README](win/README.md)에 있습니다.</sub>
+
+<table>
+<tr>
+<td align="center" width="32%">
+<img src="mac/docs/collapsed.png" width="150" alt="접은 모습"><br>
+<sub><b>접으면 링만 남는다</b></sub>
+</td>
+<td align="center" width="34%">
+<img src="mac/docs/sizes.png" width="230" alt="크기 4단계"><br>
+<sub><b>크기 4단계</b></sub>
+</td>
+<td align="center" width="34%">
+<img src="mac/docs/pet.png" width="72" alt="펫 모드">
+<img src="mac/docs/pet-hover.png" width="72" alt="펫 모드 호버"><br>
+<sub><b>펫 모드 — 올리면 링이 뜬다</b></sub>
+</td>
+</tr>
+</table>
+
+더블클릭하면 접었다 펴지고, **마스코트를 더블클릭하면** 펫 모드로 들어간다.
+펫 모드에서는 혼자 돌아다니고, 커서를 올려두면 비켜주고, 계속 쫓아가면 뛰어서 달아난다.
+**타이핑 중에는 가만히 있는다.**
+
+가운데 마스코트는 상태에 따라 움직인다. 자세한 건 **[캐릭터](docs/characters/README.md)**.
+
+<table>
+<tr>
+<td align="center" width="20%"><img src="docs/characters/owl/idle.gif" width="96" alt="평소"><br><sub><b>평소</b></sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 80%↑</sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 95%↑</sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
+<td align="center" width="20%"><img src="docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>커서가 쫓아올 때</sub></td>
+</tr>
+</table>
+
+## 캐릭터 바꾸기
+
+**부엉이 자리에 원하는 그림을 넣을 수 있다.** 24칸에 자세를 나눠 담은 시트 한 장이면
+HUD와 펫이 그걸 읽는다. 코드는 건드리지 않는다.
 
 | | |
 | --- | --- |
-| [`mac/`](mac/) | macOS 앱 (Swift · SwiftUI). 소스·스크립트·맥 전용 문서 |
-| [`win/`](win/) | Windows 앱. 소스·윈도우 전용 문서 |
-| [`shared/`](shared/README.md) | 두 판이 나눠 쓰는 데이터. **맥 소스에서 뽑아낸다** |
-| [`docs/characters/`](docs/characters/README.md) | 마스코트 문서. 그림은 양쪽이 같다 |
-| [`Formula/`](Formula/) | Homebrew formula. tap 이 뿌리에서 찾으므로 여기 있어야 한다 |
+| 1 | 캐릭터 설명 한 줄 + [`prompt.txt`](docs/characters/prompt.txt) 통째로 + [`reference.png`](docs/characters/reference.png) 첨부해서 그림 AI에게 준다 |
+| 2 | 받은 그림을 `dong-csu --prep-sheet <받은그림> mascot.png` 로 다듬는다 |
+| 3 | `mascot/` 폴더에 넣고 앱을 다시 띄운다 |
 
-마스코트의 그리드·색·프레임표는 [`shared/owl.json`](shared/owl.json) 한 곳에서 나온다.
-옮겨 적지 않기 때문에 **맥에서 자세를 고치면 윈도우도 같이 바뀐다.** 자세한 건
-[`shared/README.md`](shared/README.md).
+프롬프트는 캐릭터가 달라도 **고치지 않고 그대로 쓴다.** 여러 번 뽑아 보면서 걸리는
+것들(배경이 안 비는 것, 걸음이 걷는 것처럼 안 보이는 것, 칸 밖으로 넘치는 것)을 다
+넣어 뒀다. 자세한 건 **[캐릭터 만들기](docs/characters/making.md)**.
 
-## 만드는 사람을 위해
-
-**테스트판과 정식판을 따로 띄워 놓고 개발한다.** 번들 ID가 달라서 설정도 창 위치도
-섞이지 않고, 쓰던 앱을 켜 둔 채로 고칠 수 있다. 테스트판은 마스코트가 보라색이라
-한눈에 구분된다.
-
-| | |
-| --- | --- |
-| [개발](docs/development.md) | 테스트판 만드는 법, 정식판과 뭐가 다른지, 화면 없이 확인하는 통로 |
-| [작업 규칙](CLAUDE.md) | 버전 자리 · 변경 내역 문구 · 커밋 |
-| [macOS 개발](mac/docs/development.md) | 빌드 · 렌더 통로 · 코드 서명 |
-| [Windows 개발](win/CLAUDE.md) | 프로젝트 구성 · 진단 통로 · 배포 |
-
-**커밋 제목 맨 앞에 어느 판인지 붙인다.** 두 판의 기록이 한 줄기로 섞여서, 경로를
-펴 보지 않아도 갈라 볼 수 있어야 한다.
-
-```
-[Mac] ✨ 펫 모드에 설정·새로고침 버튼 추가
-[Win] 🐛 배율이 100%가 아닌 화면에서 위치가 초기화되던 문제 수정
-📝 커밋 앞머리 규칙 추가
-```
-
-`mac/` 만 고쳤으면 `[Mac]`, `win/` 만 고쳤으면 `[Win]`, 양쪽에 걸리거나 어느 쪽도
-아니면(`shared/` · 뿌리 문서 · `.github/`) 안 붙인다. 자세한 건 [작업 규칙](CLAUDE.md#커밋).
+> 앱 안에서 그림만 고르면 되도록 만드는 중이다. 지금은 위 세 단계를 손으로 한다.
 
 ## 라이선스
 
 [MIT](LICENSE)
+
+> **Anthropic과 무관한 비공식 개인 도구다.** Claude, Claude Code, Clawd 및 관련
+> 로고·마스코트의 저작권과 상표권은 전부 **Anthropic**에 있다. MIT 라이선스는 이
+> 저장소의 코드에만 적용되며 Anthropic의 아트워크에는 적용되지 않는다.
+
+---
+
+<sub>저장소 구조·개발 방식·버전 규칙 등 **만드는 쪽 이야기**는 전부
+[작업 규칙](CLAUDE.md)과 [개발](docs/development.md)에 있습니다.</sub>
