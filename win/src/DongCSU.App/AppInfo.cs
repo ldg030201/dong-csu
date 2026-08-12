@@ -33,7 +33,15 @@ public static class AppInfo
     public static string Version { get; } =
         AppVersion.Format(Assembly.GetExecutingAssembly().GetName().Version);
 
-    public static string DisplayVersion => $"{Name} {Version}";
+    /// <summary>
+    /// 설정 창 바닥에 쓰는 표기. <c>DongCSU 2.1.1</c> 처럼 이름과 버전을 붙인다.
+    ///
+    /// **테스트판은 이름만 쓴다.** 거기 적힌 번호는 그때 소스에 있던 값이라 나가 있는
+    /// 버전과 아무 상관이 없는데, 두 판을 나란히 띄워 놓고 보면 정식판 번호처럼 읽힌다.
+    /// 왼쪽 위 딱지(<see cref="BadgeText"/>)는 <c>test</c> 가 바로 옆에 붙어서 그 오해가
+    /// 없으므로 번호를 그대로 둔다.
+    /// </summary>
+    public static string DisplayVersion => IsTestBuild ? Name : $"{Name} {Version}";
 
     /// <summary>
     /// HUD 왼쪽 위 딱지에 넣을 글자.
