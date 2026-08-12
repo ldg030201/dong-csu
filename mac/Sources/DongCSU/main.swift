@@ -395,6 +395,18 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--fit-sheet"),
     exit(result.warnings.isEmpty ? 0 : 2)
 }
 
+// 창 테두리에 붙는 계산을 잰다: dong-csu --probe-perch
+//
+// 창 목록이 권한 없이 읽히는지, 좌표를 맞게 뒤집었는지, **그림이 테두리에 정말 닿는지**
+// 셋을 본다. 마지막은 실제로 한 번 그려서 알파를 재 예측과 견주므로, 좌우 반전이나
+// 위아래 뒤집기를 실수하면 여기서 잡힌다. 어긋나면 1로 끝난다.
+if CommandLine.arguments.contains("--probe-perch") {
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    let onlySelftest = CommandLine.arguments.contains("selftest")
+    exit(MainActor.assumeIsolated { ProbePerch.run(selftestOnly: onlySelftest) } ? 0 : 1)
+}
+
 // 설정 창이 탭마다 얼마나 길어지는지 잰다: dong-csu --probe-layout
 //
 // 렌더 통로는 스크롤을 벗겨서 그리므로 **스크롤이 걸렸는지는 이걸로만 알 수 있다.**
