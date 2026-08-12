@@ -606,6 +606,16 @@ public sealed class SettingsWindow : Window
             Margin = new Thickness(0, 6, 0, 0),
         });
 
+        // **베타는 고르는 자리에 붙인다.** 변경 내역에만 적으면 그걸 읽은 사람만 알고,
+        // 여기서 고르는 사람은 다 만들어진 것으로 안다.
+        if (style == IconStyle.OwlSheet)
+        {
+            var beta = Ui.Pill(palette, "베타", palette.Warning);
+            beta.HorizontalAlignment = HorizontalAlignment.Center;
+            beta.Margin = new Thickness(0, 5, 0, 0);
+            stack.Children.Add(beta);
+        }
+
         var tile = new Border
         {
             Width = 92,
