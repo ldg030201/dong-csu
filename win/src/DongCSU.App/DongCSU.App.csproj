@@ -90,6 +90,15 @@
       맞지만, mac/build.sh 가 Resources/ 에서 집어 가므로 그쪽을 함께 고칠 때 옮긴다.
     -->
     <EmbeddedResource Include="../../../mac/Resources/claude-icon.png" LogicalName="claude-icon.png" />
+
+    <!--
+      마스코트 규격 시트. **맥 번들에 들어가는 것과 같은 파일이다.**
+
+      맥 2.4.0 부터 HUD·펫의 마스코트는 격자가 아니라 이 그림에서 잘라 그린다.
+      사본을 두면 한쪽만 바뀌어 두 판이 다른 부엉이를 그린다 — 위의 Claude 아이콘과
+      같은 이유로 원본을 그대로 집어 온다.
+    -->
+    <EmbeddedResource Include="../../../mac/Resources/mascot.png" LogicalName="mascot.png" />
   </ItemGroup>
 
 </Project>

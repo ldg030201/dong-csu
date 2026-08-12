@@ -330,6 +330,7 @@ public sealed class AppController : IDisposable
 
         hud.View.OwlGrid = grid;
         hud.View.OwlPaletteName = palette;
+        hud.View.MascotFrame = animator.MascotFrame;
         tray?.UpdateOwl(grid, OwlDocument.Embedded.Palettes[palette]);
     }
 

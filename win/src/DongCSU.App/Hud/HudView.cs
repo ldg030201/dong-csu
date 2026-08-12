@@ -693,7 +693,12 @@ public sealed class HudView : FrameworkElement
         switch (IconStyle)
         {
             case IconStyle.Owl:
-                DrawPixelated(context, ctx => DrawOwl(ctx, center, available));
+                // **그림 시트가 먼저다.** 맥 2.4.0 부터 마스코트는 그림에서 잘라 그린다.
+                // 시트를 못 읽으면 격자로 떨어진다 — 가운데가 비면 안 된다.
+                if (!MascotRenderer.Draw(context, MascotFrame, Square(center, available)))
+                {
+                    DrawPixelated(context, ctx => DrawOwl(ctx, center, available));
+                }
                 break;
 
             case IconStyle.Clawd:
@@ -712,6 +717,9 @@ public sealed class HudView : FrameworkElement
                 break;
         }
     }
+
+    /// <summary>지금 그릴 그림 칸. 창이 넣어 준다 — 격자와 **같은 신호**에서 나온다.</summary>
+    public MascotSprite MascotFrame { get; set; } = MascotSprite.Idle;
 
     private void DrawOwl(DrawingContext context, Point center, double available)
     {

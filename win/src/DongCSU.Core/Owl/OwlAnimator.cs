@@ -409,6 +409,25 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// </summary>
     public bool IsUnusable { get; set; }
 
+    /// <summary>
+    /// 그림 시트에서 지금 그릴 칸.
+    ///
+    /// **격자와 같은 신호에서 나온다** — 둘이 따로 판단하면 같은 상황에서 하나는 졸고
+    /// 하나는 걷는다. 그림 쪽이 훨씬 성겨서(수백 → 스물) <see cref="MascotSheet.Choose"/>
+    /// 가 뭉뚱그린다.
+    /// </summary>
+    public MascotSprite MascotFrame => MascotSheet.Choose(
+        IsUnusable ? OwlMood.Offline : mood,
+        dragged || IsWalking ? eyes : CurrentFrame.Pose.Eyes,
+        dragged ? PetGaitKind.Dragged
+            : gait switch
+            {
+                DongCSU.Core.Pet.PetGait.Walk => PetGaitKind.Walk,
+                DongCSU.Core.Pet.PetGait.Run => PetGaitKind.Run,
+                _ => PetGaitKind.Still,
+            },
+        frameIndex);
+
     /// <summary>지금 칠할 팔레트 이름. 다 썼으면 색이 빠진다.</summary>
     public string PaletteName =>
         // 끊김의 회색은 색 자체가 정보라 덮어쓰지 않는다 — 이미 회색이다.
