@@ -13,7 +13,7 @@ public class PetShakeTests
     private static readonly DateTimeOffset Start = new(2026, 8, 7, 12, 0, 0, TimeSpan.Zero);
 
     /// <summary>좌우로 <paramref name="times"/> 번 흔든다. 어지러워졌으면 true.</summary>
-    private static bool Shake(PetShake shake, MovingTime clock, int times, double distance)
+    private static bool Shake(PetShake shake, FakeTime clock, int times, double distance)
     {
         var dizzy = false;
         var x = 500.0;
@@ -29,7 +29,7 @@ public class PetShakeTests
     [Fact]
     public void 마구_흔들면_어지러워한다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
         shake.Begin();
 
@@ -41,7 +41,7 @@ public class PetShakeTests
     [Fact]
     public void 천천히_옮기면_어지러워하지_않는다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
         shake.Begin();
 
@@ -54,7 +54,7 @@ public class PetShakeTests
     [Fact]
     public void 한쪽으로만_아주_빠르면_천천히_쌓인다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
         shake.Begin();
 
@@ -75,7 +75,7 @@ public class PetShakeTests
     [Fact]
     public void 위아래로만_흔들어도_어지러워한다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
         shake.Begin();
 
@@ -94,7 +94,7 @@ public class PetShakeTests
     [Fact]
     public void 어지러움은_한동안_이어지다_풀린다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
         shake.Begin();
         Shake(shake, clock, 12, 30);
@@ -111,7 +111,7 @@ public class PetShakeTests
     [Fact]
     public void 다시_끌기_시작하면_점수를_새로_센다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
 
         // 네 번이면 2.29 로 문턱(3.0) 아래다. 그대로 이어지면 두 번째 묶음에서 넘는다.
@@ -132,7 +132,7 @@ public class PetShakeTests
     [Fact]
     public void 첫_표본은_속도를_재지_못한다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
         shake.Begin();
 
@@ -144,7 +144,7 @@ public class PetShakeTests
     [Fact]
     public void 같은_눈금에_두_번_오면_속도를_재지_못한다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var shake = new PetShake(clock);
         shake.Begin();
 
@@ -161,10 +161,4 @@ public class PetShakeTests
         Assert.Equal(measured, shake.Velocity);
     }
 
-    private sealed class MovingTime(DateTimeOffset now) : TimeProvider
-    {
-        private DateTimeOffset current = now;
-        public override DateTimeOffset GetUtcNow() => current;
-        public void Advance(TimeSpan by) => current += by;
-    }
 }

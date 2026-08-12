@@ -161,7 +161,9 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
             if (dizzy == value) return;
             dizzy = value;
             if (!dragged) frameIndex = 0;
-            if (IsWalking) eyes = dizzy ? OwlEyes.Dizzy : MoodPose.Eyes;
+            // `IsWalking` 은 `!dizzy` 를 포함하므로 여기 닿으면 방금 풀린 것이다.
+            // 어지러운 동안의 눈은 `BlinkingEyes` 가 따로 준다.
+            if (IsWalking) eyes = MoodPose.Eyes;
             // 들려 있는 동안에는 다음 틱을 기다리지 않고 바로 눈을 푼다.
             if (dragged) carried = carried with { Eyes = dizzy ? OwlEyes.Dizzy : OwlEyes.Open };
             Recompose();

@@ -10,7 +10,7 @@ public class ProcessUsageTests
     public void 첫_표본은_0퍼센트다()
     {
         var source = new FakeSource { CpuTime = TimeSpan.FromSeconds(9999), MemoryBytes = 1 };
-        var sampler = new ProcessUsageSampler(source, processorCount: 4, new MovingTime(Start));
+        var sampler = new ProcessUsageSampler(source, processorCount: 4, new FakeTime(Start));
 
         // 시작부터의 평균을 쓰면 뜨는 순간의 바쁜 값이 계속 남는다.
         Assert.Equal(0, sampler.Sample().CpuPercent);
@@ -20,7 +20,7 @@ public class ProcessUsageTests
     public void 표본_사이의_점유율을_낸다()
     {
         var source = new FakeSource();
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var sampler = new ProcessUsageSampler(source, processorCount: 4, clock);
 
         sampler.Sample();
@@ -40,7 +40,7 @@ public class ProcessUsageTests
     public void 코어_수로_나눈다()
     {
         var source = new FakeSource();
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var sampler = new ProcessUsageSampler(source, processorCount: 8, clock);
 
         sampler.Sample();
@@ -55,7 +55,7 @@ public class ProcessUsageTests
     public void 음수가_되지_않는다()
     {
         var source = new FakeSource { CpuTime = TimeSpan.FromSeconds(10) };
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var sampler = new ProcessUsageSampler(source, processorCount: 4, clock);
 
         sampler.Sample();
@@ -69,7 +69,7 @@ public class ProcessUsageTests
     public void 시간이_흐르지_않으면_이전_값을_유지한다()
     {
         var source = new FakeSource();
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var sampler = new ProcessUsageSampler(source, processorCount: 4, clock);
 
         sampler.Sample();
@@ -83,7 +83,7 @@ public class ProcessUsageTests
     public void 다시_처음부터_셀_수_있다()
     {
         var source = new FakeSource();
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var sampler = new ProcessUsageSampler(source, processorCount: 4, clock);
 
         sampler.Sample();
@@ -120,10 +120,4 @@ public class ProcessUsageTests
         public long MemoryBytes { get; set; }
     }
 
-    private sealed class MovingTime(DateTimeOffset now) : TimeProvider
-    {
-        private DateTimeOffset current = now;
-        public override DateTimeOffset GetUtcNow() => current;
-        public void Advance(TimeSpan by) => current += by;
-    }
 }

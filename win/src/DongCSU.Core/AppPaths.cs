@@ -14,8 +14,6 @@ public static class AppPaths
 
     private static string folderName = DefaultFolderName;
 
-    /// <summary><c>%APPDATA%</c> 아래 폴더 이름.</summary>
-    public static string FolderName => folderName;
 
     /// <summary>
     /// 폴더를 갈아 끼운다. **뜨자마자, 무엇이든 읽거나 쓰기 전에 부른다.**

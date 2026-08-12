@@ -1,4 +1,5 @@
 using System.Windows.Media;
+using DongCSU.App.Rendering;
 
 namespace DongCSU.App.Settings;
 
@@ -57,10 +58,11 @@ public sealed class SettingsPalette
     /// <summary>꺼져 있는 토글의 바탕.</summary>
     public Color TrackOff => Fade(IsDark ? 0.18 : 0.16);
 
-    public SolidColorBrush Brush(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
+    /// <summary>
+    /// 색을 브러시로. **색마다 하나씩만 만들어 나눠 쓴다** — 자세히는 <see cref="Paint"/>.
+    ///
+    /// 설정 창은 탭을 다시 그릴 때마다 컨트롤 하나에 두세 번씩 이걸 부른다.
+    /// 매번 새로 만들면 그때마다 수백 개가 생겼다 버려진다.
+    /// </summary>
+    public SolidColorBrush Brush(Color color) => Paint.Brush(color);
 }

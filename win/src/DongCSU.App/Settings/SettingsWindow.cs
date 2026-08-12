@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using DongCSU.App.Rendering;
 using DongCSU.App.Services;
 using DongCSU.Core;
 using DongCSU.Core.Usage;
@@ -121,12 +122,7 @@ public sealed class SettingsWindow : Window
         Rebuild();
     }
 
-    private bool IsDarkTheme() => settings.Theme switch
-    {
-        HudTheme.Light => false,
-        HudTheme.Dark => true,
-        _ => SystemTheme.IsDark(),
-    };
+    private bool IsDarkTheme() => SystemTheme.IsDark(settings.Theme);
 
     // ── 뼈대 ────────────────────────────────────────────────────────
 
@@ -330,10 +326,7 @@ public sealed class SettingsWindow : Window
             InfoRow(palette, "마지막 조회",
                 store.Snapshot is { } snap ? RemainingTime.AgeText(snap.FetchedAt, now) : "아직 없음"),
             Ui.Divider(palette),
-            InfoRow(palette, "다음 조회",
-                store.NextPollAt is { } next
-                    ? (next <= now ? "곧" : RemainingTime.ClockText(next, now))
-                    : "멈춤"),
+            InfoRow(palette, "다음 조회", RemainingTime.CountdownText(store.NextPollAt, now)),
             Ui.Divider(palette),
             InfoRow(palette, "조회 주기", PollTitle(settings.PollIntervalSeconds))));
 
@@ -359,7 +352,7 @@ public sealed class SettingsWindow : Window
             FontWeight = FontWeights.Bold,
             // 숫자를 링과 같은 색으로 칠한다. 어느 링 얘기인지 여기서도 이어진다.
             Foreground = palette.Brush(window is { } w
-                ? ToColor(UsageColor.For(w.Utilization))
+                ? UsageColor.For(w.Utilization).ToColor()
                 : palette.Tertiary),
             VerticalAlignment = VerticalAlignment.Center,
         });
@@ -392,7 +385,6 @@ public sealed class SettingsWindow : Window
         _ => "10분",
     };
 
-    private static Color ToColor(Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
 
     // ── 표시 ────────────────────────────────────────────────────────
 

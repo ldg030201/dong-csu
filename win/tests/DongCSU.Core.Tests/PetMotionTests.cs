@@ -22,7 +22,7 @@ public class PetMotionTests
     [Fact]
     public void 켜자마자_걷지_않고_잠깐_선다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(1));
 
         var first = pet.Tick(Desk());
@@ -36,7 +36,7 @@ public class PetMotionTests
     [Fact]
     public void 혼자_돌아다니기를_끄면_깨어나지_않는다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(1)) { Wanders = false };
 
         pet.Tick(Desk());
@@ -48,7 +48,7 @@ public class PetMotionTests
     [Fact]
     public void 쉬고_나면_걷기_시작한다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(7));
 
         pet.Tick(Desk());
@@ -63,7 +63,7 @@ public class PetMotionTests
     [Fact]
     public void 한_틱에_한_걸음씩_옮긴다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(7));
         var stage = Desk();
 
@@ -81,7 +81,7 @@ public class PetMotionTests
     [Fact]
     public void 화면_밖으로_나가지_않는다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(3));
         // 오른쪽 끝에 붙여 둔다.
         var stage = Desk();
@@ -105,7 +105,7 @@ public class PetMotionTests
     [Fact]
     public void 자리가_없으면_움직이지_않는다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(1));
         var stage = Desk();
         // 창이 화면보다 크다.
@@ -124,7 +124,7 @@ public class PetMotionTests
     [Fact]
     public void 커서에서_멀어지는_쪽으로_비킨다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(1));
         var stage = Desk();
         // 커서가 왼쪽에 있다 → 오른쪽으로 물러나야 한다.
@@ -140,7 +140,7 @@ public class PetMotionTests
     [Fact]
     public void 이미_비키는_중이면_무시한다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(1));
         var stage = Desk();
         stage.Cursor = new PetPoint(900, 580);
@@ -153,7 +153,7 @@ public class PetMotionTests
     [Fact]
     public void 두_번째_회피부터_뛴다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(1));
         var stage = Desk();
         stage.Cursor = new PetPoint(900, 580);
@@ -179,7 +179,7 @@ public class PetMotionTests
     [Fact]
     public void 커서_피하기를_끄면_안_비킨다()
     {
-        var pet = new PetMotion(new MovingTime(Start), new Random(1)) { DodgesCursor = false };
+        var pet = new PetMotion(new FakeTime(Start), new Random(1)) { DodgesCursor = false };
         var stage = Desk();
         stage.Cursor = new PetPoint(900, 580);
 
@@ -191,7 +191,7 @@ public class PetMotionTests
     [Fact]
     public void 글을_쓰는_동안에는_비키지_않는다()
     {
-        var pet = new PetMotion(new MovingTime(Start), new Random(1));
+        var pet = new PetMotion(new FakeTime(Start), new Random(1));
         var stage = Desk();
         stage.Cursor = new PetPoint(900, 580);
         stage.SinceLastKey = TimeSpan.FromSeconds(1);
@@ -202,7 +202,7 @@ public class PetMotionTests
     [Fact]
     public void 글을_쓰는_동안에는_걷기_시작하지_않는다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(7));
         var stage = Desk();
 
@@ -222,7 +222,7 @@ public class PetMotionTests
     [Fact]
     public void 걷다가_타자가_시작되면_그_자리에_선다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(7));
         var stage = Desk();
 
@@ -241,7 +241,7 @@ public class PetMotionTests
     [Fact]
     public void 도착하면_한_번만_알린다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(7));
         var stage = Desk();
 
@@ -270,7 +270,7 @@ public class PetMotionTests
     [Fact]
     public void 세우면_걸음이_풀린다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(7));
 
         pet.Tick(Desk());
@@ -286,7 +286,7 @@ public class PetMotionTests
     [Fact]
     public void 배회를_끄면_걷던_것도_그_자리에_멈춘다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(7));
 
         pet.Tick(Desk());
@@ -302,7 +302,7 @@ public class PetMotionTests
     [Fact]
     public void 비키는_중에_세워도_걸음이_풀린다()
     {
-        var clock = new MovingTime(Start);
+        var clock = new FakeTime(Start);
         var pet = new PetMotion(clock, new Random(1));
         var desk = Desk();
 
@@ -323,10 +323,4 @@ public class PetMotionTests
         public TimeSpan SinceLastKey { get; set; }
     }
 
-    private sealed class MovingTime(DateTimeOffset now) : TimeProvider
-    {
-        private DateTimeOffset current = now;
-        public override DateTimeOffset GetUtcNow() => current;
-        public void Advance(TimeSpan by) => current += by;
-    }
 }

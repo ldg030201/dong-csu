@@ -22,7 +22,6 @@ public enum PetRingDisplay { Hover, Always, Never }
 
 public static class HudModeExtensions
 {
-    public static bool IsPet(this HudMode mode) => mode == HudMode.Pet;
 
     /// <summary>
     /// 둥근 배경을 깔지.

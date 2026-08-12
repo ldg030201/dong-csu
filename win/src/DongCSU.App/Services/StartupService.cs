@@ -76,21 +76,10 @@ public static class StartupService
     /// 업데이트하면 앱이 새 폴더로 들어가는데, 옛 경로가 남아 있으면 **로그인할 때
     /// 아무것도 안 뜬다.** 뜰 때마다 맞춰 둔다.
     /// </summary>
+    /// <summary>같은 값을 다시 쓰는 것은 해가 없다. 실행당 한 번이라 값도 싸다.</summary>
     public static void RepairIfEnabled()
     {
-        try
-        {
-            using var key = Registry.CurrentUser.OpenSubKey(RunKey, writable: true);
-            if (key?.GetValue(ValueName) is not string stored || string.IsNullOrEmpty(stored)) return;
-            if (string.Equals(stored, CommandLine, StringComparison.OrdinalIgnoreCase)) return;
-
-            key.SetValue(ValueName, CommandLine, RegistryValueKind.String);
-        }
-        catch (Exception error) when (error is System.Security.SecurityException
-                                          or UnauthorizedAccessException
-                                          or IOException)
-        {
-        }
+        if (IsEnabled) SetEnabled(true);
     }
 
     /// <summary>경로에 공백이 있으면 따옴표 없이는 잘린다.</summary>

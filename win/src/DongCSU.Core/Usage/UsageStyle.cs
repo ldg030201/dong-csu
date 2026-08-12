@@ -93,6 +93,20 @@ public static class RemainingTime
         return $"{elapsed / (24 * 3600)}일 전 값";
     }
 
+    /// <summary>
+    /// 다음 조회까지. **HUD 와 설정 창이 같은 글자를 보여야 한다.**
+    ///
+    /// 갈래가 셋이다 — 멈춰 있거나(조회 예정이 없음), 예정 시각이 지났거나, 아직 남았거나.
+    /// 두 곳에서 따로 판단하면 같은 순간에 한쪽은 "곧", 다른 쪽은 "0:00" 을 띄운다.
+    /// </summary>
+    /// <param name="stopped">조회가 멈춰 있을 때 보여줄 글자.</param>
+    public static string CountdownText(DateTimeOffset? next, DateTimeOffset now, string stopped = "멈춤")
+    {
+        if (next is not { } at) return stopped;
+        // 타이머에 여유가 있어 예정 시각이 지나도 0:00 으로 굳지 않게 한다.
+        return at <= now ? "곧" : ClockText(at, now);
+    }
+
     /// <summary>초까지 보이는 카운트다운. 1시간 미만이면 <c>분:초</c>, 넘으면 <c>시:분:초</c>.</summary>
     public static string ClockText(DateTimeOffset? until, DateTimeOffset now)
     {

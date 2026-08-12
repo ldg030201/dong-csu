@@ -69,7 +69,7 @@ public static class RingRenderer
         // 얼마나 썼는지는 여전히 알아야 하고, 쓸 수 없다는 것만 더 알려주면 된다.
         var rgb = UsageColor.For(value);
         var color = spentColor
-            ?? (grayscale ? Desaturate(rgb) : Color.FromRgb(rgb.R, rgb.G, rgb.B));
+            ?? (grayscale ? Desaturate(rgb) : rgb.ToColor());
         var fraction = Math.Max(MinimumFraction, Math.Clamp(value, 0, 100) / 100.0);
         var arc = ArcGeometry(center, radius, fraction);
 

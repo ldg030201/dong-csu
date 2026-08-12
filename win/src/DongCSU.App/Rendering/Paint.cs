@@ -1,6 +1,18 @@
 using System.Windows.Media;
+using DongCSU.Core.Usage;
 
 namespace DongCSU.App.Rendering;
+
+/// <summary>
+/// 화면 없는 색(<see cref="Rgb"/>)을 WPF 색으로.
+///
+/// <c>Core</c> 는 WPF 를 모르므로 사용률 색이 성분만 든 <see cref="Rgb"/> 로 나온다.
+/// 옮기는 한 줄을 파일마다 다시 적지 않는다.
+/// </summary>
+internal static class RgbExtensions
+{
+    public static Color ToColor(this Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
+}
 
 /// <summary>
 /// 굳혀 둔 브러시·펜을 색마다 하나씩만 만들어 나눠 쓴다.

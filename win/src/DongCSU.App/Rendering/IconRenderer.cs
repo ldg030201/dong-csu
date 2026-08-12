@@ -144,10 +144,6 @@ public static class IconRenderer
         return true;
     }
 
-    private static SolidColorBrush Frozen(Color color)
-    {
-        var brush = new SolidColorBrush(color);
-        brush.Freeze();
-        return brush;
-    }
+    /// <summary>색마다 하나씩만 만들어 나눠 쓴다. 자세히는 <see cref="Paint"/>.</summary>
+    private static SolidColorBrush Frozen(Color color) => Paint.Brush(color);
 }

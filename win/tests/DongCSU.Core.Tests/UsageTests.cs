@@ -84,21 +84,20 @@ public class CredentialTests
     [Fact]
     public void 파일에서_읽는다()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"dongcsu-{Guid.NewGuid():N}.json");
-        try
-        {
-            File.WriteAllText(path, Sample);
-            var read = new FileCredentialSource([path]).Read();
-            Assert.Equal("sk-ant-oat01-example", read?.AccessToken);
-        }
-        finally { File.Delete(path); }
+        using var file = new TemporaryFile();
+        File.WriteAllText(file.Path, Sample);
+
+        var read = new FileCredentialSource([file.Path]).Read();
+
+        Assert.Equal("sk-ant-oat01-example", read?.AccessToken);
     }
 
     [Fact]
     public void 파일이_없으면_null()
     {
-        var missing = Path.Combine(Path.GetTempPath(), $"dongcsu-none-{Guid.NewGuid():N}.json");
-        Assert.Null(new FileCredentialSource([missing]).Read());
+        // 만들지 않는다 — 경로만 받아 온다.
+        using var missing = new TemporaryFile();
+        Assert.Null(new FileCredentialSource([missing.Path]).Read());
     }
 
     [Fact]
@@ -510,40 +509,33 @@ public class AppSettingsTests
     [Fact]
     public void 저장하고_다시_읽는다()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"dongcsu-{Guid.NewGuid():N}.json");
-        try
-        {
-            new AppSettings { Scale = HudScale.Large, Theme = HudTheme.Dark, WindowLeft = 12.5 }
-                .Save(path);
+        using var file = new TemporaryFile();
+        new AppSettings { Scale = HudScale.Large, Theme = HudTheme.Dark, WindowLeft = 12.5 }
+            .Save(file.Path);
 
-            var loaded = AppSettings.Load(path);
+        var loaded = AppSettings.Load(file.Path);
 
-            Assert.Equal(HudScale.Large, loaded.Scale);
-            Assert.Equal(HudTheme.Dark, loaded.Theme);
-            Assert.Equal(12.5, loaded.WindowLeft);
-        }
-        finally { File.Delete(path); }
+        Assert.Equal(HudScale.Large, loaded.Scale);
+        Assert.Equal(HudTheme.Dark, loaded.Theme);
+        Assert.Equal(12.5, loaded.WindowLeft);
     }
 
     /// <summary>설정 파일이 깨졌다고 앱이 안 뜨면 안 된다.</summary>
     [Fact]
     public void 깨진_파일은_기본값으로_넘어간다()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"dongcsu-{Guid.NewGuid():N}.json");
-        try
-        {
-            File.WriteAllText(path, "{ 반쯤 쓰다 만");
-            var loaded = AppSettings.Load(path);
-            Assert.Equal(HudScale.Normal, loaded.Scale);
-        }
-        finally { File.Delete(path); }
+        using var file = new TemporaryFile();
+        File.WriteAllText(file.Path, "{ 반쯤 쓰다 만");
+
+        Assert.Equal(HudScale.Normal, AppSettings.Load(file.Path).Scale);
     }
 
     [Fact]
     public void 없는_파일도_기본값이다()
     {
-        var missing = Path.Combine(Path.GetTempPath(), $"dongcsu-none-{Guid.NewGuid():N}.json");
-        Assert.Equal(HudMode.Expanded, AppSettings.Load(missing).Mode);
+        // 만들지 않는다 — 경로만 받아 온다.
+        using var missing = new TemporaryFile();
+        Assert.Equal(HudMode.Expanded, AppSettings.Load(missing.Path).Mode);
     }
 
     [Fact]
@@ -609,9 +601,15 @@ public class ChangelogTests
 }
 
 /// <summary>테스트가 시계에 기대지 않게 하는 가짜 시계.</summary>
-internal sealed class FakeTime : TimeProvider
+/// <summary>
+/// 손으로 돌리는 시계. **테스트는 벽시계에 기대지 않는다** — 언젠가 터진다.
+///
+/// 시작 시각을 안 주면 아무 날이나 하나로 시작한다. 시각 자체가 중요한 테스트만
+/// 값을 넣으면 된다.
+/// </summary>
+internal sealed class FakeTime(DateTimeOffset? start = null) : TimeProvider
 {
-    private DateTimeOffset now = new(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
+    private DateTimeOffset now = start ?? new DateTimeOffset(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
     public override DateTimeOffset GetUtcNow() => now;
     public void Advance(TimeSpan by) => now += by;
 }

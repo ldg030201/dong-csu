@@ -50,14 +50,17 @@ public static partial class Diagnostics
                 foreach (var path in wsl) Console.WriteLine($"    {path}");
                 return true;
 
+            // 뽑아내는 일은 **실행 중인 앱의 상태가 필요 없어서** tools/DongCSU.Tools 가 한다
+            // (CI 도 그쪽을 부른다). 여기 두면 같은 코드가 두 벌이 되고 조용히 갈린다.
+            //
+            // 그래도 **조용히 앱을 띄우지는 않는다.** 옛 습관으로 쳤을 때 창이 떠 버리면
+            // 무슨 일이 난 건지 알 수 없다.
             case "--dump-changelog":
-                Write(args.ElementAtOrDefault(1), Changelog.Dump());
-                return true;
-
             case "--dump-owl":
-                // 맥이 뽑은 것을 그대로 다시 뱉는다. CI 가 shared/owl.json 과 대조해서,
-                // 앱에 박힌 데이터가 저장소의 것과 같은지 확인한다.
-                Write(args.ElementAtOrDefault(1), EmbeddedOwlJson());
+                Console.Error.WriteLine($"{args[0]} 은 여기서 빠졌다. 도구 프로젝트에서 뽑는다:");
+                Console.Error.WriteLine(
+                    $"  dotnet run --project tools/DongCSU.Tools -- {args[0]} <파일>");
+                exitCode = 2;
                 return true;
 
             case "--probe":
@@ -123,23 +126,6 @@ public static partial class Diagnostics
         [return: System.Runtime.InteropServices.MarshalAs(
             System.Runtime.InteropServices.UnmanagedType.Bool)]
         public static partial bool AllocConsole();
-    }
-
-    private static void Write(string? path, string content)
-    {
-        if (string.IsNullOrEmpty(path)) { Console.WriteLine(content); return; }
-
-        var directory = Path.GetDirectoryName(path);
-        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
-        File.WriteAllText(path, content);
-        Console.WriteLine($"wrote: {path}");
-    }
-
-    private static string EmbeddedOwlJson()
-    {
-        using var stream = typeof(OwlDocument).Assembly.GetManifestResourceStream("owl.json")!;
-        using var reader = new StreamReader(stream);
-        return reader.ReadToEnd();
     }
 
     /// <summary>사용량 조회만 해 본다. 자격 증명이 제대로 읽히는지 확인하는 자리다.</summary>

@@ -43,16 +43,11 @@ public enum HudHit
 public static class HudHitExtensions
 {
     /// <summary>
-    /// **누를 것이 없는 자리인가.** 무엇인지 알려 주기만 하는 곳이다.
+    /// **눌러서 무언가 일어나는 자리인가.**
     ///
-    /// 창은 이걸 <see cref="HudHit.None"/> 과 같이 다뤄야 한다 — 아니면 카운트다운이나
-    /// 버전 딱지를 잡고 창을 끌 수 없고, 그 위에서 더블클릭해도 접히지 않는다.
-    /// 설명 문구를 붙이겠다고 끌 수 있는 자리를 뺏으면 안 된다.
+    /// 나머지(빈 자리·마스코트·설명만 붙은 자리)는 창이 다 같이 다룬다 — 끌 수 있고,
+    /// 두 번 누르면 접힌다. 설명 문구를 붙이겠다고 끌 수 있는 자리를 뺏으면 안 된다.
     /// </summary>
-    public static bool IsPassive(this HudHit hit) =>
-        hit is HudHit.Countdown or HudHit.StatsRow or HudHit.VersionBadge or HudHit.PetRow;
-
-    /// <summary>눌러서 무언가 일어나는 자리인가.</summary>
     public static bool IsButton(this HudHit hit) =>
         hit is HudHit.Collapse or HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge;
 }
@@ -816,7 +811,7 @@ public sealed class HudView : FrameworkElement
         // 점 색이 곧 그 창의 링 색이다. 이게 바깥 링 = 세션, 안쪽 링 = 주간을 이어 준다.
         var dot = window is not { } filled ? palette.MutedDot
             : isSpent ? palette.RingSpent
-            : ToColor(UsageColor.For(filled.Utilization));
+            : UsageColor.For(filled.Utilization).ToColor();
 
         var firstLine = 5 * s + 5 * s + titleText.Width + 5 * s + percentText.Width;
         var firstHeight = Math.Max(titleText.Height, percentText.Height);
@@ -893,7 +888,7 @@ public sealed class HudView : FrameworkElement
         var label = Text("조회", 8.5 * s, Semibold, palette.Faint);
         var clockColor = palette.Tertiary;
         if (IsRefreshing) clockColor = Color.FromArgb((byte)(clockColor.A * 0.55), clockColor.R, clockColor.G, clockColor.B);
-        var clock = Text(CountdownText(now), 9.5 * s, Regular, clockColor);
+        var clock = Text(RemainingTime.CountdownText(NextPollAt, now), 9.5 * s, Regular, clockColor);
 
         var width = label.Width + 4 * s + clock.Width;
         var startX = ToRight ? right - width : inset;
@@ -944,14 +939,6 @@ public sealed class HudView : FrameworkElement
         if (NeedsReauth) return "재로그인 필요";
         if (!IsStale || Snapshot is not { } snapshot) return null;
         return RemainingTime.AgeText(snapshot.FetchedAt, now);
-    }
-
-    private string CountdownText(DateTimeOffset now)
-    {
-        if (NextPollAt is not { } next) return "멈춤";
-        // 타이머에 여유를 두기 때문에 예정 시각이 지나도 잠시 뒤에 울린다.
-        // 그동안 0:00 으로 멈춘 것처럼 보이지 않게 한다.
-        return next <= now ? "곧" : RemainingTime.ClockText(next, now);
     }
 
     /// <summary>버튼 묶음 반대편 위 모서리 — 새 버전 표시와 버전 딱지.</summary>
@@ -1115,7 +1102,6 @@ public sealed class HudView : FrameworkElement
         new(value, CultureInfo.CurrentCulture, System.Windows.FlowDirection.LeftToRight, face,
             Math.Max(1, size), Frozen(color), VisualTreeHelper.GetDpi(this).PixelsPerDip);
 
-    private static Color ToColor(Rgb rgb) => Color.FromRgb(rgb.R, rgb.G, rgb.B);
 
     /// <summary>색마다 하나씩만 만들어 나눠 쓴다. 자세히는 <see cref="Paint"/>.</summary>
     private static SolidColorBrush Frozen(Color color) => Paint.Brush(color);
