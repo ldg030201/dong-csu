@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using DongCSU.Core;
 using DongCSU.Core.Owl;
 
 namespace DongCSU.App.Rendering;
@@ -206,7 +207,7 @@ internal static class MascotRenderer
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.EndInit();
             image.Freeze();
-            sheet = image;
+            sheet = AppInfo.IsTestBuild ? HueRotated(image, TestLookDegrees) : image;
 
             MeasureGaitGround();
             return sheet;
@@ -216,6 +217,86 @@ internal static class MascotRenderer
             // 시트를 못 읽어도 앱이 죽으면 안 된다. 격자로 떨어진다.
             return null;
         }
+    }
+
+    /// <summary>
+    /// 테스트판에서 색상을 돌리는 각도.
+    ///
+    /// **링도 카드도 없는 펫 모드에서는 정식판과 구분할 방법이 색뿐이다.** 격자
+    /// 부엉이가 보라색 팔레트로 하던 일을, 그림이 기본이 되면서 여기가 이어받는다.
+    /// 색을 정해 칠하지 않고 **돌리는** 이유는 어떤 그림이 들어올지 모르기 때문이다 —
+    /// 나중에 사용자 그림을 받게 돼도 그대로 먹는다. 맥과 같은 42도다.
+    /// </summary>
+    private const double TestLookDegrees = 42;
+
+    /// <summary>
+    /// 시트 전체의 색상을 돌린다. **불러올 때 한 번만** 한다 — 칸마다 돌리면 같은
+    /// 계산을 스물한 번 하고, 그리는 순간에 돌리면 프레임마다 한다.
+    ///
+    /// 채도·밝기·투명도는 건드리지 않는다. 옮기는 것은 색상뿐이다.
+    /// </summary>
+    private static BitmapSource HueRotated(BitmapSource source, double degrees)
+    {
+        var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+        converted.Freeze();
+
+        var width = converted.PixelWidth;
+        var height = converted.PixelHeight;
+        var stride = width * 4;
+        var pixels = new byte[stride * height];
+        converted.CopyPixels(pixels, stride, 0);
+
+        for (var i = 0; i < pixels.Length; i += 4)
+        {
+            // 투명한 자리는 색이 없다. 돌려 봐야 보이지 않고 계산만 는다.
+            if (pixels[i + 3] == 0) continue;
+            Rotate(ref pixels[i + 2], ref pixels[i + 1], ref pixels[i], degrees);
+        }
+
+        var rotated = BitmapSource.Create(
+            width, height, converted.DpiX, converted.DpiY,
+            PixelFormats.Bgra32, null, pixels, stride);
+        rotated.Freeze();
+        return rotated;
+    }
+
+    /// <summary>한 점의 색상만 돌린다. HSV 로 옮겼다 되돌린다.</summary>
+    private static void Rotate(ref byte red, ref byte green, ref byte blue, double degrees)
+    {
+        double r = red / 255.0, g = green / 255.0, b = blue / 255.0;
+
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        var span = max - min;
+
+        // 회색에는 돌릴 색상이 없다. 눈동자의 흰자·검은자가 여기 걸린다.
+        if (span <= 0) return;
+
+        var hue = max == r ? (g - b) / span
+            : max == g ? (b - r) / span + 2
+            : (r - g) / span + 4;
+        hue = (hue * 60 + degrees) % 360;
+        if (hue < 0) hue += 360;
+
+        var sector = (int)(hue / 60) % 6;
+        var fraction = hue / 60 - (int)(hue / 60);
+        var p = min;
+        var q = max - span * fraction;
+        var t = min + span * fraction;
+
+        (r, g, b) = sector switch
+        {
+            0 => (max, t, p),
+            1 => (q, max, p),
+            2 => (p, max, t),
+            3 => (p, q, max),
+            4 => (t, p, max),
+            _ => (max, p, q),
+        };
+
+        red = (byte)Math.Round(r * 255);
+        green = (byte)Math.Round(g * 255);
+        blue = (byte)Math.Round(b * 255);
     }
 
     /// <summary>걷기·뛰기 칸에서 가장 낮은 잉크 바닥. 그것이 땅이다.</summary>
@@ -232,3 +313,4 @@ internal static class MascotRenderer
         gaitGround = lowest > 0 ? lowest : null;
     }
 }
+
