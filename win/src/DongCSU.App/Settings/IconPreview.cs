@@ -41,6 +41,13 @@ internal sealed class IconPreview : FrameworkElement
 
         switch (IconStyle)
         {
+            // 미리보기는 늘 서 있는 칸이다. 타일마다 다른 자세를 보이면 무엇이 다른
+            // 그림인지가 아니라 무엇이 다른 자세인지로 읽힌다.
+            case IconStyle.OwlSheet
+                when MascotRenderer.Draw(context, MascotSprite.Idle, box):
+                break;
+
+            case IconStyle.OwlSheet:
             case IconStyle.Owl:
                 var cell = OwlRenderer.CellSize(side, Document.Grid.Lines);
                 var size = OwlRenderer.MeasuredSize(cell, Document.Grid);

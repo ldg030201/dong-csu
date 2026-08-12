@@ -541,13 +541,28 @@ public sealed class SettingsWindow : Window
 
         foreach (var group in Enum.GetValues<IconStyleGroup>())
         {
-            panel.Children.Add(Ui.Section(palette, group.Title()));
-
             var strip = new WrapPanel();
             foreach (var style in Enum.GetValues<IconStyle>().Where(s => s.Group() == group))
             {
                 strip.Children.Add(IconTile(palette, style));
             }
+
+            // **접힌 묶음은 눌러야 열린다.** 지금 그걸 쓰고 있으면 펴 놓는다 —
+            // 접힌 채로 두면 어디서 고른 것인지 찾을 수 없다.
+            if (group.IsCollapsed())
+            {
+                panel.Children.Add(new Expander
+                {
+                    Header = group.Title(),
+                    Foreground = new SolidColorBrush(palette.Secondary),
+                    Content = strip,
+                    IsExpanded = settings.IconStyle.Group() == group,
+                    Margin = new Thickness(0, 14, 0, 0),
+                });
+                continue;
+            }
+
+            panel.Children.Add(Ui.Section(palette, group.Title()));
             panel.Children.Add(strip);
         }
 

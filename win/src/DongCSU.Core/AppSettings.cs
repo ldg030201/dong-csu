@@ -71,8 +71,18 @@ public sealed class AppSettings
     public HudScale Scale { get; set; } = HudScale.Normal;
     public HudExpandSide ExpandSide { get; set; } = HudExpandSide.Right;
 
-    /// <summary>링 한가운데에 그릴 그림. 부엉이 말고는 정지 그림이다.</summary>
-    public IconStyle IconStyle { get; set; } = IconStyle.Owl;
+    /// <summary>링 한가운데에 그릴 그림. 부엉이 둘 말고는 정지 그림이다.</summary>
+    public IconStyle IconStyle { get; set; } = IconStyle.OwlSheet;
+
+    /// <summary>
+    /// 그림 부엉이로 한 번 옮겼는지. **한 번만 옮긴다** — 두 번 옮기면 그 사이에
+    /// 오리지널로 되돌려 놓은 사람의 선택을 매번 덮는다.
+    ///
+    /// 기본값만 바꿔서는 아무도 안 바뀐다. 설정 파일에 <c>IconStyle</c> 이 이미 적혀
+    /// 있어서, "고른 것"과 "그냥 깔린 것"을 가릴 방법이 없기 때문이다. 오리지널을
+    /// 일부러 쓰던 사람은 아이콘 탭의 접힌 묶음에서 한 번에 되돌린다.
+    /// </summary>
+    public bool MovedToSheetOwl { get; set; }
 
     /// <summary>조회 주기(초). 너무 조이면 429 가 난다. **맥과 같은 10분이다.**</summary>
     public int PollIntervalSeconds { get; set; } = 600;
@@ -155,14 +165,27 @@ public sealed class AppSettings
         try
         {
             if (!File.Exists(path)) return new AppSettings();
-            return JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Options)
+            var loaded = JsonSerializer.Deserialize<AppSettings>(File.ReadAllText(path), Options)
                 ?? new AppSettings();
+            loaded.MoveToSheetOwlOnce();
+            return loaded;
         }
         catch (Exception error) when (error is IOException or JsonException or UnauthorizedAccessException)
         {
             // 설정 파일이 깨졌다고 앱이 안 뜨면 안 된다. 기본값으로 계속 간다.
             return new AppSettings();
         }
+    }
+
+    /// <summary>
+    /// 쓰던 사람도 새 부엉이로 한 번 옮긴다. 이미 옮겼거나 다른 그림을 골라 뒀으면
+    /// 아무것도 안 한다.
+    /// </summary>
+    internal void MoveToSheetOwlOnce()
+    {
+        if (MovedToSheetOwl) return;
+        MovedToSheetOwl = true;
+        if (IconStyle == IconStyle.Owl) IconStyle = IconStyle.OwlSheet;
     }
 
     /// <summary>
