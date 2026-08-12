@@ -50,14 +50,21 @@ public static class OwlMoodResolver
 
         // **없는 값을 대괄호로 꺼내지 않는다.** owl.json 은 맥에서 뽑혀 오는 파일이라
         // 언젠가 열쇠 이름이 바뀔 수 있는데, 그때 조회할 때마다 예외가 나면 사용량이
-        // 통째로 안 들어온다. 못 찾으면 그 문턱은 없는 것으로 보고 넘어간다.
-        if (utilization >= Threshold(document, "exhausted", 95)) return OwlMood.Exhausted;
-        if (utilization >= Threshold(document, "tired", 80)) return OwlMood.Tired;
+        // 통째로 안 들어온다.
+        if (utilization >= Threshold(document, "exhausted")) return OwlMood.Exhausted;
+        if (utilization >= Threshold(document, "tired")) return OwlMood.Tired;
         return OwlMood.Idle;
     }
 
-    private static double Threshold(OwlDocument document, string name, double fallback) =>
-        document.MoodThresholds.TryGetValue(name, out var value) ? value : fallback;
+    /// <summary>
+    /// 문턱 하나. 없으면 **닿지 않는 값**으로 본다.
+    ///
+    /// 여기에 숫자를 대신 적어 두지 않는다 — 맥이 기준을 낮추면 그 숫자만 옛것으로
+    /// 남아서, 파일이 멀쩡한 날에는 안 보이다가 깨진 날에만 틀린 얼굴을 짓는다.
+    /// 차라리 그 기분에 안 걸리는 편이 낫다.
+    /// </summary>
+    private static double Threshold(OwlDocument document, string name) =>
+        document.MoodThresholds.TryGetValue(name, out var value) ? value : double.PositiveInfinity;
 }
 
 /// <summary>

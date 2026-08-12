@@ -394,17 +394,29 @@ public class OwlAnimatorTests
 {
     private static readonly OwlDocument Document = OwlDocument.Embedded;
 
-    [Theory]
-    [InlineData(0, false, OwlMood.Idle)]
-    [InlineData(79, false, OwlMood.Idle)]
-    [InlineData(80, false, OwlMood.Tired)]
-    [InlineData(94, false, OwlMood.Tired)]
-    [InlineData(95, false, OwlMood.Exhausted)]
-    [InlineData(100, false, OwlMood.Exhausted)]
-    public void 사용률로_기분을_고른다(double utilization, bool disconnected, OwlMood expected)
+    /// <summary>
+    /// 사용률로 기분을 고른다.
+    ///
+    /// **문턱 숫자를 박아 두지 않는다.** 그 값은 <c>owl.json</c> 에서 오고 맥이 이따금
+    /// 낮춘다 — 박아 두면 그때마다 여기가 깨진다. 실제로 두 번 깨졌다. 문턱을 읽어서
+    /// 그 언저리만 본다.
+    /// </summary>
+    [Fact]
+    public void 사용률로_기분을_고른다()
     {
-        Assert.Equal(expected, OwlMoodResolver.Resolve(Document, utilization, disconnected));
+        var tired = Document.MoodThresholds["tired"];
+        var exhausted = Document.MoodThresholds["exhausted"];
+
+        Assert.Equal(OwlMood.Idle, Mood(0));
+        Assert.Equal(OwlMood.Idle, Mood(tired - 1));
+        Assert.Equal(OwlMood.Tired, Mood(tired));
+        Assert.Equal(OwlMood.Tired, Mood(exhausted - 1));
+        Assert.Equal(OwlMood.Exhausted, Mood(exhausted));
+        Assert.Equal(OwlMood.Exhausted, Mood(100));
     }
+
+    private static OwlMood Mood(double utilization) =>
+        OwlMoodResolver.Resolve(Document, utilization, isDisconnected: false);
 
     /// <summary>옛 숫자로 지친 표정을 지으면 그게 지금 상태인 줄 오해한다.</summary>
     [Fact]
