@@ -315,6 +315,44 @@ public class PetMotionTests
         Assert.Null(pet.Gait);
     }
 
+    // ── 바라보는 쪽 ────────────────────────────────────────────────
+
+    /// <summary>커서에게서 물러나는 쪽을 보고 걷는다. 시트의 옆모습이 이걸로 뒤집힌다.</summary>
+    [Theory]
+    [InlineData(100, true)]    // 왼쪽에서 쫓기면 오른쪽으로 물러난다
+    [InlineData(1800, false)]  // 오른쪽에서 쫓기면 왼쪽으로
+    public void 가는_쪽을_본다(double cursorX, bool facingRight)
+    {
+        var pet = new PetMotion(new FakeTime(Start), new Random(1));
+        var desk = Desk();
+        desk.Cursor = new PetPoint(cursorX, 580);
+
+        Assert.True(pet.RequestDodge(desk));
+
+        Assert.Equal(facingRight, pet.Tick(desk).FacingRight);
+    }
+
+    /// <summary>
+    /// 세로로만 움직이면 보던 쪽 그대로다.
+    ///
+    /// 여기서 한쪽으로 덮으면 화면 가장자리에 붙어 위아래로만 걷는 동안 내내
+    /// 그쪽을 보게 된다. 목표가 잘려 가로 이동이 0 이 되는 일은 드물지 않다.
+    /// </summary>
+    [Fact]
+    public void 세로로만_움직이면_보던_쪽_그대로다()
+    {
+        var pet = new PetMotion(new FakeTime(Start), new Random(1));
+        var desk = Desk();
+        // 커서가 마스코트 한가운데 바로 아래. 물러나는 쪽이 정확히 위다.
+        desk.Cursor = new PetPoint(964, 900);
+
+        Assert.True(pet.RequestDodge(desk));
+
+        var tick = pet.Tick(desk);
+        Assert.NotNull(tick.MoveTo);
+        Assert.Null(tick.FacingRight);
+    }
+
     private sealed class Stage : IPetStage
     {
         public PetRect Window { get; set; }

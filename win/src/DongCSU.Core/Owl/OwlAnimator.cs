@@ -108,6 +108,47 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     }
 
     /// <summary>
+    /// 바라보는 쪽을 바꾼다. **null 이면 보던 쪽 그대로다.**
+    ///
+    /// 멈출 때와 세로로만 걸을 때가 그렇다. 여기서 덮으면 오른쪽으로 걷다 선 캐릭터가
+    /// 서는 순간 왼쪽으로 홱 돌고, 화면 가장자리에 붙어 세로로만 움직일 때도 내내
+    /// 오른쪽을 보게 된다.
+    ///
+    /// **격자 부엉이에는 아무 일도 안 한다** — 정면 대칭이라 뒤집어도 같은 그림이다.
+    /// 옆으로 그린 시트 마스코트에서만 뜻이 생긴다.
+    /// </summary>
+    /// <returns>보던 쪽이 실제로 바뀌었으면 true. 다시 그려야 한다.</returns>
+    public bool SetFacing(bool? next)
+    {
+        if (next is not { } wanted || facingRight == wanted) return false;
+        facingRight = wanted;
+        return true;
+    }
+
+    /// <summary>
+    /// 지금 바라보는 쪽. **시트의 걷기·달리기 칸은 왼쪽을 보고 그려져 있어서**
+    /// 오른쪽을 볼 때 뒤집는다. 서 있는 칸은 정면 대칭이라 기본값이 어느 쪽이든 같다.
+    /// </summary>
+    private bool facingRight = true;
+
+    /// <summary>
+    /// 그림을 좌우로 뒤집을지. 오른쪽으로 걷거나 오른쪽으로 끌릴 때.
+    /// </summary>
+    public bool SpriteFlipped
+    {
+        get
+        {
+            // **어지러울 때는 기울어진 쪽을 반전으로 만든다.** 그림이 한쪽으로 기운 채
+            // 한 장뿐이라, 뒤집어서 반대쪽 기울기를 얻는다. 걷던 방향을 그대로 쓰면
+            // 늘 같은 쪽으로만 기울어 "비틀거린다"가 아니라 "기대 있다"로 보인다.
+            var pose = dragged ? carried : CurrentFrame.Pose;
+            if (pose.Eyes == OwlEyes.Dizzy) return pose.Lean + pose.FaceLean > 0;
+            // 들려 있는 동안에는 보던 쪽 그대로. 매달린 것에 방향이 있을 이유가 없다.
+            return facingRight;
+        }
+    }
+
+    /// <summary>
     /// 지금 보여줄 애니메이션.
     ///
     /// 걷는 중이면 기분보다 걸음이 이긴다 — 걸어가면서 서 있는 자세를 하면 미끄러진다.

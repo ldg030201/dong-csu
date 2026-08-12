@@ -331,6 +331,7 @@ public sealed class AppController : IDisposable
         hud.View.OwlGrid = grid;
         hud.View.OwlPaletteName = palette;
         hud.View.MascotFrame = animator.MascotFrame;
+        hud.View.MascotFlipped = animator.SpriteFlipped;
         tray?.UpdateOwl(grid, OwlDocument.Embedded.Palettes[palette]);
     }
 
@@ -563,15 +564,24 @@ public sealed class AppController : IDisposable
         // **도착했을 때만 저장한다.** 매 틱 부르면 초당 열 번 설정 파일을 다시 쓴다.
         if (tick.Settled) window.SavePosition();
 
-        ApplyGait(tick.Gait);
+        ApplyGait(tick.Gait, tick.FacingRight);
 
         ScheduleMotion(tick.NextWakeup);
     }
 
     /// <summary>걸음이 바뀌면 자세를 갈아 끼운다. 걸음을 켜고 끄는 곳은 여기 하나뿐이다.</summary>
-    private void ApplyGait(PetGait? gait)
+    /// <param name="facingRight">보는 쪽. null 이면 보던 쪽 그대로다.</param>
+    private void ApplyGait(PetGait? gait, bool? facingRight = null)
     {
-        if (gait == lastGait) return;
+        // **보는 쪽은 걸음이 그대로여도 바뀐다.** 걷는 도중에 방향을 틀 때가 그렇다.
+        var turned = animator.SetFacing(facingRight);
+
+        if (gait == lastGait)
+        {
+            // 박자는 건드리지 않는다. 프레임 타이머를 다시 걸면 걷다가 발이 멈칫한다.
+            if (turned) RefreshHud();
+            return;
+        }
 
         lastGait = gait;
         animator.SetGait(gait);

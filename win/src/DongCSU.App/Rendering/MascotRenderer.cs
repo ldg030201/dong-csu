@@ -45,7 +45,12 @@ internal static class MascotRenderer
     /// 가로는 걷기만 **머리를 기준**으로 맞춘다. 잉크 상자 가운데로 맞추면 다리가
     /// 벌어질 때마다 몸이 앞뒤로 밀린다.
     /// </summary>
-    public static bool Draw(DrawingContext context, MascotSprite sprite, Rect bounds)
+    /// <param name="flipped">
+    /// 좌우를 뒤집어 그릴지. 걷기·달리기 칸이 왼쪽을 보고 그려져 있어서, 오른쪽으로
+    /// 갈 때 이걸 켠다. **뒤집는 축은 칸의 가운데가 아니라 그려 놓은 자리의 가운데다** —
+    /// 칸을 기준으로 돌리면 발이 땅에서 뜨거나 몸이 옆으로 밀린다.
+    /// </param>
+    public static bool Draw(DrawingContext context, MascotSprite sprite, Rect bounds, bool flipped = false)
     {
         if (Resolve(sprite) is not { } slice) return false;
 
@@ -66,7 +71,20 @@ internal static class MascotRenderer
             : slice.Ink.X + slice.Ink.Width / 2.0;
         var left = bounds.Left + bounds.Width / 2 - (centerX - slice.Ink.X) * scale;
 
-        context.DrawImage(slice.Image, new Rect(left, bottom - height, width, height));
+        var target = new Rect(left, bottom - height, width, height);
+
+        if (!flipped)
+        {
+            context.DrawImage(slice.Image, target);
+            return true;
+        }
+
+        // **자리의 가운데를 축으로 돌린다.** 위에서 머리(걷기)나 알맹이 가운데를 이미
+        // 자리 한가운데에 맞춰 놨으므로, 여기서 돌리면 그 점이 제자리에 남는다.
+        // 그려 놓은 상자를 축으로 삼으면 머리가 좌우로 튄다.
+        context.PushTransform(new ScaleTransform(-1, 1, bounds.Left + bounds.Width / 2, bounds.Top));
+        context.DrawImage(slice.Image, target);
+        context.Pop();
         return true;
     }
 

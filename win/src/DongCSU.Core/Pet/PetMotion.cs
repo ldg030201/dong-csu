@@ -44,11 +44,16 @@ public interface IPetStage
 }
 
 /// <summary>한 틱의 결과. 부르는 쪽이 이대로 창을 옮기고 타이머를 건다.</summary>
+/// <param name="FacingRight">
+/// 바라보는 쪽. **null 이면 보던 쪽 그대로다** — 멈출 때와 세로로만 걸을 때가 그렇다.
+/// 그림 마스코트가 좌우를 뒤집는 데 쓰고, 격자 부엉이는 정면 대칭이라 아무 일도 안 한다.
+/// </param>
 public readonly record struct PetTick(
     TimeSpan? NextWakeup,
     PetPoint? MoveTo,
     PetGait? Gait,
-    bool Settled);
+    bool Settled,
+    bool? FacingRight = null);
 
 /// <summary>
 /// 펫이 스스로 움직이는 규칙.
@@ -235,6 +240,13 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
         var from = new PetPoint(stage.Window.X, stage.Window.Y);
         var remaining = from.DistanceTo(target);
 
+        // 목표가 오른쪽이면 오른쪽을 본다. **가로로 안 움직이면 보던 쪽 그대로다** —
+        // `dx >= 0` 으로 두면 세로로만 걷는 동안 내내 오른쪽으로 덮여서, 옆모습
+        // 캐릭터가 왼쪽을 보고 있다가 반대로 돌아버린다. 화면 가장자리에 붙어 있으면
+        // 목표가 잘려 dx == 0 이 되므로 드물지도 않다.
+        var dx = target.X - from.X;
+        var facing = dx == 0 ? (bool?)null : dx > 0;
+
         if (remaining <= stepLength) return Arrive(now, null, target);
 
         var next = new PetPoint(
@@ -245,7 +257,7 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
         // 가둬서 제자리면 도착으로 친다. 안 그러면 벽에 붙어 영원히 떤다.
         if (clamped.DistanceTo(from) <= 0.5) return Arrive(now, null, clamped);
 
-        return new PetTick(TickInterval, clamped, Gait, false);
+        return new PetTick(TickInterval, clamped, Gait, false, facing);
     }
 
     private PetTick Arrive(DateTimeOffset now, TimeSpan? wait, PetPoint? at = null)
