@@ -48,7 +48,6 @@ public sealed class HudWindow : Window
     public event Action? SettingsRequested;
     public event Action? RefreshRequested;
     public event Action? UpdatesRequested;
-    public event Action? Moved;
 
     public HudView View => view;
 
@@ -59,9 +58,6 @@ public sealed class HudWindow : Window
     /// 미끄러진다.
     /// </summary>
     public bool IsHeld => isDragging || pressed != HudHit.None;
-
-    /// <summary>마우스가 마스코트 위에 있는지. 링을 띄울지 정할 때 쓴다.</summary>
-    public bool IsMascotHovered => view.Hover == HudHit.Mascot;
 
     /// <summary>
     /// 지금 커서가 **비켜야 할 자리**에 있는지. 창 좌표를 뷰 좌표로 옮겨서 직접 본다.
@@ -86,10 +82,6 @@ public sealed class HudWindow : Window
 
     /// <summary>펫 링이 향하는 값. 같은 목표로 애니메이션을 다시 걸지 않으려고 들고 있는다.</summary>
     private double petRingFadeTarget;
-
-    /// <summary>버튼 줄이나 새 버전 표시 위에 있는지. **여기서는 절대 비키지 않는다.**</summary>
-    public bool IsControlHovered =>
-        view.Hover is HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge;
 
     public HudWindow(AppSettings settings)
     {
@@ -124,9 +116,7 @@ public sealed class HudWindow : Window
                 // 두 번 왔으면 옛 속도가 그대로 남아 있는데, 그걸 지금 시각으로 다시
                 // 알리면 마우스가 선 뒤에도 한 칸 더 기울어져 있는다.
                 if (Shake.Measured) DragMoved?.Invoke(new PetPoint(Shake.Velocity.X, -Shake.Velocity.Y));
-                return;
             }
-            Moved?.Invoke();
         };
         IsVisibleChanged += (_, _) => SyncTicker();
 
@@ -396,7 +386,10 @@ public sealed class HudWindow : Window
     /// </summary>
     private void SyncTicker()
     {
-        var needed = IsVisible && view.Mode != HudMode.Collapsed;
+        // **펼침에만 초 단위로 변하는 글자가 있다.** 접힘에는 글자가 없고, 펫은 링과
+        // 마스코트뿐이라 초가 지나도 달라질 것이 없다 — 그런데도 돌리면 하루 8만 번
+        // 링·부엉이·버튼을 통째로 다시 그린다. 펫은 하루 종일 켜 두는 보기라 제일 아프다.
+        var needed = IsVisible && view.Mode == HudMode.Expanded;
         if (needed && !tick.IsEnabled) tick.Start();
         else if (!needed && tick.IsEnabled) tick.Stop();
     }
@@ -605,7 +598,6 @@ public sealed class HudWindow : Window
             isDragging = false;
             SavePosition();
             HeldChanged?.Invoke();
-            Moved?.Invoke();
         }
     }
 

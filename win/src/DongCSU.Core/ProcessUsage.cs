@@ -25,10 +25,23 @@ public interface IProcessSampleSource
     long MemoryBytes { get; }
 }
 
-/// <summary>지금 이 프로세스를 잰다. 외부 명령을 띄우지 않는다.</summary>
+/// <summary>
+/// 지금 이 프로세스를 잰다. 외부 명령을 띄우지 않는다.
+///
+/// **<see cref="Process"/> 를 하나만 들고 재사용한다.** 속성마다
+/// <c>GetCurrentProcess()</c> 를 부르면 표본 하나에 객체가 둘 생겼다 버려지고,
+/// 그때마다 캐시가 비어 있어 <c>WorkingSet64</c> 가 **기계의 모든 프로세스를 한 번
+/// 스냅숏한다.** 이 줄의 존재 이유가 "이 앱이 얼마나 먹나" 를 보여주는 것인데
+/// 재는 행위가 재려는 값을 밀어 올리면 앞뒤가 안 맞는다.
+/// </summary>
 public sealed class CurrentProcessSource : IProcessSampleSource
 {
-    public TimeSpan CpuTime => Process.GetCurrentProcess().TotalProcessorTime;
+    private readonly Process self = Process.GetCurrentProcess();
+
+    /// <summary>한 표본 안에서 두 값을 같은 스냅숏에서 읽도록 한 번만 새로 고친다.</summary>
+    public void Refresh() => self.Refresh();
+
+    public TimeSpan CpuTime => self.TotalProcessorTime;
 
     /// <summary>
     /// 작업 관리자의 <b>작업 집합</b>과 같은 기준이다.
@@ -37,7 +50,7 @@ public sealed class CurrentProcessSource : IProcessSampleSource
     /// 다르게 나온다.** 각자 자기 OS 의 도구와 맞추는 편이 낫다 — 사용자가 견줄
     /// 상대는 반대편 판이 아니라 자기 컴퓨터의 작업 관리자다.
     /// </summary>
-    public long MemoryBytes => Process.GetCurrentProcess().WorkingSet64;
+    public long MemoryBytes => self.WorkingSet64;
 }
 
 /// <summary>
@@ -66,6 +79,9 @@ public sealed class ProcessUsageSampler(
     /// </summary>
     public ProcessUsage Sample()
     {
+        // 두 값을 같은 스냅숏에서 읽는다. 재사용하는 원본은 안 그러면 옛 값을 준다.
+        if (source is CurrentProcessSource live) live.Refresh();
+
         var now = time.GetUtcNow();
         var cpuTime = source.CpuTime;
 

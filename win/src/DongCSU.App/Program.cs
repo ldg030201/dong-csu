@@ -241,9 +241,11 @@ public sealed class AppController : IDisposable
     /// </summary>
     private void SyncStatsTimer()
     {
+        // **자원 줄은 펼침에만 그려진다.** 접힘·펫에서는 `OnRender` 가 그 자리에 닿지도
+        // 않는데, `Mode != Collapsed` 로 두면 펫에서 2초마다 프로세스를 재고 다시 그린다.
         var needed = settings.ShowsProcessStats
             && settings.IsHudVisible
-            && settings.Mode != HudMode.Collapsed;
+            && settings.Mode == HudMode.Expanded;
 
         if (needed && !statsTimer.IsEnabled)
         {
@@ -258,20 +260,16 @@ public sealed class AppController : IDisposable
         }
     }
 
-    private bool IsDarkTheme() => settings.Theme switch
-    {
-        HudTheme.Light => false,
-        HudTheme.Dark => true,
-        _ => SystemTheme.IsDark(),
-    };
+    private bool IsDarkTheme() => SystemTheme.IsDark(settings.Theme);
 
     private void OnStoreChanged() => Dispatch(() =>
     {
+        // 한 번만 만들어 기록·트레이·펫 툴팁이 나눠 쓴다.
+        summary = store.SummaryText();
+
         if (!store.IsRefreshing)
         {
-            AppLog.Write(store.ErrorText is { } failure
-                ? $"조회 실패: {failure}"
-                : $"조회 성공: {store.SummaryText()}");
+            AppLog.Write(store.ErrorText is { } failure ? $"조회 실패: {failure}" : $"조회 성공: {summary}");
         }
 
         // 다음 조회 시각은 결과에 따라 달라진다(429 를 맞으면 물러난다).
@@ -290,7 +288,7 @@ public sealed class AppController : IDisposable
         // 끊겼다 돌아왔는지에 따라 걸음을 멈추거나 다시 켠다.
         SyncMotion();
         RefreshHud();
-        tray?.UpdateSummary(store.SummaryText(), store.NeedsReauth);
+        tray?.UpdateSummary(summary, store.NeedsReauth);
         settingsWindow?.Refresh();
     });
 
@@ -306,15 +304,37 @@ public sealed class AppController : IDisposable
         hud.View.IsRefreshing = store.IsRefreshing;
         hud.View.ErrorText = store.ErrorText;
         hud.View.NextPollAt = store.NextPollAt;
-        hud.View.OwlGrid = animator.CurrentGrid;
-        hud.View.OwlPaletteName = MascotPalette();
         hud.View.HasUpdate = updates.HasUpdate;
         // 펫에는 숫자를 안 그린다. 마스코트에 올리면 이게 뜬다.
-        hud.View.SummaryText = store.SummaryText();
-        hud.Refresh();
+        //
+        // **여기서 만들지 않는다.** 프레임을 넘길 때마다 불리는데(끌리는 동안 초당 11번)
+        // 그때마다 목록 하나에 문자열 여덟 개를 새로 만든다. 값은 조회가 바뀔 때만 달라진다.
+        hud.View.SummaryText = summary;
 
-        tray?.UpdateOwl(animator.CurrentGrid, OwlDocument.Embedded.Palettes[MascotPalette()]);
+        RefreshMascot();
+        hud.Refresh();
     }
+
+    /// <summary>
+    /// 마스코트 그림만 갈아 끼운다. **프레임을 넘길 때는 이것만 하면 된다.**
+    ///
+    /// 나머지 열두 개는 조회 결과가 바뀔 때만 달라지는데, 프레임 경로에서 같이 넣으면
+    /// 걷는 동안 초당 네 번, 끌리는 동안 열한 번 헛일을 한다.
+    /// </summary>
+    private void RefreshMascot()
+    {
+        if (hud is null) return;
+
+        var grid = animator.CurrentGrid;
+        var palette = MascotPalette();
+
+        hud.View.OwlGrid = grid;
+        hud.View.OwlPaletteName = palette;
+        tray?.UpdateOwl(grid, OwlDocument.Embedded.Palettes[palette]);
+    }
+
+    /// <summary>메뉴와 펫 툴팁에 쓰는 한 줄. 조회가 바뀔 때만 다시 만든다.</summary>
+    private string summary = "";
 
     /// <summary>
     /// 마스코트를 어떤 색으로 칠할지.
@@ -359,7 +379,10 @@ public sealed class AppController : IDisposable
         frameTimer.Stop();
         if (animator.Advance() is not { } delay) return;
 
-        RefreshHud();
+        // **그림만 바뀐다.** 사용량·오류·다음 조회는 그대로이므로 다시 넣지 않는다.
+        RefreshMascot();
+        hud?.View.InvalidateVisual();
+
         frameTimer.Interval = delay;
         frameTimer.Start();
     }
@@ -705,6 +728,19 @@ public sealed class AppController : IDisposable
 /// <summary>윈도우가 어두운 테마인지. 레지스트리에 있다.</summary>
 public static class SystemTheme
 {
+    /// <summary>
+    /// 설정을 실제 밝기로 푼다.
+    ///
+    /// **한 곳에서만 푼다.** HUD 와 설정 창이 각자 풀면 항목이 하나 늘 때 한쪽만 고치기
+    /// 쉽고, 그러면 두 창이 서로 다른 테마로 뜬다.
+    /// </summary>
+    public static bool IsDark(HudTheme theme) => theme switch
+    {
+        HudTheme.Light => false,
+        HudTheme.Dark => true,
+        _ => IsDark(),
+    };
+
     public static bool IsDark()
     {
         try
