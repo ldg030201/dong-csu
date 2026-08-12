@@ -244,6 +244,16 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(!petDodgesCursor, forKey: Keys.petDodgesCursorOff) }
     }
 
+    /// 끌어다 놓으면 다른 앱 창 테두리에 붙을지.
+    @Published var petPerches: Bool = true {
+        didSet { defaults.set(!petPerches, forKey: Keys.petPerchesOff) }
+    }
+
+    /// 집어 들고 있는 동안 링과 버튼 줄을 감출지.
+    @Published var petHidesRingWhileHeld: Bool = true {
+        didSet { defaults.set(!petHidesRingWhileHeld, forKey: Keys.petRingWhileHeldOff) }
+    }
+
     static let minOpacity = 0.35
     static let maxOpacity = 1.0
     /// 배경 불투명도 기본값.
@@ -302,9 +312,11 @@ final class HUDSettings: ObservableObject {
         static let versionBadgeOff = "hud.versionBadgeOff"
         // 애니메이션도 기본값이 켜짐이라 반대 의미로 저장한다.
         static let iconAnimationOff = "hud.iconAnimationOff"
-        // 둘 다 기본값이 켜짐이라 반대 의미로 저장한다.
+        // 셋 다 기본값이 켜짐이라 반대 의미로 저장한다.
         static let petWandersOff = "pet.wandersOff"
         static let petDodgesCursorOff = "pet.dodgesCursorOff"
+        static let petPerchesOff = "pet.perchesOff"
+        static let petRingWhileHeldOff = "pet.hidesRingWhileHeldOff"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -351,6 +363,8 @@ final class HUDSettings: ObservableObject {
         // 설정을 열어보기 전까지 이런 게 있는 줄도 모른 채 지나갔다.
         petWanders = !defaults.bool(forKey: Keys.petWandersOff)
         petDodgesCursor = !defaults.bool(forKey: Keys.petDodgesCursorOff)
+        petPerches = !defaults.bool(forKey: Keys.petPerchesOff)
+        petHidesRingWhileHeld = !defaults.bool(forKey: Keys.petRingWhileHeldOff)
     }
 
     /// 저장해 둔 설정을 전부 지우고 기본값으로 되돌린다.

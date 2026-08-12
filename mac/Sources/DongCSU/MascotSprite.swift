@@ -163,8 +163,10 @@ enum MascotSprite: String, CaseIterable {
     /// 다른 판단을 하면 같은 상황에서 하나는 졸고 하나는 걷는다. 그림 쪽이 훨씬
     /// 성기므로(수백 → 스물) 여기서 뭉뚱그린다.
     @MainActor
-    static func resolve(mood: OwlMood, pose: OwlPose, gait: OwlGait?, beat: Int) -> MascotSprite {
-        let base = self.base(mood: mood, pose: pose, gait: gait, beat: beat)
+    static func resolve(
+        mood: OwlMood, pose: OwlPose, gait: OwlGait?, beat: Int, perch: MascotPerch?
+    ) -> MascotSprite {
+        let base = self.base(mood: mood, pose: pose, gait: gait, beat: beat, perch: perch)
         // **감은 얼굴이 따로 있는 자세만 깜빡인다.** 없으면 뜬 얼굴 그대로다.
         //
         // 완전히 감았을 때만 친다. 그림에는 중간 단계가 없어서, 반쯤 감긴 프레임까지
@@ -180,12 +182,22 @@ enum MascotSprite: String, CaseIterable {
 
     /// 눈을 빼고 본 자세.
     @MainActor
-    private static func base(mood: OwlMood, pose: OwlPose, gait: OwlGait?, beat: Int) -> MascotSprite {
+    private static func base(
+        mood: OwlMood, pose: OwlPose, gait: OwlGait?, beat: Int, perch: MascotPerch?
+    ) -> MascotSprite {
         if mood == .offline { return .dead }
+        // **붙어 있으면 그 자세가 이긴다.** 붙는 자리는 이 칸의 알맹이로 계산해 둔 것이라
+        // (`UsageHUDView.petPerchOrigin`) 다른 칸이 그려지면 자리가 그만큼 어긋난다 —
+        // 흔든 뒤 몇 초 동안 옆면에 붙은 부엉이가 26pt 삐져나오는 식이다.
+        //
+        // 끊김(`offline`)만 이 앞이다. 회색으로 굳어야 할 때 살아 있는 그림이 나오면 안 된다.
+        if let perch { return perch.sprite }
         // **기분이 아니라 눈으로 본다.** 끌고 흔드는 동안에는 기분이 `.dragged` 그대로이고
         // (`effectiveMood` 가 끌림을 이기게 해 뒀다) **눈만 풀린다.**
         if pose.eyes == .dizzy { return .dizzy }
         // **어느 쪽으로 끄는지 안 본다.** 그림 한 장이라 볼 것이 없다.
+        // (붙어 있으면 위에서 이미 갈렸다 — 끌고 가다 붙을 자리에 닿으면 놓기 전에
+        // 그 자세를 미리 잡는다.)
         if mood == .dragged { return .held }
         if let gait { return walk(gait: gait, mood: mood, beat: beat) }
         if mood == .exhausted { return .exhausted }
@@ -256,6 +268,33 @@ enum MascotAnchor {
     case bottom
     /// 왼쪽 끝. 세로 모서리에 옆으로 붙는 자세가 쓴다.
     case leading
+}
+
+/// 다른 앱 창의 **어느 테두리에** 붙어 있는지.
+///
+/// **면 하나에서 자세와 반전이 둘 다 나온다.** 붙일 자리를 고르는 쪽(`WindowSurvey`)이
+/// 어느 칸을 쓸지까지 정하게 두면, 그림 사정을 창 계산이 알아야 한다. 면만 알려주면
+/// 그림에 대한 판단은 여기 한 곳에 남는다.
+enum MascotPerch {
+    /// 창 **위** 테두리에 앉았다.
+    case top
+    /// 창 **아래** 테두리에 거꾸로 매달렸다.
+    case bottom
+    case left
+    case right
+
+    var sprite: MascotSprite {
+        switch self {
+        case .top: return .sit
+        case .bottom: return .ledge
+        case .left, .right: return .cling
+        }
+    }
+
+    /// **`cling` 원본은 왼쪽이 벽인 옆모습이다**(`MascotSprite.cling` 주석).
+    /// 그래서 창 **오른쪽** 테두리가 원본이고, 왼쪽 테두리일 때 뒤집는다.
+    /// 헷갈리기 쉬운 자리라 여기 한 줄로 못 박는다.
+    var flipsSprite: Bool { self == .left }
 }
 
 /// 한 장에 칸을 나눠 담는 배치.
@@ -534,6 +573,15 @@ struct MascotSpriteSet {
     /// 때마다 마스코트가 커졌다 작아졌다 한다.
     let extent: CGSize
 
+    /// 자세마다 그림이 **묶음 상자 어디를 덮는지**(0~1, 위가 0).
+    ///
+    /// 창 테두리에 붙일 때 쓴다. 매달린 칸은 손이 상자 위쪽에, 앉은 칸은 발이 아래쪽에
+    /// 그려져 있어서, 상자를 그대로 테두리에 대면 자세마다 몇십 pt씩 뜬다.
+    ///
+    /// **상수로 못 박지 않는다.** 사용자가 넣은 그림은 칸 안에서 자리가 또 달라서,
+    /// 우리 부엉이에 맞춘 숫자를 박아 두면 남의 그림에서는 반드시 틀린다. 그림에서 잰다.
+    let ink: [MascotSprite: CGRect]
+
     var isEmpty: Bool { images.isEmpty }
 
     /// 시트 한 장만으로. 번들에 든 기본 마스코트가 이 길로 온다.
@@ -544,7 +592,50 @@ struct MascotSpriteSet {
         self.images = sliced
         self.fromSheet = true
         self.readingMethod = MascotSheet.readingMethod(for: Self.pixelSize(of: sheet), hasAtlas: false)
-        self.extent = Self.extent(of: sliced)
+        let extent = Self.extent(of: sliced)
+        self.extent = extent
+        self.ink = Self.inkFractions(of: sliced, extent: extent)
+    }
+
+    /// 칸마다 알맹이가 묶음 상자의 어디에 놓이는지 잰다.
+    ///
+    /// **`MascotSpriteView` 가 그리는 자리와 같은 셈이어야 한다** — 거기서 칸은 상자
+    /// 안에 가로 가운데·세로 바닥으로 놓인다(`frame(alignment: .bottom)`). 칸이 전부
+    /// 같은 크기면(여백을 다 같이 걷어낸 보통 경우) 그 보정은 0 이지만, 칸 크기가
+    /// 제각각인 좌표표에서는 이걸 빼먹으면 붙는 자리가 칸마다 어긋난다.
+    private static func inkFractions(
+        of images: [MascotSprite: NSImage], extent: CGSize
+    ) -> [MascotSprite: CGRect] {
+        guard extent.width > 0, extent.height > 0 else { return [:] }
+        var found: [MascotSprite: CGRect] = [:]
+        for (sprite, image) in images {
+            guard let cg = image.cgImage(forProposedRect: nil, context: nil, hints: nil),
+                  let box = MascotSheet.opaqueBounds(cg)
+            else { continue }
+            let offsetX = (extent.width - CGFloat(cg.width)) / 2
+            let offsetY = extent.height - CGFloat(cg.height)
+            found[sprite] = CGRect(
+                x: (offsetX + box.minX) / extent.width,
+                y: (offsetY + box.minY) / extent.height,
+                width: box.width / extent.width,
+                height: box.height / extent.height
+            )
+        }
+        return found
+    }
+
+    /// 그 자세가 묶음 상자 안에서 덮는 자리. 없으면 `fallback` 을 타고 내려간다.
+    ///
+    /// **그림과 같은 칸을 봐야 한다** — `image(_:)` 가 대신 내놓은 칸과 다른 칸을 재면
+    /// 실제로 그려진 것과 다른 자리에 붙는다.
+    func inkFraction(_ sprite: MascotSprite) -> CGRect? {
+        if let box = ink[sprite] { return box }
+        var current = sprite.fallback
+        while let step = current {
+            if let box = ink[step] { return box }
+            current = step.fallback
+        }
+        return nil
     }
 
     /// 그림의 진짜 픽셀 크기. `NSImage.size` 는 포인트라 레티나 PNG 에서 어긋난다.

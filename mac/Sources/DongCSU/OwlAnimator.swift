@@ -432,6 +432,14 @@ final class OwlAnimator: ObservableObject {
     /// 여기서 색을 바꾸는 편이 옮길 것이 적다.
     @Published private(set) var isUnusable = false
 
+    /// 다른 앱 창 테두리에 붙어 있으면 어느 면인지. 안 붙어 있으면 nil.
+    ///
+    /// 기분을 새로 만들지 않는 이유는 `isUnusable` 과 같다 — `OwlMood` 를 늘리면
+    /// `OwlAnimation.all` · `shared/owl.json` · 윈도우판 · 문서 GIF 가 전부 딸려 온다.
+    /// 게다가 격자 부엉이에는 매달린 자세 자체가 없어서 새 기분에 넣을 프레임표가 없다.
+    /// **자세만 그림 쪽에서 갈아 끼우는 것**이라 여기 얹는 편이 옮길 것이 없다.
+    @Published private(set) var perch: MascotPerch?
+
     var palette: OwlPalette {
         // **무엇보다 앞선다.** 아래 어느 갈래로 가든 회색이어야 한다 — 자세가 바뀌었다고
         // 색이 돌아오면 다시 쓸 수 있게 된 것으로 읽힌다.
@@ -456,7 +464,9 @@ final class OwlAnimator: ObservableObject {
     var spriteState: MascotSprite {
         // 조회가 통째로 막힌 것은 애니메이터만 아는 상태라 여기서 가른다.
         if isUnusable { return .dead }
-        return MascotSprite.resolve(mood: mood, pose: pose, gait: gait, beat: frameIndex)
+        return MascotSprite.resolve(
+            mood: mood, pose: pose, gait: gait, beat: frameIndex, perch: perch
+        )
     }
 
     /// 몸을 좌우로 미는 양(칸).
@@ -469,6 +479,9 @@ final class OwlAnimator: ObservableObject {
     /// 걷는 것으로 읽혔다. 그림이 바뀌면 코드가 할 일도 바뀐다.
     var spriteSway: Int {
         guard gait == nil else { return 0 }
+        // **붙어 있을 때도 안 민다.** 테두리에 손이 닿아 있는 것이 그림의 뜻인데
+        // 몸이 옆으로 밀리면 그 손이 벽에서 떨어진다.
+        guard perch == nil else { return 0 }
         // **어지러움은 밀지 않는다.** 기울기를 좌우 반전으로 나타내는데, 밀기까지 하면
         // 비틀거리는 게 아니라 옆으로 미끄러지는 것으로 보인다.
         guard pose.eyes != .dizzy else { return 0 }
@@ -486,6 +499,10 @@ final class OwlAnimator: ObservableObject {
         // **어지러울 때는 기울어진 쪽을 반전으로 만든다.** 그림이 한쪽으로 기운 채
         // 한 장뿐이라, 뒤집어서 반대쪽 기울기를 얻는다. 걷던 방향을 그대로 쓰면
         // 늘 같은 쪽으로만 기울어 "비틀거린다"가 아니라 "기대 있다"로 보인다.
+        // **붙은 면이 걷던 방향과 끌던 손을 다 이긴다.** 왼쪽으로 걸어가다 창 오른쪽 테두리에 붙으면
+        // 벽을 등지고 서 있는 그림이 된다 — 옆으로 붙는 자세는 벽이 어느 쪽인지가
+        // 그림의 뜻이라, 마지막으로 걷던 쪽을 쓰면 절반은 반대로 나온다.
+        if let perch { return perch.flipsSprite }
         if pose.eyes == .dizzy { return pose.lean + pose.faceLean > 0 }
         // 들려 있는 동안에는 보던 쪽 그대로. 매달린 것에 방향이 있을 이유가 없다.
         return facingRight
@@ -529,6 +546,18 @@ final class OwlAnimator: ObservableObject {
         isUnusable = unusable
         applyMood()
         if isUnusable { advance() }
+    }
+
+    /// 창 테두리에 붙었는지 알려 준다. 자세만 바뀌고 기분·색은 그대로다.
+    ///
+    /// **`setUnusable` 과 달리 타이머를 끊지 않는다.** 붙어 있는 것은 굳은 것이 아니라
+    /// 가만히 있는 것이라, 그동안에도 눈은 깜빡여야 한다.
+    func setPerch(_ newPerch: MascotPerch?) {
+        guard newPerch != perch else { return }
+        perch = newPerch
+        // 붙거나 떨어지는 순간 자세가 바뀐다. 다음 틱까지 기다리면 걷던 그림이
+        // 테두리에 붙은 채로 한 박자 남는다.
+        if isRunning { advance() }
     }
 
     /// 어지러움은 사용량이나 연결 상태가 아니라 **이 앱이 어떻게 다뤄졌는지**에서 나온다.
@@ -581,6 +610,8 @@ final class OwlAnimator: ObservableObject {
         // 어지러움이 풀렸으면 원래 기분으로 돌아간다. 시간이 정하는 상태라
         // 바깥에서 알려줄 사람이 없어서 틱마다 스스로 확인한다.
         if mood == .dizzy, !isDizzy { return applyMood() }
+        // **끌림보다 앞이다.** 끌고 가다 붙을 자리에 닿으면 놓기 전에 자세를 미리 잡는다.
+        if perch != nil, mood != .offline { return advancePerch() }
         guard mood != .dragged else { return advanceDrag() }
         // 들려 있는 동안에는 걷지 않는다. 허공에서 발을 갈아 딛으면 우스워진다.
         // 끊긴 동안에도 걷지 않는다 — 멈춘 그림이라야 지금 값이 아님이 드러난다.
@@ -603,6 +634,21 @@ final class OwlAnimator: ObservableObject {
         timer?.invalidate()
         timer = nil
         pose = OwlMood.exhausted.frames[0].pose
+    }
+
+    /// 창 테두리에 붙어 있는 동안의 한 틱. **자세는 굳고 눈만 깜빡인다.**
+    ///
+    /// `holdStill()` 처럼 타이머를 끊으면 안 된다. 붙여 놓으면 몇 분씩 이어지는데
+    /// 그동안 한 번도 안 깜빡이면 죽은 것으로 보인다 — `held` 에 깜빡임을 뒤늦게
+    /// 붙인 이유가 정확히 이것이다(`MascotSprite.blinking` 주석).
+    ///
+    /// 걸음과 같은 눈금으로 깨운다. 더 늘리면 깜빡임 한 번이 그만큼 길어져서,
+    /// 잠깐 감았다 뜨는 것이 아니라 질끈 감는 것으로 보인다.
+    private func advancePerch() {
+        var next = mood.frames[0].pose
+        next.eyes = blinkingEyes(base: next.eyes)
+        pose = next
+        schedule(after: OwlGait.walk.tick)
     }
 
     /// 끌려가는 동안의 한 틱. 마우스가 어디로 얼마나 빨리 가는지에서 자세를 만든다.

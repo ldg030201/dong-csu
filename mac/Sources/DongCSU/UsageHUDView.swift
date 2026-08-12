@@ -15,6 +15,10 @@ struct UsageHUDView: View {
     var isHovered: Bool = false
     /// 펫 모드에서 뒤에 두르는 링을 언제 보여줄지.
     var petRingDisplay: PetRingDisplay = .default
+    /// 지금 집어 들려 있는지.
+    var isHeld: Bool = false
+    /// 들고 있는 동안 링·버튼 줄을 감출지.
+    var hidesRingWhileHeld: Bool = true
     var palette = HUDPalette(isDark: true)
     /// 설정 창 열기. HUDController가 꽂아준다.
     var onOpenSettings: (() -> Void)?
@@ -168,6 +172,80 @@ struct UsageHUDView: View {
         )
     }
 
+    /// 창 테두리에 붙었을 때 **창이 놓일 원점**(화면 좌표).
+    ///
+    /// **상자가 아니라 그림이 닿아야 한다.** 매달린 칸은 손이 묶음 상자 위쪽에, 앉은
+    /// 칸은 발이 아래쪽에 그려져 있어서, 상자를 그대로 테두리에 대면 자세마다 수십 pt
+    /// 씩 뜬다 — 매달린 것이 아니라 공중에 뜬 것으로 보인다.
+    ///
+    /// **자세마다 정렬을 가르는 길은 버렸다.** 링은 창 한가운데 그대로 있어야 하는데
+    /// 마스코트만 옮기려면 둘의 정렬을 갈라야 하고, 그러면 `petMascotRect` 와
+    /// `petHitRect` 가 한 셈에서 나오는 구조가 깨진다 — 그 구조를 왜 지키는지는
+    /// `petMascotRect` 주석에 있다. 창 원점을 미는 것으로 푼다.
+    @MainActor
+    static func petPerchOrigin(
+        perch: MascotPerch, contact: CGPoint, scale: CGFloat, style: ClaudeIconStyle
+    ) -> NSPoint? {
+        guard let ink = petMascotInkRect(perch: perch, scale: scale, style: style) else {
+            return nil
+        }
+        let origin: NSPoint
+        switch perch {
+        case .top: origin = NSPoint(x: contact.x - ink.midX, y: contact.y - ink.minY)
+        case .bottom: origin = NSPoint(x: contact.x - ink.midX, y: contact.y - ink.maxY)
+        case .right: origin = NSPoint(x: contact.x - ink.minX, y: contact.y - ink.midY)
+        case .left: origin = NSPoint(x: contact.x - ink.maxX, y: contact.y - ink.midY)
+        }
+        // 테두리에 **딱 맞춰** 놓는다. 창 안으로 조금 걸치게 해 봤고 버렸다 —
+        // 붙을 자리는 늘어나지만 몸이 창에 잠겨 보여서, 무엇에 붙어 있는지가 흐려진다.
+        //
+        // **그림이 화면 밖으로 나가면 붙지 않는다.** 화면 안으로 밀어 넣지 않는 이유는
+        // 밀어 넣으면 테두리에서 떨어진 자리에서 붙은 척을 하기 때문이다. 메뉴 막대 위에
+        // 올라서는 것도 `visibleFrame` 이 여기서 막는다.
+        //
+        // **자리 계산과 같은 함수에 둔다.** 두 곳에 두면 진단 통로(`--probe-perch`)가
+        // 앱과 다른 답을 내서, 붙지 않는 이유를 진단으로 알 수 없게 된다.
+        //
+        // 상자가 아니라 **알맹이**로 잰다. 상자에는 자세마다 빈 여백이 붙어 있어서,
+        // 그것까지 화면 안을 요구하면 실제로는 다 보이는 자리에서 안 붙는다.
+        let visual = CGRect(
+            x: origin.x + ink.minX, y: origin.y + ink.minY,
+            width: ink.width, height: ink.height
+        )
+        guard let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(visual) }),
+              screen.visibleFrame.contains(visual)
+        else { return nil }
+        return origin
+    }
+
+    /// 그 자세의 그림이 창 안에서 실제로 덮는 자리(뷰 좌표, 아래가 0).
+    ///
+    /// **그림 마스코트가 아니면 nil이다.** 격자로 그리는 부엉이에는 매달림·앉음 자세가
+    /// 아예 없어서, 붙여 놓아도 테두리에 그냥 선 것으로 보인다.
+    @MainActor
+    static func petMascotInkRect(
+        perch: MascotPerch, scale: CGFloat, style: ClaudeIconStyle
+    ) -> CGRect? {
+        guard style == .owlSheet, let set = MascotSpriteStore.bundled,
+              let fraction = set.inkFraction(perch.sprite)
+        else { return nil }
+        let box = petMascotRect(scale: scale, style: style)
+        var minX = box.minX + fraction.minX * box.width
+        var maxX = box.minX + fraction.maxX * box.width
+        // 뒤집어 쓰는 자세는 상자 안에서 좌우가 미러링된다(`MascotSpriteView` 의
+        // `scaleEffect`). 왼쪽 벽에 붙을 때 닿는 변이 반대쪽이 되므로 여기서 같이 돌린다.
+        if perch.flipsSprite {
+            (minX, maxX) = (box.maxX - (maxX - box.minX), box.maxX - (minX - box.minX))
+        }
+        // 잉크 좌표는 위가 0이고 뷰 좌표는 아래가 0이라 세로를 뒤집는다.
+        return CGRect(
+            x: minX,
+            y: box.maxY - fraction.maxY * box.height,
+            width: maxX - minX,
+            height: fraction.height * box.height
+        )
+    }
+
     /// 마스코트가 세로 한 칸당 가로로 얼마나 퍼지는지.
     ///
     /// 부엉이는 그리드 15열 중 몸통이 가운데 11열만 쓴다. 나머지는 날개를 펼 여백이라
@@ -294,8 +372,12 @@ struct UsageHUDView: View {
     @State private var isHoveringMeasure = false
     @State private var isHoveringCollapse = false
 
-    /// 지금 링을 그릴지.
+    /// 지금 링을 그릴지. **버튼 줄도 이걸 따른다** — 둘은 같이 떴다 사라진다.
     private var showsPetRing: Bool {
+        // **들고 있는 동안에는 감춘다.** 집어 든 순간 보고 싶은 것은 마스코트지,
+        // 그 뒤에 두른 눈금과 버튼이 아니다. "항상 표시"로 해 뒀어도 이때는 비운다 —
+        // 끌고 가는 내내 링이 따라다니면 어디에 놓고 있는지가 가려진다.
+        if isHeld, hidesRingWhileHeld { return false }
         switch petRingDisplay {
         case .always: return true
         case .hover: return isHovered

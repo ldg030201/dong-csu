@@ -119,7 +119,9 @@ enum OwlGIFRenderer {
                         set: sheet,
                         sprite: MascotSprite.resolve(
                             mood: animation.mood, pose: frame.pose,
-                            gait: animation.gait, beat: beat
+                            gait: animation.gait, beat: beat,
+                            // 문서용 그림에는 붙어 있는 상태가 없다. 창이 없다.
+                            perch: nil
                         ),
                         flipped: false,
                         // 문서용이라 번들이 무엇이든 정식판 색으로 뽑는다.

@@ -934,8 +934,24 @@ struct SettingsView: View {
             petNote("가만히 두면 화면을 천천히 걸어다닌다. 글을 쓰는 동안에는 멈춘다.")
 
             Toggle("커서 피하기", isOn: $settings.petDodgesCursor)
-            petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.")
+            petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다. "
+                    + "창에 붙어 있는 동안에는 비키지 않는다.")
 
+            Toggle("들고 있을 때 감추기", isOn: $settings.petHidesRingWhileHeld)
+            petNote("집어 들면 사용량 링과 버튼 줄이 사라진다. "
+                    + "\"항상 표시\"로 해 뒀어도 들고 있는 동안은 안 보인다.")
+
+            Toggle("창에 붙이기", isOn: $settings.petPerches)
+                // 매달림·앉음 자세가 그림 쪽에만 있다. 켤 수 있게 두면 켜 놓고
+                // 왜 안 붙는지 알 길이 없다.
+                .disabled(settings.iconStyle != .owlSheet)
+            petNote(
+                settings.iconStyle == .owlSheet
+                    ? "끌어다 다른 앱 창 테두리 가까이 놓으면 거기 앉거나 매달린다. "
+                        + "창을 옮기면 따라간다."
+                    : "앉고 매달리는 자세가 그림 마스코트에만 있어서, "
+                        + "지금 고른 아이콘에서는 붙지 않는다."
+            )
         }
         // 제목에 "펫 모드에서만"이라고 적어 두고 켤 수 있게 두면 앞뒤가 안 맞는다.
         // 펫 모드가 아니면 실제로 아무 일도 일어나지 않으므로 함께 잠근다.

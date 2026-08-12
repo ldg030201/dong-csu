@@ -25,6 +25,13 @@ final class PetMotionController {
     /// 걸음걸이와 **바라보는 쪽**. 방향은 그림 마스코트가 좌우를 뒤집는 데 쓴다
     /// (격자 부엉이는 정면 대칭이라 아무 일도 안 한다).
     var setGait: (OwlGait?, Bool?) -> Void = { _, _ in }
+    /// 그 자리에 붙었을 때 창이 놓일 원점. **붙을 수 없으면 nil** — 그림이 화면 밖으로
+    /// 나가는 자리가 여기서 걸린다. 자리 계산은 뷰 치수를 아는 쪽(`HUDController`)이 한다.
+    var perchOrigin: (PerchSpot) -> NSPoint? = { _ in nil }
+    /// 어느 테두리에 붙었는지 그림 쪽에 알린다. nil이면 떨어졌다.
+    var setPerch: (MascotPerch?) -> Void = { _ in }
+    /// 붙은 창이 지금 맨 앞인지. 창 층에서 펫을 어디에 끼울지 정하는 데 쓴다.
+    var setPerchFront: (Bool) -> Void = { _ in }
 
     // MARK: - 설정
 
@@ -32,6 +39,15 @@ final class PetMotionController {
     var wanders = false
     /// 커서를 위에 올려두고 잡지 않으면 비킨다.
     var dodgesCursor = false
+    /// 끌어다 놓으면 다른 앱 창 테두리에 붙는다.
+    var perches = false
+    /// 지금 **붙어 있어도 되는** 상황인지.
+    ///
+    /// `update(active:)` 와 따로 두는 이유: 움직여도 되는지와 붙어 있어도 되는지는
+    /// 조건이 다르다. **눌림·메뉴는 잠깐 멈추는 이유일 뿐 떨어질 이유가 아니다** —
+    /// 하나로 묶어 놨더니 붙여 놓은 것을 한 번 클릭하거나 우클릭 메뉴를 열면 곧바로
+    /// 떨어져서 걸어나갔다.
+    var canStayPerched = false
     /// 탈진했는지.
     ///
     /// **배회만 끊는다.** 지쳐서 제 발로 산책 나갈 기운은 없어도, 커서가 밀고 들어오면
@@ -62,6 +78,14 @@ final class PetMotionController {
     private static let cursorRetreat: CGFloat = 1.15
     /// 비킨 지 이 안에 또 비켜야 하면 쫓기는 것으로 본다.
     private static let chaseWindow: TimeInterval = 4
+    /// 붙어 있는 동안 붙은 창을 얼마나 자주 다시 보나.
+    ///
+    /// **창을 끌지 않을 때도 반드시 본다.** 단축키로 창을 옮기는 도구(Rectangle 류)나
+    /// 미션 컨트롤·전체화면 전환은 마우스 이벤트를 하나도 안 내서, 끄는 중인지만
+    /// 보고 폴링을 끄면 그때 통째로 놓친다.
+    private static let perchTick: TimeInterval = 0.25
+    /// 창을 끄는 중일 때. 창 목록 한 번이 0.3ms 도 안 돼서 이 주기가 부담이 아니다.
+    private static let perchChaseTick: TimeInterval = 0.05
     /// 마지막 입력 뒤 이만큼은 얌전히 있는다.
     ///
     /// **2초로 뒀더니 짧았다.** 글을 쓰다 잠깐 생각하는 사이에 배회가 걸어나가서,
@@ -80,6 +104,9 @@ final class PetMotionController {
         case walking(to: NSPoint)
         /// 비키는 중. 배회보다 세다. `hurried`면 글자에 쫓기는 중이라 뛴다.
         case dodging(to: NSPoint, hurried: Bool)
+        /// 다른 앱 창 테두리에 붙어 있다. **사용자가 끌어다 놓아야만 들어온다** —
+        /// 배회하다 저절로 붙지 않는다.
+        case perched(PerchSpot)
     }
 
     private var motion: Motion = .still
@@ -91,7 +118,7 @@ final class PetMotionController {
     private var isMoving: Bool {
         switch motion {
         case .walking, .dodging: return true
-        case .still, .resting: return false
+        case .still, .resting, .perched: return false
         }
     }
 
@@ -109,6 +136,18 @@ final class PetMotionController {
         CGEventSource.secondsSinceLastEventType(.hidSystemState, eventType: .keyDown)
     }
 
+    /// 지금 마우스로 무언가를 끌고 있는지. 붙어 있는 동안 창을 얼마나 촘촘히 따라갈지에 쓴다.
+    ///
+    /// **창이 움직이는 것을 알림으로 받는 길이 없다.** 손쉬운 사용 권한이 필요한 AX
+    /// 알림뿐이고, `NSWorkspace` 알림은 앱 단위라 창 이동과 무관하다. 그래서 폴링인데,
+    /// 끄는 동안만 촘촘하게 하려고 이걸 본다 — 위의 키 입력 판정과 같은 API 라
+    /// 권한도 안 들고 재 보면 1µs 도 안 걸린다.
+    private static var isDraggingSomething: Bool {
+        CGEventSource.secondsSinceLastEventType(
+            .hidSystemState, eventType: .leftMouseDragged
+        ) < 0.3
+    }
+
     /// 글을 쓰는 중이라 얌전히 있어야 하는지.
     ///
     /// **글을 쓰는 동안에는 아무것도 하지 않는다.** 배회는 방향을 가리지 않아서
@@ -121,9 +160,14 @@ final class PetMotionController {
     /// 스스로 움직여도 되는 상황인지 알려준다.
     /// 끌고 있는 중·숨겨진 중·펫이 아닌 보기에서는 `false`가 들어온다.
     func update(active: Bool) {
+        // 붙어 있을 수 없게 됐으면(펫 모드에서 나감·화면 잠김·집어 듦) 먼저 뗀다.
+        if !canStayPerched, case .perched = motion { unperch() }
         if active != isActive {
             isActive = active
-            if active {
+            if case .perched = motion {
+                // **붙어 있으면 자리를 지킨다.** 여기서 `.resting` 으로 덮으면 자세만
+                // 매달린 채로 배회가 시작된다 — 붙여 놓은 것을 누르기만 해도 걸어나갔다.
+            } else if active {
                 // 켜자마자 걸어나가면 방금 놓은 자리에서 도망치는 것처럼 보인다.
                 motion = .resting(until: Date().addingTimeInterval(.random(in: 1...3)))
             } else {
@@ -132,15 +176,20 @@ final class PetMotionController {
         }
         // 배회를 끄면(탈진 포함) 걷던 것도 그 자리에 멈춘다.
         if !canWander, case .walking = motion { halt() }
+        // 설정에서 붙기를 껐으면 붙어 있던 것도 놓는다.
+        if !perches, case .perched = motion { unperch() }
         syncTimer()
     }
 
     /// 지금 움직이던 걸 멈추고 자리를 굳힌다.
     private func halt() {
         let wasMoving = isMoving
+        // **여기까지 왔으면 뗀다.** 붙은 것을 지키는 판단은 `update(active:)` 가 이미
+        // 했고(`canStayPerched`), 그걸 통과해 여기 온 것은 정말 멈춰야 하는 것이다.
+        let wasPerched = releasePerch()
         motion = isActive ? .resting(until: Date().addingTimeInterval(.random(in: Self.restRange))) : .still
         setGait(nil, nil)
-        if wasMoving { didSettle() }
+        if wasMoving || wasPerched { didSettle() }
         syncTimer()
     }
 
@@ -161,6 +210,10 @@ final class PetMotionController {
             return max(Self.tick, max(until.timeIntervalSinceNow, quiet))
         case .walking, .dodging:
             return Self.tick
+        case .perched:
+            // 창을 끄는 동안에는 촘촘히 따라간다. 20Hz 면 50ms 뒤처지는데,
+            // 창을 빠르게 끌어도 15pt 라 붙어 있는 것으로 읽힌다.
+            return Self.isDraggingSomething ? Self.perchChaseTick : Self.perchTick
         }
     }
 
@@ -216,7 +269,69 @@ final class PetMotionController {
             ) { [weak self] in
                 self?.rest()
             }
+
+        case .perched(let spot):
+            follow(spot)
         }
+    }
+
+    // MARK: - 창에 붙기
+
+    /// 끌어다 놓은 자리에서 창 테두리에 붙인다. 붙었으면 true.
+    ///
+    /// **`tick` 밖에서 들어오는 전이라 타이머를 직접 다시 건다**(`dodgeCursor` 와 같다).
+    func perch(at spot: PerchSpot) -> Bool {
+        guard isActive, perches else { return false }
+        guard let origin = perchOrigin(spot) else { return false }
+        motion = .perched(spot)
+        move(origin)
+        setGait(nil, nil)
+        setPerch(spot.edge)
+        // **`isMoving` 이 false 라 `rest()`·`halt()` 의 저장을 못 탄다.** 여기서 직접
+        // 부르지 않으면 붙은 자리가 저장되지 않아서, 껐다 켜면 옛 자리로 돌아간다.
+        didSettle()
+        syncTimer()
+        return true
+    }
+
+    /// 붙어 있는 동안의 한 틱. 창이 움직였으면 따라가고, 없어졌으면 떨어진다.
+    private func follow(_ spot: PerchSpot) {
+        // 창이 닫혔거나 최소화됐거나 다른 스페이스로 갔다.
+        guard let found = WindowSurvey.locate(spot.window) else { return unperch() }
+        // 창을 좁혀서 붙어 있을 자리가 없어졌다.
+        guard let moved = spot.clamped(to: found.frame, mascot: visualFrame().size) else {
+            return unperch()
+        }
+        // 붙은 자리가 화면 밖으로 나갔다.
+        guard let origin = perchOrigin(moved) else { return unperch() }
+        motion = .perched(moved)
+        setPerchFront(found.isFront)
+        guard origin != frame().origin else { return }
+        move(origin)
+    }
+
+    /// 붙어 있던 것을 놓고 그 자리에 선다.
+    ///
+    /// **떨어지는 연출은 없다.** 떨어지는 칸이 시트에 없어서 그리는 사람이 새로 그려야
+    /// 하는데, `MascotSheet.layout` 은 순서를 바꾸면 이미 그려진 사용자 시트가 전부
+    /// 깨진다. 연출 하나에 치를 값이 아니다.
+    private func unperch() {
+        guard releasePerch() else { return }
+        // 창을 따라가다 화면 밖까지 나갔을 수 있다.
+        if let inside = clamped(frame().origin), inside != frame().origin { move(inside) }
+        motion = isActive
+            ? .resting(until: Date().addingTimeInterval(.random(in: Self.restRange)))
+            : .still
+        didSettle()
+        syncTimer()
+    }
+
+    /// 붙은 자세만 푼다. 붙어 있었으면 true.
+    @discardableResult
+    private func releasePerch() -> Bool {
+        guard case .perched = motion else { return false }
+        setPerch(nil)
+        return true
     }
 
     /// 목표 쪽으로 한 발짝. 다 왔으면 `onArrive`를 부른다.
@@ -257,6 +372,7 @@ final class PetMotionController {
     /// 다 왔다. 자리를 저장하고 다음 산책까지 쉰다.
     private func rest() {
         let wasMoving = isMoving
+        releasePerch()
         motion = .resting(until: Date().addingTimeInterval(.random(in: Self.restRange)))
         setGait(nil, nil)
         if wasMoving { didSettle() }
@@ -273,6 +389,9 @@ final class PetMotionController {
     /// 커서가 위에 머문 채 잡히지 않는다. 커서 **반대쪽**으로 한 발짝 물러난다.
     func dodgeCursor() {
         guard isActive, dodgesCursor, !isDodging else { return }
+        // **붙어 있으면 안 비킨다.** 붙는 자리는 창 바깥이라 글을 가리지 않는데,
+        // 제목 표시줄에 손이 갈 때마다 떨어지면 붙여 둔 뜻이 없어진다.
+        if case .perched = motion { return }
         // 글을 쓰는 동안에는 비키지 않는다. 커서가 오른쪽에 놓여 있으면 왼쪽으로
         // 물러나는데, 거기는 방금 쓴 글이 있는 자리다. 손은 어차피 키보드에 있다.
         guard !isTypingQuiet else { return }

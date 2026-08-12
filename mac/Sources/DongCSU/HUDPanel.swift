@@ -147,8 +147,14 @@ final class HUDInteractionView: NSView {
         dragOffset = nil
         lastDragPoint = nil
         lastDragAt = nil
-        onDragEnded?()
+        // **누름을 먼저 푼다.** 놓는 자리에서 창 테두리에 붙이는 판정이 `onDragEnded`
+        // 안에서 도는데, 그때까지 눌린 것으로 남아 있으면 "스스로 움직여도 되는 상황"이
+        // 아니라서 붙기가 통째로 걸러진다 — 실제로 한 번도 안 붙었다.
+        //
+        // 순서를 바꿔도 그 사이에는 아무 일도 일어나지 않는다. 끌던 것은 아직
+        // `isDraggingPanel` 로 남아 있어서 펫은 여전히 멈춰 있다.
         onPressChanged?(false)
+        onDragEnded?()
     }
 
     /// 메뉴가 떠 있는 동안에도 멈춰 있어야 한다. `popUpContextMenu`는 메뉴가 닫힐 때까지
@@ -222,6 +228,9 @@ final class HUDController {
 
     private var mode: HUDMode { settings.mode }
     private var iconStyle: ClaudeIconStyle { settings.iconStyle }
+    /// 끄는 동안 "여기 붙는다"를 보여주는 오버레이.
+    private let perchHint = PerchHint()
+    private var lastPerchProbeAt = Date.distantPast
     private var appearance: HUDAppearance { settings.appearance }
     private var scale: CGFloat { settings.scale.factor }
 
@@ -307,11 +316,21 @@ final class HUDController {
         // 만 클릭까지 버둥거리면 새로고침 한 번에 부엉이가 요동친다.
         interactionView.onDragTo = { [weak self] origin in
             guard let self else { return }
+            // **창을 옮기는 것이 끌기 시작 처리보다 뒤다.** 붙어 있던 것을 집어 들면
+            // `syncMotion` 이 그걸 떼면서 창을 걸어다닐 수 있는 범위로 되끌어오는데,
+            // 붙은 자리는 대개 그 범위 밖이라 커서와 어긋난 자리로 한 번 튄다.
+            // 순서를 이렇게 두면 그 되끌림이 곧바로 커서 자리로 덮인다.
+            if !self.isDraggingPanel {
+                self.isDraggingPanel = true
+                self.refreshMood()
+                self.syncMotion()
+                // 링·버튼 줄은 애니메이터를 안 거치므로 뷰를 다시 만들어야 사라진다.
+                // **끌기 시작과 끝에 한 번씩뿐이다** — 프레임마다 부르는 것이 아니다.
+                self.rebuildRootView()
+            }
             self.panel.setFrameOrigin(origin)
-            guard !self.isDraggingPanel else { return }
-            self.isDraggingPanel = true
-            self.refreshMood()
-            self.syncMotion()
+            // **끄는 내내 본다.** 첫 이벤트에만 보면 처음 잡은 자리에서 안 바뀐다.
+            self.updatePerchPreview()
         }
         interactionView.onDragVelocity = { [weak self] velocity in
             self?.owlAnimator.setDragVelocity(velocity)
@@ -333,7 +352,12 @@ final class HUDController {
             guard self.isDraggingPanel else { return }
             self.isDraggingPanel = false
             self.refreshMood()
+            self.rebuildRootView()
+            // **붙이기 전에 움직여도 되는 상태로 되돌린다.** `syncMotion` 이 끌기가
+            // 끝난 것을 보고 `.resting` 을 세우므로, 순서가 뒤바뀌면 방금 붙인 것을
+            // 곧바로 덮어쓴다.
             self.syncMotion()
+            self.perchIfDropped()
         }
         interactionView.menuBuilder = { [weak self] in self?.makeMenu() ?? NSMenu() }
         interactionView.onDoubleClick = { [weak self] point in self?.handleDoubleClick(at: point) }
@@ -344,12 +368,23 @@ final class HUDController {
         motion.setGait = { [weak self] gait, facingRight in
             self?.owlAnimator.setGait(gait, facingRight: facingRight)
         }
+        motion.perchOrigin = { [weak self] spot in self?.perchOrigin(spot) }
+        motion.setPerch = { [weak self] perch in
+            guard let self else { return }
+            self.owlAnimator.setPerch(perch)
+            self.applyPanelLevel(perched: perch != nil)
+            // 붙어 있는 동안에는 링이 창의 제목 표시줄을 덮는다. 마우스를 받는 자리를
+            // 좁히지 않으면 그 창을 끌려다 펫이 잡힌다.
+            self.refreshPassThroughRects()
+            self.refreshTrackingArea()
+        }
+        motion.setPerchFront = { [weak self] isFront in self?.raisePerched(isFront) }
         motion.didSettle = { [weak self] in
             guard let self else { return }
             self.saveOrigin()
             // 스스로 움직이는 동안에는 추적 영역이 커서를 놓친다(mouseEntered는 커서가
             // 움직여야 온다). 자리를 잡은 뒤에 지금 상태를 다시 맞춘다.
-            self.setPetHover(self.isMouseInside(UsageHUDView.petHitRect(scale: self.scale)))
+            self.setPetHover(self.isMouseInside(self.petPointerRect))
         }
 
         applyAppearance()
@@ -404,6 +439,8 @@ final class HUDController {
         observe(settings.$backdropOpacity) { $0.applyAppearance() }
         observe(settings.$iconStyle) {
             $0.syncOwlAnimator()
+            // 격자 부엉이로 바꾸면 붙어 있던 것도 놓는다. 그쪽에는 자세가 없다.
+            $0.syncMotion()
             $0.rebuildRootView()
         }
         observe(settings.$mode) { $0.applyMode() }
@@ -414,6 +451,8 @@ final class HUDController {
         observe(settings.$showsVersionBadge) { $0.rebuildRootView() }
         observe(settings.$animatesIcon) { $0.syncOwlAnimator() }
         observe(settings.$petWanders) { $0.syncMotion() }
+        observe(settings.$petPerches) { $0.syncMotion() }
+        observe(settings.$petHidesRingWhileHeld) { $0.rebuildRootView() }
         // 커서를 피하려면 마스코트 위에 커서가 있는지를 알아야 한다.
         // 링을 항상 보이게 해 뒀어도 그때는 추적 영역이 필요하다.
         observe(settings.$petDodgesCursor) {
@@ -502,8 +541,148 @@ final class HUDController {
         // 산책은 계속 나가는 어긋남이 생긴다.
         motion.isDrained = OwlMood.resolve(store: store, isDragging: false) == .exhausted
         motion.dodgesCursor = settings.petDodgesCursor
+        // **그림 마스코트에서만 붙는다.** 격자로 그리는 부엉이에는 매달림·앉음 자세가
+        // 없어서, 붙여 놓아도 테두리에 그냥 서 있는 것으로 보인다 — 기능이 아니라
+        // 버그로 읽힌다.
+        motion.perches = settings.petPerches && settings.iconStyle == .owlSheet
+        // **붙어 있어도 되는지는 따로 본다.** `canMove` 에는 눌림(`isPressed`)이 들어
+        // 있는데, 그건 메뉴가 떠 있거나 클릭 중이라 잠깐 멈추는 것일 뿐이다. 같이 묶으면
+        // 붙여 놓은 것을 한 번 누르기만 해도 떨어져서 걸어나간다.
+        motion.canStayPerched = isVisible
+            && !areScreensAsleep
+            && settings.mode == .pet
+            && !isDraggingPanel
+            && !store.isDisconnected
+            && !store.isWeeklySpent
         motion.update(active: canMove)
     }
+
+    /// 끌어다 놓은 자리가 창 테두리에 닿아 있으면 거기 붙인다.
+    ///
+    /// **놓을 때만 본다.** 배회하다 저절로 붙는 길은 넣지 않았다 — 마음에 들어 붙여 둔
+    /// 자리에서 곧 걸어나가면 붙여 놓은 뜻이 없어지고, 창이 많은 화면에서는 산책을
+    /// 나가라고 켜 둔 펫이 한 번도 안 걸어다니게 된다.
+    private func perchIfDropped() {
+        perchHint.hide()
+        lastPerchProbeAt = .distantPast
+        // **창이 아니라 그림으로 잰다.** 펫의 창은 링만큼 커서, 창으로 재면 그림이 아직
+        // 한참 떨어져 있는데도 붙는다.
+        //
+        // 미리보기에서 찾아 둔 것을 그대로 쓰지 않고 다시 찾는다 — 끌던 사이에 창이
+        // 움직였을 수 있다.
+        guard canPerch,
+              let spot = WindowSurvey.snap(
+                  mascot: mascotScreenRect(), within: Self.perchSnapDistance
+              ),
+              motion.perch(at: spot)
+        else {
+            // **미리 잡아 둔 자세를 되돌린다.** 안 되돌리면 아무 데도 안 붙은 채로
+            // 매달린 그림이 남는다.
+            owlAnimator.setPerch(nil)
+            return
+        }
+    }
+
+    /// 지금 상태에서 창에 붙을 수 있는지. 한 곳에서만 본다.
+    ///
+    /// **실제로 붙는 조건과 반드시 같아야 한다.** 여기서 빠뜨린 조건이 있으면 끌고 가는
+    /// 동안 "여기 붙는다" 표시까지 그려 놓고 손을 떼면 아무 일도 안 일어난다 — 표시를
+    /// 넣은 이유(닿은 것 같은데 안 붙는 자리가 넓다)를 그대로 되살리는 셈이다.
+    /// 조회가 끊기거나 주간을 다 쓰면 펫은 죽은 것으로 다루므로 붙지도 않는다.
+    private var canPerch: Bool {
+        settings.mode == .pet && settings.petPerches && settings.iconStyle == .owlSheet
+            && !store.isDisconnected && !store.isWeeklySpent
+    }
+
+    /// 끄는 동안 붙을 자리를 찾아 **자세와 표시를 미리** 맞춘다.
+    ///
+    /// 놓아 보지 않고도 붙을지 알 수 있어야 한다. 붙는 문턱은 그림에서 40pt 안인데
+    /// 창은 그보다 훨씬 커서, 표시가 없으면 "닿은 것 같은데 안 붙는" 자리가 넓다.
+    private func updatePerchPreview() {
+        guard canPerch else { return applyPerchPreview(nil) }
+        // 마우스 이벤트마다 창 목록을 훑으면 초당 백 번이 넘는다. 눈으로는 못 보는
+        // 차이라 솎아낸다 — 한 번이 0.3ms 라 이 간격에서는 사실상 공짜다.
+        let now = Date()
+        guard now.timeIntervalSince(lastPerchProbeAt) >= Self.perchProbeInterval else { return }
+        lastPerchProbeAt = now
+        applyPerchPreview(WindowSurvey.snap(
+            mascot: mascotScreenRect(), within: Self.perchSnapDistance
+        ))
+    }
+
+    private func applyPerchPreview(_ spot: PerchSpot?) {
+        guard let spot, let rect = perchVisualRect(spot) else {
+            owlAnimator.setPerch(nil)
+            perchHint.hide()
+            return
+        }
+        // **자세를 먼저 바꾼다.** 손을 떼기 전에 어느 자세로 붙을지가 그림으로 보인다.
+        owlAnimator.setPerch(spot.edge)
+        perchHint.show(rect: rect, edge: spot.edge)
+    }
+
+    /// 그 자리에 붙었을 때 **그림이 덮을** 화면 사각형. 표시가 이 자리에 뜬다.
+    private func perchVisualRect(_ spot: PerchSpot) -> NSRect? {
+        guard let origin = perchOrigin(spot),
+              let ink = UsageHUDView.petMascotInkRect(
+                  perch: spot.edge, scale: scale, style: settings.iconStyle
+              )
+        else { return nil }
+        return NSRect(
+            x: origin.x + ink.minX, y: origin.y + ink.minY,
+            width: ink.width, height: ink.height
+        )
+    }
+
+    /// 끄는 동안 붙을 자리를 다시 찾는 간격.
+    private static let perchProbeInterval: TimeInterval = 0.04
+
+    /// 붙어 있는 동안에는 **붙은 창과 같은 층으로 내려간다.**
+    ///
+    /// 펫은 늘 위에 떠 있는 창(`.floating`)이다. 그래서 붙은 창이 다른 창에 가려져도
+    /// 혼자 앞에 남아 **아무것도 없는 자리에 떠 있는 것으로 보인다.** 붙어 있는 동안만
+    /// 보통 창 층으로 내려서 남의 창과 같이 가려지게 한다.
+    ///
+    /// **떼면 반드시 되돌린다.** 안 되돌리면 그 뒤로 펫이 계속 창 뒤에 숨어서, 어디로
+    /// 갔는지 알 수 없게 된다.
+    private func applyPanelLevel(perched: Bool) {
+        let level: NSWindow.Level = perched ? .normal : .floating
+        guard panel.level != level else { return }
+        panel.level = level
+        perchWasFront = perched
+        // 층을 옮기면 그 층 맨 앞으로 온다. 방금 붙은 창은 사용자가 보고 있던 것이라
+        // 그 위가 맞다.
+        if perched { panel.orderFront(nil) }
+    }
+
+    /// 붙은 창이 맨 앞으로 왔으면 펫도 그 위로 올린다.
+    ///
+    /// **앞이 아닐 때는 아무것도 하지 않는다.** 그대로 두면 그 사이에 앞으로 온 남의
+    /// 창이 펫을 덮어서, 붙은 창과 함께 가려진 것처럼 보인다 — 그게 원하는 모습이다.
+    ///
+    /// 뒤에서 앞으로 바뀌는 순간만 올린다. 틱마다 부르면 매번 층을 흔든다.
+    private func raisePerched(_ isFront: Bool) {
+        defer { perchWasFront = isFront }
+        guard isFront, !perchWasFront, panel.level == .normal else { return }
+        panel.orderFront(nil)
+    }
+
+    private var perchWasFront = false
+
+    /// 그 자리에 붙었을 때 창이 놓일 원점. 붙을 수 없으면 nil.
+    private func perchOrigin(_ spot: PerchSpot) -> NSPoint? {
+        UsageHUDView.petPerchOrigin(
+            perch: spot.edge,
+            contact: spot.contact(in: spot.windowFrame),
+            scale: scale,
+            style: settings.iconStyle
+        )
+    }
+
+    /// 놓은 자리가 테두리에서 이만큼 안이면 붙는다.
+    ///
+    /// 넓히면 붙일 생각이 없었는데 빨려 들어가고, 좁히면 조준을 해야 한다.
+    private static let perchSnapDistance: CGFloat = 40
 
     /// 마스코트가 실제로 화면을 가리는 자리(화면 좌표).
     ///
@@ -656,6 +835,8 @@ final class HUDController {
     /// 화면 정보가 잡히지 않거나 이미 화면 안이면 아무것도 하지 않는다.
     /// (무조건 저장하면 일시적인 화면 변경에 사용자가 옮겨둔 위치가 날아간다.)
     @objc private func handleScreenChange() {
+        // 창 목록 좌표를 뒤집는 기준(주 화면 높이)이 달라졌을 수 있다.
+        WindowSurvey.invalidateScreens()
         guard let corrected = clampedOrigin(panel.frame.origin),
               corrected != panel.frame.origin
         else { return }
@@ -882,6 +1063,17 @@ final class HUDController {
     private var buttonTrackingArea: NSTrackingArea?
     private var updateTrackingArea: NSTrackingArea?
 
+    /// 펫에서 마우스를 받는 자리(뷰 좌표).
+    ///
+    /// 평소에는 링만큼 넓게 잡는다 — 그림 크기로만 잡으면 호버해서 링이 뜬 순간
+    /// 커서를 링 쪽으로 조금만 옮겨도 영역을 벗어나 링이 사라진다.
+    /// **붙어 있을 때만 그림 크기로 좁힌다.** 그때는 링이 남의 창 위에 얹혀 있다.
+    private var petPointerRect: CGRect {
+        owlAnimator.perch == nil
+            ? UsageHUDView.petHitRect(scale: scale)
+            : UsageHUDView.petMascotRect(scale: scale, style: settings.iconStyle)
+    }
+
     /// 호버를 감시할 영역을 지금 모드에 맞춘다. 펫이 아니면 아예 걸지 않는다.
     private func refreshTrackingArea() {
         if let trackingArea {
@@ -902,7 +1094,9 @@ final class HUDController {
         guard settings.petRingDisplay == .hover || settings.petDodgesCursor else { return }
 
         let area = NSTrackingArea(
-            rect: UsageHUDView.petHitRect(scale: scale),
+            // 붙어 있으면 그림 자리만 본다. **클릭 받는 자리와 반드시 같아야 한다** —
+            // 한쪽만 좁히면 눌리는데 호버가 안 잡히거나 그 반대가 된다.
+            rect: petPointerRect,
             // activeAlways가 아니면 이 앱이 앞에 없을 때 호버가 잡히지 않는다.
             // HUD는 절대 활성화되지 않는 창이라 그 경우가 사실상 전부다.
             options: [.mouseEnteredAndExited, .activeAlways],
@@ -990,12 +1184,16 @@ final class HUDController {
         rebuildRootView()
     }
 
+    /// 붙어 있는 동안에는 커서를 피하지 않는다. `PetMotionController` 쪽에도 같은 가드가
+    /// 있지만, 여기서 먼저 끊어야 0.5초 예약이 걸리지도 않는다.
     private func dodgeCursorIfIdle() {
         hoverDodgeTimer = nil
         // 버튼 줄 위라면 비키지 않는다. 누르러 온 손에서 달아나면 안 된다.
         guard !isHoveringPetButtons else { return }
         // 잡고 있는 중이면 비키지 않는다. 손에 들린 게 도망가면 놀란다.
         guard !isPressed, !isDraggingPanel, NSEvent.pressedMouseButtons == 0 else { return }
+        // 창에 붙여 놓았으면 비키지 않는다. 거기 있으라고 놓은 것이다.
+        guard owlAnimator.perch == nil else { return }
         // 글을 쓰는 동안에는 커서를 피하지 않는다(왼쪽으로 물러나면 쓴 글을 덮는다).
         // 다 쓰고 나서도 커서가 그대로 올라와 있으면 그때 비킨다.
         guard !motion.isTypingQuiet else { return scheduleHoverDodge(isHoveringPet) }
@@ -1053,9 +1251,13 @@ final class HUDController {
         refreshToolTipRegions()
 
         // 펫은 창 대부분이 투명하다. 마스코트가 있는 자리와 버튼 줄만 마우스를 받게 좁힌다.
+        //
+        // **붙어 있는 동안에는 그림 크기로 한 번 더 좁힌다.** 링(128pt)이 창의 제목
+        // 표시줄을 통째로 덮고 있어서, 그대로 두면 그 창을 끌려다 펫이 잡힌다.
+        // 버튼 줄은 남긴다 — 안 그러면 붙어 있는 동안 설정·새로고침을 못 누른다.
         interactionView.liveRects = mode == .pet
             ? [
-                UsageHUDView.petHitRect(scale: scale),
+                petPointerRect,
                 UsageHUDView.petButtonsRect(scale: scale),
                 UsageHUDView.petUpdateRect(scale: scale),
             ]
@@ -1093,6 +1295,8 @@ final class HUDController {
             mode: mode,
             isHovered: isHoveringPet || isHoveringPetButtons,
             petRingDisplay: settings.petRingDisplay,
+            isHeld: isDraggingPanel,
+            hidesRingWhileHeld: settings.petHidesRingWhileHeld,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
             onOpenMeasure: { [weak self] in self?.handleOpenMeasure() },
