@@ -161,7 +161,7 @@ DongCSU.exe --log            # 기록 파일 내용
 | 자세 만들기 — 걷기·매달림·눈 깜빡임 | `OwlAnimator` (`GaitPose`·`CarriedPose`·`Wings`·`BlinkingEyes`) |
 
 자세 쪽에는 맥에서 옮겨 온 숫자가 같이 있다 — 처지는 속도 140, 날개 200·620,
-깜빡임 22±12, 다리 네 칸 주기. **맥의 `gaitPose`·`wings(for:)`·`blinkingEyes` 를
+걷는 중 깜빡임 36±20, 다리 네 칸 주기. **맥의 `gaitPose`·`wings(for:)`·`blinkingEyes` 를
 고쳤으면 여기도 같이 고쳐야 한다.** `dump_owl` 만 다시 돌려서는 안 옮겨진다.
 
 **옮겨 적은 것은 언젠가 어긋나므로**, 테스트가 그 결과를 `owl.json` 에 실린 맥의 합성

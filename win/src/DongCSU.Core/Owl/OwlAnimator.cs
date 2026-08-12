@@ -239,9 +239,13 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// <summary>
     /// 눈을 몇 틱마다 깜빡일지. 붙박아 두기만 하면 노려보는 것처럼 보인다.
     /// 지터가 없으면 시계처럼 정확한 박자로 깜빡인다.
+    ///
+    /// **22±12 였다가 늘렸다.** 격자로 그릴 때는 실눈 두 칸이 앞뒤로 붙어서 부드럽게
+    /// 지나갔는데, 그림으로 그리면 뜬 얼굴과 감은 얼굴이 딱 바뀌어서 훨씬 도드라진다 —
+    /// 같은 간격이 훨씬 잦게 느껴진다. 서 있을 때의 간격은 <c>owl.json</c> 이 실어 온다.
     /// </summary>
-    private const int BlinkInterval = 22;
-    private const int BlinkJitter = 12;
+    private const int BlinkInterval = 36;
+    private const int BlinkJitter = 20;
 
     private int blinkCountdown = BlinkInterval;
 
