@@ -1,8 +1,12 @@
-name: build
+name: build (mac)
 
 # 여러 macOS·Swift 조합에서 컴파일되는지 확인한다.
 # 개발 머신 하나에서만 빌드해 보면 옛 컴파일러에서만 나는 오류를 놓친다
 # (1.2.0이 Swift 5.10에서 안 되던 일이 그래서 생겼다).
+#
+# **판마다 워크플로를 나눠 둔다.** 한 파일에 맥·윈도우를 같이 두면 어느 한쪽만
+# 깨져도 워크플로 전체가 빨개진다 — 맥 릴리스를 냈는데 윈도우 테스트 때문에
+# 빨간 것으로 보였다. 저장소가 두 판의 번호를 따로 세는 것과 같은 이유다.
 #
 # **커밋마다 돌리지 않고 태그를 밀 때만 돌린다.** 하루에 열 번씩 커밋하는데 그중
 # 대부분은 변경 내역 JSON이나 문서라 깨질 수가 없다. 릴리스에서 걸리면 네 번째
@@ -16,8 +20,12 @@ on:
   push:
     tags:
       - "mac-v*"
-      - "win-v*"
   pull_request:
+    paths:
+      - "mac/**"
+      - "shared/**"
+      - "docs/changelog.json"
+      - ".github/workflows/build-mac.yml"
   workflow_dispatch:
 
 jobs:
@@ -74,46 +82,3 @@ jobs:
           # 2.0.0 이하가 아직 보는 뿌리 쪽 사본. 어긋나면 옛 앱이 옛 내역을 본다.
           diff -q /tmp/fresh.json ../docs/changelog.json \
             || { echo "docs/changelog.json(옛 앱용 사본)이 다르다 — dump_changelog 로 다시 뽑아라"; exit 1; }
-
-  win:
-    runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: win
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "10.0.x"
-
-      - name: 도구 버전
-        run: dotnet --info
-
-      - name: 빌드
-        run: dotnet build -c Release
-
-      # 부엉이 그림이 맥과 같은지 여기서 걸린다. 레이어 겹치기는 파일로 넘어오지 않아
-      # 윈도우가 따로 구현했고, owl.json 에 실린 맥의 합성 결과와 전 프레임을 대조한다.
-      - name: 테스트
-        run: dotnet test -c Release --no-build
-
-      # 앱에 박아 둔 부엉이가 저장소의 것과 같은지. 다르면 맥과 다른 그림을 그린다.
-      - name: 부엉이 데이터가 저장소의 것과 같은지
-        shell: bash
-        run: |
-          dotnet run --project tools/DongCSU.Tools -c Release --no-build -- --dump-owl /tmp/win-owl.json
-          diff -q /tmp/win-owl.json ../shared/owl.json \
-            || { echo "앱에 박힌 owl.json 이 shared/owl.json 과 다르다 — 다시 빌드해라"; exit 1; }
-
-      - name: 변경 내역 파일이 소스와 맞는지
-        shell: bash
-        run: |
-          dotnet run --project tools/DongCSU.Tools -c Release --no-build -- --dump-changelog /tmp/win-changelog.json
-          diff -q /tmp/win-changelog.json docs/changelog.json \
-            || { echo "win/docs/changelog.json 이 Changelog.cs 와 다르다 — --dump-changelog 로 다시 뽑아라"; exit 1; }
-
-      # 아이콘 파일을 바이트로 비교하지 않는다 — PNG 압축 결과가 zlib 판마다 달라서
-      # 같은 그림인데도 어긋난다. 무엇으로 만들었는지(지문)를 본다.
-      - name: 아이콘이 부엉이 데이터와 맞는지
-        run: dotnet run --project tools/DongCSU.Tools -c Release --no-build -- --check-icon src/DongCSU.App/Resources/DongCSU.ico
