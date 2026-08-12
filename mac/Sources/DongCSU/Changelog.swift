@@ -124,6 +124,14 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.5.0", date: "2026-08-12", groups: [
+            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
+                .new("창에 붙이기 추가 "
+                     + "(끌어다 다른 앱 창 테두리 가까이 놓으면 앉거나 매달리고, "
+                     + "창을 옮기면 따라감)"),
+                .new("들고 있을 때 링·버튼 줄 감추기 추가 (끄기 가능)"),
+            ]),
+        ]),
         ChangelogEntry(version: "2.4.1", date: "2026-08-12", groups: [
             ChangelogGroup(title: "마스코트", notes: [
                 .change("지치는 기준을 세션 80% → 75%, 주저앉는 기준을 95% → 90% 로 변경"),
