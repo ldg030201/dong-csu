@@ -24,6 +24,19 @@ public static partial class Diagnostics
 
         switch (args[0])
         {
+            // 화면을 띄우지 않고 PNG 로 뽑는다. 배치를 눈으로 볼 유일한 싼 방법이다.
+            case "--render":
+                exitCode = Rendering.RenderProbe.Hud(args);
+                return true;
+
+            case "--render-settings":
+                exitCode = Rendering.RenderProbe.SettingsTab(args);
+                return true;
+
+            case "--render-owl":
+                exitCode = Rendering.RenderProbe.Owl(args);
+                return true;
+
             case "--version":
                 // 정식판의 출력 형식은 건드리지 않는다 — CI 와 문서가 이 줄을 본다.
                 // 테스트판만 꼬리표를 단다.

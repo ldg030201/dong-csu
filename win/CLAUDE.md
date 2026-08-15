@@ -76,14 +76,8 @@
 
 ### 확인 방법
 
-화면에 관한 것은 **띄워서 눌러 보는 것이 정본**이다. 다만 앱을 띄우지 않고 그림만
-뽑아 보고 싶으면, `HudView` 를 참조하는 작은 하네스를 만들어 `RenderTargetBitmap` 으로
-찍으면 된다.
-
-> **`VisualBrush` 로 뷰를 찍지 마라.** 기본이 `Stretch.Fill` 이라 **뷰의 내용 경계**를
-> 대상 사각형에 맞춰 늘린다. 배경이 창을 꽉 채우는 보기에서는 우연히 1:1 이라 안
-> 드러나는데, 펫처럼 배경이 없으면 경계가 마스코트만큼 줄어들어 **그림이 확대된 채로
-> 찍힌다.** 없는 버그를 쫓게 된다. `RenderTargetBitmap.Render(view)` 를 쓴다.
+화면에 관한 것은 **띄워서 눌러 보는 것이 정본**이다. 다만 배치·색·문구는 아래
+"눈으로 확인하기" 의 `--render` 셋으로 먼저 본다 — 훨씬 빠르고 어긋나지 않는다.
 
 개발을 통째로 이어받는 경우라면 [`docs/handoff.md`](docs/handoff.md) 에 시작 지점과
 맥에서 옮겨 올 목록이 정리돼 있다.
@@ -139,7 +133,20 @@ DongCSU.exe --where          # 어느 판인지, 설정·기록·토큰이 어�
 DongCSU.exe --probe          # 자격 증명이 읽히는지, 사용량이 오는지
 DongCSU.exe --probe-owl idle
 DongCSU.exe --log            # 기록 파일 내용
+
+# 화면을 PNG 로 (창을 안 띄운다)
+DongCSU.exe --render out.png 34 61 expanded owlsheet normal dark
+DongCSU.exe --render-settings out.png version 760x760 light
+DongCSU.exe --render-owl out.png 64
 ```
+
+**화면에 관한 것은 이 셋으로 먼저 본다.** 앱을 띄우고 창을 찾아 마우스를 옮겨 가며
+찍는 것은 느리고 잘 어긋난다 — 설정 창이 다른 창 뒤에 깔리면 엉뚱한 것이 찍힌다.
+실제로 그렇게 두 번 헛돌았다.
+
+> **`VisualBrush` 로 뷰를 찍지 마라.** 기본이 `Stretch.Fill` 이라 **뷰의 내용 경계**를
+> 대상 사각형에 맞춰 늘린다. 펫처럼 배경이 없는 보기에서는 경계가 마스코트만큼
+> 줄어들어 **그림이 확대된 채로 찍힌다.** `RenderProbe` 는 `RenderTargetBitmap` 을 쓴다.
 
 `--print-owl` 은 **우리가 합성한 것**을 찍고 `owl.json` 에 실린 맥의 결과와 대조한다.
 다르면 `⚠` 가 붙는다. 자세를 고칠 일이 있으면 이걸로 먼저 본다.
