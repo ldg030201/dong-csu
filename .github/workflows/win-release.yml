@@ -76,8 +76,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          # 제목 형식을 바꾸지 마라. 저장소 뿌리 README 의 버전 배지가 제목으로 판을
-          # 가른다. GitHub 의 "Latest" 는 저장소에 하나뿐이라 이것 말고 방법이 없다.
+          # 제목 형식을 바꾸지 마라. `Windows <버전>` 으로 어느 판인지 가른다 —
+          # GitHub 의 "Latest" 는 저장소에 하나뿐이라 맥과 나눌 방법이 이것뿐이다.
           gh release create "$GITHUB_REF_NAME" --title "Windows ${{ steps.version.outputs.value }}" --generate-notes \
             || echo "릴리스가 이미 있다 — 파일만 올린다"
           # **Portable zip 은 올리지 않는다** — 68MB 인데 설치 exe 와 내용이 같다.
@@ -85,6 +85,23 @@ jobs:
           # releases.win.json 은 앱이 새 버전을 찾는 목록이다. 지우면 업데이트가 죽는다.
           rm -f releases/*-Portable.zip
           gh release upload "$GITHUB_REF_NAME" releases/* --clobber
+
+      # 뿌리 README 의 "지금 버전" 줄. **배지가 아니라 글자라 여기서 안 올리면 낡는다.**
+      # 맥 칸은 mac/release.sh 가 올린다 — 우리는 윈도우 칸(두 번째 숫자)만 건드린다.
+      - name: README 의 윈도우 버전 갱신
+        if: startsWith(github.ref, 'refs/tags/win-v')
+        working-directory: .
+        shell: bash
+        run: |
+          sed -i -E "s#^(\| 지금 버전 \| [0-9.]+ \| )[0-9.]+#\1${{ steps.version.outputs.value }}#" README.md
+          # 손으로 미리 올려 뒀으면 바뀐 것이 없다. 그때는 조용히 넘어간다.
+          git diff --quiet README.md && exit 0
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git commit -m "📝 README 의 윈도우 버전을 ${{ steps.version.outputs.value }} 으로 갱신"
+          # 태그에서 돌아 HEAD 가 분리돼 있다. 기본 가지에 얹는다.
+          git push origin HEAD:main
 
       - name: 결과 수집
         uses: actions/upload-artifact@v7
