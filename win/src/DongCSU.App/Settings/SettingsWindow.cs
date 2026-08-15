@@ -254,7 +254,7 @@ public sealed class SettingsWindow : Window
         Grid.SetColumn(footerVersion, 0);
         grid.Children.Add(footerVersion);
 
-        var quit = Ui.Button(palette, $"{AppInfo.Name} 종료", () => Application.Current.Shutdown());
+        var quit = Ui.Button(palette, $"{AppInfo.Name} 종료", ConfirmQuit);
         Grid.SetColumn(quit, 1);
         grid.Children.Add(quit);
 
@@ -516,6 +516,26 @@ public sealed class SettingsWindow : Window
     /// **되돌릴 수 없으니 한 번 묻는다.** 자동 시작도 함께 끈다 — 설정 파일에는 없지만
     /// 사용자가 보기에 그것도 이 앱의 설정이다.
     /// </summary>
+    /// <summary>
+    /// 설정 창의 종료 버튼은 **실수로 누르기 쉬운 자리라** 한 번 확인한다. 종료하면
+    /// 트레이 아이콘까지 사라져서 다시 켤 곳을 찾아야 한다.
+    ///
+    /// **트레이 메뉴의 종료는 안 묻는다** — 메뉴를 열어 고른 것이라 실수일 수가 없다.
+    /// </summary>
+    private void ConfirmQuit()
+    {
+        var answer = MessageBox.Show(
+            this,
+            "종료하면 사용량 표시와 트레이 아이콘이 모두 사라집니다.",
+            $"{AppInfo.Name}를 종료할까요?",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning,
+            // **파란 버튼이 곧 할 일이다.** 안 걸어 두면 취소가 파랗게 잡혀서,
+            // 정작 하려던 것이 흰 버튼이 된다.
+            MessageBoxResult.OK);
+        if (answer == MessageBoxResult.OK) Application.Current.Shutdown();
+    }
+
     private void ResetEverything()
     {
         var answer = MessageBox.Show(
@@ -523,7 +543,9 @@ public sealed class SettingsWindow : Window
             "되돌릴 수 없습니다. 로그인할 때 자동 시작도 함께 꺼집니다.",
             "모든 설정을 초기화할까요?",
             MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning);
+            MessageBoxImage.Warning,
+            // 파란 버튼이 곧 할 일이다. 위 종료 확인과 같은 이유다.
+            MessageBoxResult.OK);
         if (answer != MessageBoxResult.OK) return;
 
         var fresh = new AppSettings();
@@ -694,6 +716,12 @@ public sealed class SettingsWindow : Window
             Ui.Row(palette, "커서 피하기", Ui.Toggle(palette, settings.PetDodgesCursor,
                 value => { settings.PetDodgesCursor = value; Apply(); }),
                 hint: "커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.",
+                enabled: visible && isPet),
+            Ui.Divider(palette),
+            Ui.Row(palette, "들고 있을 때 감추기", Ui.Toggle(palette, settings.PetHidesRingWhileHeld,
+                value => { settings.PetHidesRingWhileHeld = value; Apply(); }),
+                hint: "집어 들면 사용량 링과 버튼 줄이 사라진다. \"항상 표시\"로 해 뒀어도 "
+                    + "들고 있는 동안은 안 보인다.",
                 enabled: visible && isPet)));
 
         panel.Children.Add(Ui.Hint(palette,

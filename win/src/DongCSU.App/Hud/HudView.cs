@@ -275,12 +275,25 @@ public sealed class HudView : FrameworkElement
 
     public PetRingDisplay PetRingDisplay { get; set; } = PetRingDisplay.Hover;
 
-    public bool ShowsPetRing => PetRingDisplay switch
-    {
-        PetRingDisplay.Always => true,
-        PetRingDisplay.Never => false,
-        _ => IsHovered,
-    };
+    /// <summary>
+    /// 지금 창을 끌고 있는지. **누른 것과 다르다** — 버튼을 누른 동안 링이 사라지면
+    /// 그 버튼이 손가락 아래에서 없어진다.
+    /// </summary>
+    public bool IsDraggingPet { get; set; }
+
+    /// <summary>들고 있는 동안 링과 버튼 줄을 감출지. 설정에서 끌 수 있다.</summary>
+    public bool HidesPetRingWhileHeld { get; set; } = true;
+
+    public bool ShowsPetRing =>
+        // **들면 감춘다.** "항상 표시"로 해 뒀어도 드는 동안은 안 보인다 —
+        // 집어 든 것은 마스코트지 사용량 판이 아니다.
+        !(IsDraggingPet && HidesPetRingWhileHeld)
+        && PetRingDisplay switch
+        {
+            PetRingDisplay.Always => true,
+            PetRingDisplay.Never => false,
+            _ => IsHovered,
+        };
 
     /// <summary>
     /// 펫 링이 얼마나 떠올랐는지(0~1). **창이 애니메이션으로 밀어 준다.**

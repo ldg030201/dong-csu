@@ -225,6 +225,9 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     {
         get
         {
+            // **다 썼으면 무엇보다 먼저다.** 죽은 것으로 보이게 해 놓고 집어 들면
+            // 버둥거리고 흔들면 어지러워하면, 아직 살아 있는 것으로 읽힌다.
+            if (IsUnusable) return OwlMood.Exhausted.Name();
             if (dragged) return "dragged";
             if (dizzy) return "dizzy";
             return gait switch
@@ -289,6 +292,14 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// </summary>
     private void Recompose()
     {
+        // **다 썼으면 아무것도 합성하지 않는다.** 굳은 자세 그대로 둔다 — 여기가
+        // 끌림·걸음이 자세로 바뀌는 유일한 자리라, 막을 곳도 여기 하나뿐이다.
+        if (IsUnusable)
+        {
+            made = null;
+            return;
+        }
+
         if (dragged)
         {
             made = OwlComposer.Compose(document, carried);
@@ -447,12 +458,38 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     }
 
     /// <summary>
-    /// 다 써서 쓸 수 없는 상태. 켜면 **자세는 그대로 두고 색만 뺀다.**
+    /// 다 써서 쓸 수 없는 상태.
+    ///
+    /// **색만 빼는 게 아니라 통째로 멈춘다.** 죽은 것으로 보이게 해 놓고 걷거나
+    /// 버둥거리거나 눈을 깜빡이면 앞뒤가 안 맞는다. 켜는 순간 자세를 굳힌다.
     ///
     /// 기분을 따로 만들지 않는 이유: <c>owl.json</c> 에 애니메이션이 하나 더 생긴다.
     /// 자세는 탈진과 똑같고 색만 다른 것이라 여기서 팔레트만 바꾸는 편이 싸다.
     /// </summary>
-    public bool IsUnusable { get; set; }
+    public bool IsUnusable
+    {
+        get => unusable;
+        set
+        {
+            if (unusable == value) return;
+            unusable = value;
+            if (unusable) HoldStill();
+            Recompose();
+        }
+    }
+
+    private bool unusable;
+
+    /// <summary>
+    /// 자세 하나로 굳는다. **다음 틱이 없다** — <c>null</c> 을 돌려주면 부르는 쪽이
+    /// 타이머를 걸지 않는다.
+    /// </summary>
+    private TimeSpan? HoldStill()
+    {
+        frameIndex = 0;
+        made = null;
+        return null;
+    }
 
     /// <summary>
     /// 그림 시트에서 지금 그릴 칸.
@@ -484,8 +521,9 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
 
     /// <summary>지금 칠할 팔레트 이름. 다 썼으면 색이 빠진다.</summary>
     public string PaletteName =>
-        // 끊김의 회색은 색 자체가 정보라 덮어쓰지 않는다 — 이미 회색이다.
-        IsUnusable && mood != OwlMood.Offline ? "offline" : Animation.Palette;
+        // **무엇보다 앞선다.** 아래 어느 갈래로 가든 회색이어야 한다 — 자세가 바뀌었다고
+        // 색이 돌아오면 다시 쓸 수 있게 된 것으로 읽힌다. 끊김도 이미 회색이라 같은 값이다.
+        IsUnusable ? "offline" : Animation.Palette;
 
     public IReadOnlyDictionary<string, string> CurrentPalette => document.Palettes[PaletteName];
 
@@ -512,6 +550,10 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// <summary>시각을 받는 판. 테스트가 시계 없이 돈다.</summary>
     public TimeSpan? Advance(DateTimeOffset now)
     {
+        // **다 썼으면 여기서 끝이다.** 걷기·끌림·깜빡임이 전부 이 아래에 있어서,
+        // 한 갈래씩 막으면 언젠가 새로 생긴 갈래를 빠뜨린다.
+        if (IsUnusable) return HoldStill();
+
         // 끌리는 동안에는 프레임을 넘기지 않고 **속도로 자세를 만든다.**
         if (dragged)
         {

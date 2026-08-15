@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
@@ -96,6 +98,8 @@ public sealed class HudWindow : Window
         SizeToContent = SizeToContent.Manual;
         Title = "DongCSU";
         Content = view;
+
+        tipTimer.Tick += (_, _) => OnTipTick();
 
         MouseMove += OnMouseMove;
         MouseLeave += OnMouseLeave;
@@ -519,7 +523,7 @@ public sealed class HudWindow : Window
         // 누르는 자리에서만 손가락 커서를 띄운다. 마스코트는 끄는 자리고,
         // 카운트다운·자원 줄·버전 딱지는 **읽는 자리**라 화살표 그대로 둔다.
         Cursor = hit.IsButton() ? Cursors.Hand : Cursors.Arrow;
-        ToolTip = view.TooltipFor(hit);
+        ShowTip(view.TooltipFor(hit));
         view.InvalidateVisual();
     }
 
@@ -533,9 +537,52 @@ public sealed class HudWindow : Window
         // 누르고 있는 중이면 그 상태는 건드리지 않는다 — 마우스를 잡아 뒀으므로
         // 밖으로 나갔다 돌아와서 떼도 MouseUp 이 온다. 여기서 지우면 그 클릭이 사라진다.
         if (pressed == HudHit.None) Cursor = Cursors.Arrow;
-        ToolTip = null;
+        ShowTip(null);
         SyncPetRingFade();
         view.InvalidateVisual();
+    }
+
+    // ── 버튼 설명 ───────────────────────────────────────────────────
+    //
+    // **WPF 의 `ToolTip` 속성으로는 한 번도 안 뜬다.** 이 창은 `WS_EX_NOACTIVATE` 라
+    // 눌러도 앱이 활성화되지 않는데, WPF 는 비활성 앱의 툴팁을 알아서 막는다. 실제로
+    // 재 봤다 — 2.5초를 올려 둬도 툴팁 창이 하나도 안 생긴다.
+    //
+    // 그림뿐인 화면이라 설명이 없으면 눌러 보는 수밖에 없다. 직접 띄운다.
+
+    /// <summary>뜨기까지 기다리는 시간. WPF 기본값과 같다.</summary>
+    private static readonly TimeSpan TipDelay = TimeSpan.FromSeconds(0.4);
+
+    private readonly System.Windows.Controls.ToolTip tip = new() { StaysOpen = true, Placement = PlacementMode.Relative };
+    private readonly DispatcherTimer tipTimer = new() { Interval = TipDelay };
+    private string? tipText;
+
+    /// <summary>
+    /// 설명을 예약하거나 지운다.
+    ///
+    /// **곧바로 띄우지 않는다.** 지나가는 커서마다 뜨면 화면이 어지럽다. 자리를 옮기면
+    /// 기다리는 시간이 처음부터 다시 간다.
+    /// </summary>
+    private void ShowTip(string? text)
+    {
+        tipTimer.Stop();
+        tip.IsOpen = false;
+        tipText = text;
+        if (text is not null) tipTimer.Start();
+    }
+
+    private void OnTipTick()
+    {
+        tipTimer.Stop();
+        if (tipText is null || !IsVisible) return;
+
+        // 커서 오른쪽 아래. 커서가 글을 가리지 않는 자리다.
+        var at = Mouse.GetPosition(this);
+        tip.HorizontalOffset = at.X + 14;
+        tip.VerticalOffset = at.Y + 18;
+        tip.PlacementTarget = this;
+        tip.Content = tipText;
+        tip.IsOpen = true;
     }
 
     /// <summary>
@@ -564,6 +611,9 @@ public sealed class HudWindow : Window
     {
         if (e.ClickCount > 1) return;
 
+        // 누르면 설명을 지운다. 눌러서 무슨 일이 일어나는 자리인데 설명이 남아 있으면 가린다.
+        ShowTip(null);
+
         // 버튼 위에서 시작한 클릭은 창을 끌지 않는다. 누르자마자 실행하지도 않는다 —
         // 밖으로 끌어내면 취소되는 것이 버튼의 상식이다.
         //
@@ -585,6 +635,8 @@ public sealed class HudWindow : Window
         try
         {
             isDragging = true;
+            view.IsDraggingPet = true;
+            SyncPetRingFade();
             Shake.Begin();
             HeldChanged?.Invoke();
             DragMove();
@@ -596,6 +648,8 @@ public sealed class HudWindow : Window
         finally
         {
             isDragging = false;
+            view.IsDraggingPet = false;
+            SyncPetRingFade();
             SavePosition();
             HeldChanged?.Invoke();
         }

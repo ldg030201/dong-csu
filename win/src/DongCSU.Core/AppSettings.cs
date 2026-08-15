@@ -75,6 +75,14 @@ public sealed class AppSettings
     public IconStyle IconStyle { get; set; } = IconStyle.OwlSheet;
 
     /// <summary>
+    /// 집어 들고 있는 동안 사용량 링과 버튼 줄을 감출지.
+    ///
+    /// **집어 든 것은 마스코트지 사용량 판이 아니다.** "항상 표시"로 해 뒀어도 드는
+    /// 동안은 안 보인다.
+    /// </summary>
+    public bool PetHidesRingWhileHeld { get; set; } = true;
+
+    /// <summary>
     /// 그림 부엉이로 한 번 옮겼는지. **한 번만 옮긴다** — 두 번 옮기면 그 사이에
     /// 오리지널로 되돌려 놓은 사람의 선택을 매번 덮는다.
     ///

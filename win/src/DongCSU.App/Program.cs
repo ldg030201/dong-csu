@@ -224,6 +224,7 @@ public sealed class AppController : IDisposable
 
         hud.View.IconStyle = settings.IconStyle;
         hud.View.PetRingDisplay = settings.PetRingDisplay;
+        hud.View.HidesPetRingWhileHeld = settings.PetHidesRingWhileHeld;
 
         store.PollInterval = settings.PollInterval;
         pollTimer.Interval = store.NextPollDelay();

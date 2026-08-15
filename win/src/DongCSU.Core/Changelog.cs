@@ -141,6 +141,32 @@ public static class Changelog
                     Notes =
                     [
                         ChangelogNote.Fix("새 부엉이가 눈을 깜빡이지 않던 문제 수정"),
+                        ChangelogNote.Fix("주간 한도를 다 써도 눈을 깜빡이고 집어 들면 버둥거리던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "펫 모드",
+                    Tab = "pet",
+                    Notes =
+                    [
+                        ChangelogNote.New("들고 있을 때 링·버튼 줄 감추기 (기본 켜짐, 펫 탭에서 끌 수 있음)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "HUD",
+                    Notes =
+                    [
+                        ChangelogNote.Fix("버튼에 마우스를 올려도 설명이 한 번도 뜨지 않던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "설정 창",
+                    Notes =
+                    [
+                        ChangelogNote.New("종료할 때 확인받기 (트레이 메뉴의 종료는 그대로 바로 꺼짐)"),
                     ],
                 },
                 new ChangelogGroup
