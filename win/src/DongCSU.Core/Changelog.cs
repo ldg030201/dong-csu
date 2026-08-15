@@ -122,6 +122,43 @@ public static class Changelog
     [
         new ChangelogEntry
         {
+            Version = "2.3.1",
+            Date = null,
+            Groups =
+            [
+                new ChangelogGroup
+                {
+                    Title = "업데이트",
+                    Tab = "version",
+                    Notes =
+                    [
+                        ChangelogNote.New("받는 동안 진행 상황 표시"),
+                        ChangelogNote.Change("다 받은 뒤에 물어보도록 변경 (\"지금 다시 띄우기\" / \"나중에\")"),
+                        ChangelogNote.New("갈아끼우다 멈췄을 때 강제 종료"),
+                        ChangelogNote.New("새 버전이 있으면 설정 창 버전 탭에 표시"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "메뉴",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("트레이·우클릭 메뉴의 모서리를 둥글게 하고 테마에 맞춰 색을 바꾸도록 개선"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "토큰",
+                    Tab = "account",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("갱신한 토큰이 사는 폴더에 낯선 권한이 있으면 지우도록 개선"),
+                    ],
+                },
+            ],
+        },
+        new ChangelogEntry
+        {
             Version = "2.3.0",
             Date = "2026-08-15",
             Groups =
