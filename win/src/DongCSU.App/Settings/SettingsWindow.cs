@@ -32,6 +32,9 @@ public sealed class SettingsWindow : Window
     /// <summary>펫 모드를 드나든다. 복귀 지점을 챙겨야 해서 화면 쪽이 직접 하지 않는다.</summary>
     private readonly Action onTogglePet;
 
+    /// <summary>Claude Code 로그인 창을 띄운다. 프로세스를 띄우는 일이라 앱 쪽이 한다.</summary>
+    private readonly Action onLogin;
+
     private readonly Border root = new();
 
     /// <summary>
@@ -66,7 +69,8 @@ public sealed class SettingsWindow : Window
         UpdateService updates,
         Action onChanged,
         Action onResetPosition,
-        Action onTogglePet)
+        Action onTogglePet,
+        Action onLogin)
     {
         this.settings = settings;
         this.store = store;
@@ -74,6 +78,7 @@ public sealed class SettingsWindow : Window
         this.onChanged = onChanged;
         this.onResetPosition = onResetPosition;
         this.onTogglePet = onTogglePet;
+        this.onLogin = onLogin;
 
         Title = $"{AppInfo.Name} 설정";
         Width = 720;
@@ -747,7 +752,8 @@ public sealed class SettingsWindow : Window
                     : "Claude 앱(또는 Claude Code)에서 한 번 로그인하면 이 파일이 만들어집니다. "
                       + "터미널은 필요 없습니다 — Claude 앱을 열고 Claude Code로 아무 대화나 시작해 보세요."
                 : store.NeedsReauth
-                    ? "토큰이 만료됐고 갱신도 실패했습니다. Claude 앱에서 다시 로그인하면 조회가 재개됩니다."
+                    ? "토큰이 만료됐고 갱신도 실패했습니다. 아래 재로그인을 누르면 창이 하나 열리고, "
+                      + "거기서 로그인을 마치면 조회가 다시 시작됩니다."
                     : "만료된 토큰은 앱이 스스로 갱신합니다. Claude Code를 켜 두지 않아도 사용량이 계속 들어옵니다. "
                       + "토큰은 Authorization 헤더로만 쓰이고 어디에도 다시 쓰거나 남기지 않습니다.",
             FontSize = 12.5,
@@ -757,14 +763,23 @@ public sealed class SettingsWindow : Window
             Margin = new Thickness(0, 8, 0, 8),
         }));
 
-        panel.Children.Add(Ui.ButtonRow(
+        var buttons = new List<UIElement>
+        {
             Ui.Button(palette, "Claude 폴더 열기", OpenClaudeFolder),
             Ui.Button(palette, "기록 열기", () => OpenPath(AppLog.DefaultPath)),
-            Ui.Button(palette, "다시 확인", async () =>
-            {
-                await store.RefreshAsync(force: true).ConfigureAwait(true);
-                ShowTab();
-            }, Ui.ButtonKind.Accent)));
+        };
+
+        // **재로그인이 필요할 때만 나온다.** 평소에는 앱이 스스로 갱신하므로 누를 일이
+        // 없고, 늘 띄워 두면 멀쩡한 로그인을 다시 하게 만든다.
+        if (store.NeedsReauth) buttons.Add(Ui.Button(palette, "Claude Code 재로그인…", onLogin));
+
+        buttons.Add(Ui.Button(palette, "다시 확인", async () =>
+        {
+            await store.RefreshAsync(force: true).ConfigureAwait(true);
+            ShowTab();
+        }, Ui.ButtonKind.Accent));
+
+        panel.Children.Add(Ui.ButtonRow([.. buttons]));
 
         return panel;
     }
@@ -1014,3 +1029,4 @@ internal static partial class NativeWindow
     [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
     public static partial bool AttachThreadInput(uint attach, uint attachTo, [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool join);
 }
+

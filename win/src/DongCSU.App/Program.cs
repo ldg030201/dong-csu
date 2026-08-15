@@ -1,3 +1,5 @@
+using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
 using System.Windows;
@@ -102,6 +104,9 @@ public sealed class AppController : IDisposable
         foreach (var attempt in source.Inspect())
         {
             AppLog.Write($"자격 증명 {attempt.Path} · {attempt.Describe()}");
+            // 재로그인을 어디서 해야 하는지가 여기서 갈린다. WSL 안에서 쓰던 사람은
+            // 윈도우 쪽에서 로그인해 봐야 우리가 읽는 파일이 안 바뀐다.
+            if (attempt.Found) credentialPath = attempt.Path;
         }
 
         var credentials = new CredentialStore(source, refreshedTokens: new RefreshedTokenStore());
@@ -136,7 +141,7 @@ public sealed class AppController : IDisposable
         tray = new TrayIcon();
         tray.RefreshRequested += () => _ = store.RefreshAsync(force: true);
         tray.SettingsRequested += () => OpenSettings();
-        tray.LoginRequested += () => OpenSettings("account");
+        tray.LoginRequested += StartLogin;
         tray.QuitRequested += Quit;
         tray.Activated += ToggleHudVisible;
 
@@ -337,6 +342,59 @@ public sealed class AppController : IDisposable
 
     /// <summary>메뉴와 펫 툴팁에 쓰는 한 줄. 조회가 바뀔 때만 다시 만든다.</summary>
     private string summary = "";
+
+    /// <summary>자격 증명을 실제로 읽어 온 자리. 못 읽었으면 null. 재로그인 통로가 본다.</summary>
+    private string? credentialPath;
+
+    /// <summary>
+    /// Claude Code 로그인 창을 띄운다.
+    ///
+    /// **앱 안에서 처리하지 않는다.** 대화형이고 브라우저까지 오가는 흐름이라 콘솔에
+    /// 넘긴다 — 맥이 터미널에 `.command` 를 던지는 것과 같은 자리다. 우리는 자격 증명
+    /// 파일을 **읽기만** 하므로, 그 파일을 쓰는 것은 Claude Code 쪽 일이다.
+    /// </summary>
+    private void StartLogin()
+    {
+        var insideWsl = ClaudeCli.IsInsideWsl(credentialPath);
+        var executable = ClaudeCli.Resolve(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            File.Exists);
+
+        if (ClaudeCli.LoginCommand(executable, insideWsl) is not { } command)
+        {
+            AppLog.Write("재로그인: claude 실행 파일을 찾지 못했다");
+            MessageBox.Show(
+                "Claude Code 실행 파일을 찾지 못했습니다.\n\n"
+                + "터미널에서 직접 claude auth login 을 실행해 주세요.",
+                $"{AppInfo.Name} 재로그인",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(command.File, command.Arguments) { UseShellExecute = true });
+            AppLog.Write($"재로그인 창을 띄웠다{(insideWsl ? " (WSL)" : "")}");
+        }
+        catch (Exception error) when (error is Win32Exception or InvalidOperationException)
+        {
+            AppLog.Write($"재로그인 창을 띄우지 못했다: {error.Message}");
+            return;
+        }
+
+        // 로그인이 끝나면 새 토큰이 파일에 적힌다. 잠시 뒤 한 번 더 조회한다.
+        // **끝났는지 지켜볼 방법이 없다** — 콘솔이 꺼져도 로그인은 브라우저에서
+        // 이어지므로 프로세스가 끝나는 것은 신호가 못 된다.
+        var wait = new DispatcherTimer { Interval = ClaudeCli.RetryAfterLogin };
+        wait.Tick += (_, _) =>
+        {
+            wait.Stop();
+            _ = store.RefreshAsync(force: true);
+        };
+        wait.Start();
+    }
 
     /// <summary>
     /// 마스코트를 어떤 색으로 칠할지.
@@ -674,7 +732,8 @@ public sealed class AppController : IDisposable
     {
         if (settingsWindow is null)
         {
-            settingsWindow = new SettingsWindow(settings, store, updates, ApplySettings, ResetHudPosition, TogglePet);
+            settingsWindow = new SettingsWindow(
+                settings, store, updates, ApplySettings, ResetHudPosition, TogglePet, StartLogin);
             settingsWindow.Closed += (_, _) => settingsWindow = null;
         }
 

@@ -35,6 +35,17 @@ public static class Changelog
     [
         new ChangelogEntry
         {
+            Version = "2.2.1",
+            Date = null,
+            Notes =
+            [
+                "재로그인이 필요할 때 앱에서 바로 로그인 창을 띄우도록 추가 (트레이 메뉴·계정 탭)",
+                "새 부엉이가 눈을 깜빡이지 않던 문제 수정",
+                "새 부엉이에 그림자가 빠져 있던 문제 수정",
+            ],
+        },
+        new ChangelogEntry
+        {
             Version = "2.2.0",
             Date = "2026-08-13",
             Notes =
