@@ -198,8 +198,10 @@ public sealed class RefreshedTokenStore(string? path = null)
     {
         try
         {
+            // **폴더부터 조인다.** 파일 권한은 쓰고 난 뒤에야 바꿀 수 있어서 그 사이가
+            // 잠깐 열리는데, 폴더가 닫혀 있으면 그 틈에도 남이 들어오지 못한다.
             var directory = Path.GetDirectoryName(path);
-            if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+            if (!string.IsNullOrEmpty(directory) && AppPaths.Prepared(directory) is null) return;
 
             // 쓰는 도중에 앱이 죽으면 반쯤 쓰인 JSON 이 남는다. 바꿔치기한다.
             var temporary = path + ".tmp";

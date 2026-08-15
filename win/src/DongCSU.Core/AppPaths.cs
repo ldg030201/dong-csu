@@ -1,3 +1,6 @@
+using System.Security.AccessControl;
+using System.Security.Principal;
+
 namespace DongCSU.Core;
 
 /// <summary>
@@ -52,4 +55,85 @@ public static class AppPaths
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
         DefaultFolderName,
         name);
+
+    /// <summary>
+    /// 폴더를 만들고 **본인 말고는 못 열게 해 둔다.** 갱신한 토큰이 여기 들어간다.
+    ///
+    /// **폴더부터 본다.** 파일 권한은 파일을 쓰고 난 뒤에야 바꿀 수 있어서 그 사이가
+    /// 잠깐 열리는데, 폴더가 닫혀 있으면 그 틈에도 남이 들어오지 못한다.
+    ///
+    /// **평소에는 아무것도 안 한다.** <c>%APPDATA%</c> 가 물려주는 권한은 이미
+    /// {본인 · SYSTEM · Administrators} 셋뿐이고, 그건 유닉스의 <c>0700</c> 과 같다
+    /// (거기서도 root 는 그냥 읽는다). 상속을 무턱대고 끊으면 **로밍 프로필 동기화와
+    /// 백업이 깨진다** — 얻는 것 없이 잃기만 한다.
+    ///
+    /// 조이는 것은 **남이 끼어 있을 때뿐이다.** 옛 판이 만들어 둔 폴더나 손으로 권한을
+    /// 늘려 놓은 자리가 그렇다. 그때는 상속을 끊고 셋만 남긴다.
+    ///
+    /// 못 조여도 던지지 않는다. 권한을 못 바꾸는 환경(정책으로 잠긴 기계)에서 앱이
+    /// 안 뜨는 것보다는 낫다.
+    /// </summary>
+    /// <returns>준비된 폴더 경로. 만들지도 못했으면 null.</returns>
+    public static string? Prepared(string folder)
+    {
+        try
+        {
+            Directory.CreateDirectory(folder);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
+
+        if (OperatingSystem.IsWindows()) TightenIfShared(folder);
+        return folder;
+    }
+
+    /// <summary>낯선 권한이 끼어 있으면 지운다. 위 <see cref="Prepared"/> 의 뒷부분이다.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void TightenIfShared(string folder)
+    {
+        try
+        {
+            var info = new DirectoryInfo(folder);
+            var security = info.GetAccessControl();
+            var rules = security.GetAccessRules(true, true, typeof(SecurityIdentifier));
+
+            var me = WindowsIdentity.GetCurrent().User;
+            if (me is null) return;
+
+            var allowed = new HashSet<SecurityIdentifier>([
+                me,
+                new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null),
+                new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null),
+            ]);
+
+            var strangers = rules
+                .Cast<FileSystemAccessRule>()
+                .Where(rule => rule.AccessControlType == AccessControlType.Allow)
+                .Select(rule => rule.IdentityReference)
+                .OfType<SecurityIdentifier>()
+                .Where(sid => !allowed.Contains(sid))
+                .Distinct()
+                .ToList();
+
+            if (strangers.Count == 0) return;
+
+            // 남이 끼어 있다. 상속을 끊고 셋만 남긴다.
+            security.SetAccessRuleProtection(isProtected: true, preserveInheritance: true);
+            foreach (var sid in strangers)
+            {
+                security.PurgeAccessRules(sid);
+            }
+            info.SetAccessControl(security);
+
+            AppLog.Write($"토큰 폴더에서 낯선 권한 {strangers.Count}개를 지웠다: {folder}");
+        }
+        catch (Exception error) when (
+            error is UnauthorizedAccessException or IOException
+                or PlatformNotSupportedException or InvalidOperationException)
+        {
+            // 못 조였다. 파일은 그대로 쓴다 — 앱이 안 뜨는 것보다는 낫다.
+        }
+    }
 }
