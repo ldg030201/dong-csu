@@ -3,12 +3,99 @@ using System.Text.Json.Serialization;
 
 namespace DongCSU.Core;
 
+/// <summary>변경 한 줄이 어느 갈래인지. 항목 앞에 딱지로 붙는다.</summary>
+[JsonConverter(typeof(ChangeKindConverter))]
+public enum ChangeKind { New, Improve, Change, Fix, Remove }
+
+/// <summary>
+/// 갈래를 <c>"new"</c> 처럼 소문자로 싣는다.
+///
+/// **JSON 의 나머지가 camelCase 라 여기만 대문자로 시작하면 눈에 걸린다.** 읽을 때는
+/// 대소문자를 가리지 않으므로 이미 나간 파일과도 어긋나지 않는다.
+/// </summary>
+internal sealed class ChangeKindConverter()
+    : JsonStringEnumConverter<ChangeKind>(JsonNamingPolicy.CamelCase);
+
+public static class ChangeKindExtensions
+{
+    public static string Title(this ChangeKind kind) => kind switch
+    {
+        ChangeKind.New => "신규",
+        ChangeKind.Improve => "개선",
+        ChangeKind.Change => "변경",
+        ChangeKind.Fix => "오류",
+        _ => "제거",
+    };
+}
+
+/// <summary>변경 한 줄.</summary>
+public sealed record ChangelogNote(ChangeKind Kind, string Text)
+{
+    public static ChangelogNote New(string text) => new(ChangeKind.New, text);
+    public static ChangelogNote Improve(string text) => new(ChangeKind.Improve, text);
+    public static ChangelogNote Change(string text) => new(ChangeKind.Change, text);
+    public static ChangelogNote Fix(string text) => new(ChangeKind.Fix, text);
+    public static ChangelogNote Remove(string text) => new(ChangeKind.Remove, text);
+}
+
+/// <summary>
+/// 기능 단위 묶음. 화면·메뉴 이름을 그대로 쓴다("펫 모드", "마스코트").
+///
+/// 한 버전에 스무 줄이 쌓이면 평평한 목록으로는 무엇이 달라졌는지 안 잡힌다.
+/// 쓰는 사람은 자기가 쓰는 기능만 보면 되므로 그 단위로 묶는다.
+/// </summary>
+public sealed record ChangelogGroup
+{
+    public required string Title { get; init; }
+
+    /// <summary>
+    /// 이 묶음이 어느 설정 탭 이야기인지(사이드바의 탭 이름).
+    ///
+    /// 제목 앞에 **그 탭에 실제로 붙어 있는 아이콘**이 그대로 나온다. 여기에 아이콘을
+    /// 직접 적지 않는 이유가 그거다 — 탭 아이콘을 바꾸면 변경 내역도 같이 바뀌어야 한다.
+    ///
+    /// **탭에 없는 것은 null.** 마스코트·HUD·설치처럼 메뉴가 아닌 이야기는 공통 아이콘
+    /// 하나로 묶는다.
+    /// </summary>
+    public string? Tab { get; init; }
+
+    /// <summary>이 묶음 자체가 이번에 새로 생긴 기능인지. 제목 오른쪽에 "신규"가 붙는다.</summary>
+    public bool IsNew { get; init; }
+
+    public required IReadOnlyList<ChangelogNote> Notes { get; init; }
+}
+
 public sealed record ChangelogEntry
 {
     public required string Version { get; init; }
     /// <summary>아직 안 나간 항목은 null.</summary>
     public string? Date { get; init; }
-    public required IReadOnlyList<string> Notes { get; init; }
+
+    /// <summary>
+    /// 2.2.1 부터. 기능별로 묶고 항목마다 갈래를 단다.
+    ///
+    /// 옛 항목은 null 이고, 그때는 화면이 <see cref="Notes"/> 를 그대로 늘어놓는다.
+    /// **이미 나간 버전은 뒤늦게 나누지 않는다** — 사용자가 그때 본 것과 달라진다.
+    /// </summary>
+    public IReadOnlyList<ChangelogGroup>? Groups { get; init; }
+
+    /// <summary>
+    /// 평평한 목록.
+    ///
+    /// **지우면 안 된다.** 2.2.0 이하가 같은 JSON 을 받아보는데 그쪽은 이것만 읽는다.
+    /// 묶음을 쓰는 항목에서는 여기서 **만들어 낸다** — 두 곳에 손으로 적으면 어긋난다.
+    /// </summary>
+    public IReadOnlyList<string> Notes
+    {
+        get => notes ?? Flatten(Groups);
+        init => notes = value;
+    }
+
+    private readonly IReadOnlyList<string>? notes;
+
+    private static string[] Flatten(IReadOnlyList<ChangelogGroup>? groups) => groups is null
+        ? []
+        : [.. groups.SelectMany(group => group.Notes.Select(note => $"[{group.Title}] {note.Text}"))];
 }
 
 public sealed record ChangelogFeed
@@ -37,10 +124,34 @@ public static class Changelog
         {
             Version = "2.2.1",
             Date = null,
-            Notes =
+            Groups =
             [
-                "재로그인이 필요할 때 앱에서 바로 로그인 창을 띄우도록 추가 (트레이 메뉴·계정 탭)",
-                "새 부엉이가 눈을 깜빡이지 않던 문제 수정",
+                new ChangelogGroup
+                {
+                    Title = "계정",
+                    Tab = "account",
+                    Notes =
+                    [
+                        ChangelogNote.New("재로그인이 필요할 때 앱에서 바로 로그인 창 띄우기 (트레이 메뉴·계정 탭)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "마스코트",
+                    Notes =
+                    [
+                        ChangelogNote.Fix("새 부엉이가 눈을 깜빡이지 않던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "변경 내역",
+                    Tab = "version",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("기능별로 묶고 항목마다 갈래를 달아 보기 쉽게 개선"),
+                    ],
+                },
             ],
         },
         new ChangelogEntry

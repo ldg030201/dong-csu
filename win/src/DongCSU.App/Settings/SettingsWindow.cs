@@ -183,13 +183,26 @@ public sealed class SettingsWindow : Window
         for (var i = 0; i < TabList.Length; i++)
         {
             var index = i;
+
+            // 아이콘 + 이름. **변경 내역 묶음이 같은 아이콘을 쓴다** — 어느 메뉴 이야기인지
+            // 여기와 눈으로 맞춰 보라고 붙인 것이라, 한쪽만 바꾸면 뜻이 없어진다.
+            var row = new StackPanel { Orientation = Orientation.Horizontal };
+            row.Children.Add(TabIcon.Make(TabList[i].Key, 13, palette.Brush(palette.Secondary)));
+            row.Children.Add(new TextBlock
+            {
+                Text = TabList[i].Title,
+                FontSize = 13,
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center,
+            });
+
             var item = new Border
             {
                 CornerRadius = new CornerRadius(Ui.Radius),
                 Padding = new Thickness(12, 8, 12, 8),
                 Margin = new Thickness(8, 1, 8, 1),
                 Cursor = Cursors.Hand,
-                Child = new TextBlock { Text = TabList[i].Title, FontSize = 13 },
+                Child = row,
             };
             item.MouseLeftButtonUp += (_, _) => { selected = index; PaintNav(palette); ShowTab(); SyncTicker(); };
             navItems.Add(item);
@@ -212,8 +225,14 @@ public sealed class SettingsWindow : Window
         {
             var chosen = i == selected;
             navItems[i].Background = palette.Brush(chosen ? palette.AccentSoft : Colors.Transparent);
-            var text = (TextBlock)navItems[i].Child;
-            text.Foreground = palette.Brush(chosen ? palette.Accent : palette.Secondary);
+
+            var row = (StackPanel)navItems[i].Child;
+            var brush = palette.Brush(chosen ? palette.Accent : palette.Secondary);
+            // 아이콘도 같이 물든다. 글자만 바꾸면 고른 줄에서 아이콘만 흐릿하게 남는다.
+            ((TextBlock)row.Children[0]).Foreground = brush;
+
+            var text = (TextBlock)row.Children[1];
+            text.Foreground = brush;
             text.FontWeight = chosen ? FontWeights.SemiBold : FontWeights.Normal;
         }
     }
@@ -939,17 +958,27 @@ public sealed class SettingsWindow : Window
 
         var notes = new StackPanel();
         notes.Children.Add(header);
-        foreach (var note in entry.Notes)
+
+        if (entry.Groups is { Count: > 0 } groups)
         {
-            notes.Children.Add(new TextBlock
+            foreach (var group in groups) notes.Children.Add(ChangelogGroupView(palette, group));
+        }
+        else
+        {
+            // 묶음이 없는 옛 항목. **뒤늦게 나누지 않는다** — 이미 나간 문구라,
+            // 사용자가 그때 본 것과 달라지면 안 된다.
+            foreach (var note in entry.Notes)
             {
-                Text = $"· {note}",
-                FontSize = 12,
-                TextWrapping = TextWrapping.Wrap,
-                LineHeight = 19,
-                Foreground = palette.Brush(palette.Secondary),
-                Margin = new Thickness(2, 1, 0, 1),
-            });
+                notes.Children.Add(new TextBlock
+                {
+                    Text = $"· {note}",
+                    FontSize = 12,
+                    TextWrapping = TextWrapping.Wrap,
+                    LineHeight = 19,
+                    Foreground = palette.Brush(palette.Secondary),
+                    Margin = new Thickness(2, 1, 0, 1),
+                });
+            }
         }
 
         return new Border
@@ -963,6 +992,115 @@ public sealed class SettingsWindow : Window
             Child = notes,
         };
     }
+
+    // ── 변경 내역 묶음 ──────────────────────────────────────────────
+    //
+    // 묶음 머리의 가로 자리는 **한 계산에서 나와야 한다.** 따로 적어 두면 세로줄이
+    // 아이콘 옆으로 비끼고, 딸린 줄이 제목과 다른 자리에서 시작한다.
+
+    private const double RuleWidth = 2;
+    /// <summary>세로줄을 아이콘 한가운데로 내리는 왼쪽 여백.</summary>
+    private const double RuleInset = (TabIcon.Width - RuleWidth) / 2;
+    /// <summary>제목 글자가 시작하는 자리. 딸린 줄도 여기에 맞춘다.</summary>
+    private const double TextInset = TabIcon.Width + 6;
+
+    /// <summary>
+    /// 갈래 딱지 폭. **가장 넓은 갈래 이름에서 뽑는다.**
+    ///
+    /// 눈대중으로 잡으면 좁을 때는 글자가 잘리고 넓을 때는 뒤따르는 글이 멀찍이 떨어져
+    /// 보인다. 갈래를 하나 더 만들어도 여기가 알아서 따라온다.
+    /// </summary>
+    private static readonly double BadgeWidth = Enum.GetValues<ChangeKind>()
+        .Max(kind => Ui.TextWidth(kind.Title(), 10, FontWeights.Medium)) + 18;
+
+    /// <summary>
+    /// 기능 묶음 하나. 대분류를 달고, 딸린 줄들을 세로줄로 묶어 준다.
+    ///
+    /// **들여쓰기만으로는 어디까지가 그 묶음인지 안 보인다.** 딱지가 줄마다 붙어 있어서
+    /// 왼쪽 끝이 들쭉날쭉해 보이는데, 세로줄이 그 경계를 대신 그어 준다.
+    /// </summary>
+    private static UIElement ChangelogGroupView(SettingsPalette palette, ChangelogGroup group)
+    {
+        var head = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 6, 0, 3) };
+        head.Children.Add(TabIcon.Make(group.Tab, 11, palette.Brush(palette.Tertiary)));
+        head.Children.Add(new TextBlock
+        {
+            Text = group.Title,
+            FontSize = 12.5,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = palette.Brush(palette.Primary),
+            Margin = new Thickness(TextInset - TabIcon.Width, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+
+        // 묶음 자체가 이번에 생긴 기능이면 제목 옆에 붙는다. 항목마다 "신규"가 줄줄이
+        // 달리는 것보다 "이 기능이 새로 생겼다"가 한눈에 들어온다.
+        if (group.IsNew)
+        {
+            var pill = Ui.Pill(palette, ChangeKind.New.Title(), KindColor(palette, ChangeKind.New));
+            pill.Margin = new Thickness(6, 0, 0, 0);
+            head.Children.Add(pill);
+        }
+
+        var lines = new StackPanel();
+        foreach (var note in group.Notes)
+        {
+            // **`DockPanel` 이다.** 가로 `StackPanel` 은 자식에게 남은 폭을 안 물려줘서
+            // `TextWrapping` 을 걸어도 안 접히고 오른쪽으로 흘러 나간다.
+            var line = new DockPanel { LastChildFill = true, Margin = new Thickness(0, 1, 0, 1) };
+
+            // **새로 생긴 기능에는 갈래를 안 붙인다.** 전부 새것이라 가를 것이 없고,
+            // 제목 옆 "신규" 가 이미 그 말을 한다.
+            if (!group.IsNew)
+            {
+                var badge = Ui.Pill(palette, note.Kind.Title(), KindColor(palette, note.Kind));
+                // 갈래 이름이 전부 두 글자라 폭이 거의 같지만, 1pt 만 달라도 뒤따르는
+                // 글의 시작점이 줄마다 흔들린다.
+                badge.Width = BadgeWidth;
+                badge.VerticalAlignment = VerticalAlignment.Top;
+                badge.Margin = new Thickness(0, 1, 6, 0);
+                DockPanel.SetDock(badge, Dock.Left);
+                line.Children.Add(badge);
+            }
+
+            line.Children.Add(new TextBlock
+            {
+                Text = note.Text,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                LineHeight = 18,
+                Foreground = palette.Brush(palette.Secondary),
+            });
+            lines.Children.Add(line);
+        }
+
+        // 아이콘 한가운데에서 아래로 흐르는 세로줄. 여기까지가 이 묶음이라는 표시다.
+        var body = new DockPanel { LastChildFill = true, Margin = new Thickness(RuleInset, 0, 0, 0) };
+        var rule = new Border
+        {
+            Width = RuleWidth,
+            CornerRadius = new CornerRadius(RuleWidth / 2),
+            Background = palette.Brush(palette.Line),
+            Margin = new Thickness(0, 1, TextInset - RuleInset - RuleWidth, 1),
+        };
+        DockPanel.SetDock(rule, Dock.Left);
+        body.Children.Add(rule);
+        body.Children.Add(lines);
+
+        var whole = new StackPanel();
+        whole.Children.Add(head);
+        whole.Children.Add(body);
+        return whole;
+    }
+
+    private static Color KindColor(SettingsPalette palette, ChangeKind kind) => kind switch
+    {
+        ChangeKind.New => palette.Good,
+        ChangeKind.Improve => palette.Accent,
+        ChangeKind.Change => palette.Test,
+        ChangeKind.Fix => palette.Warning,
+        _ => palette.Faint,
+    };
 
     /// <summary>
     /// 앞으로 끌어낸다.

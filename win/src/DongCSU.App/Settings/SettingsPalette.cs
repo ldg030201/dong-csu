@@ -39,6 +39,9 @@ public sealed class SettingsPalette
     public Color Tertiary => Fade(IsDark ? 0.50 : 0.45);
     public Color Faint => Fade(IsDark ? 0.34 : 0.36);
 
+    /// <summary>새로 생긴 것을 알리는 색. 변경 내역의 "신규" 딱지가 쓴다.</summary>
+    public Color Good => IsDark ? Color.FromRgb(0x5A, 0xC8, 0x8B) : Color.FromRgb(0x1E, 0x8E, 0x55);
+
     /// <summary>마우스를 올렸을 때 깔리는 옅은 면.</summary>
     public Color Hover => Fade(IsDark ? 0.07 : 0.05);
     public Color Pressed => Fade(IsDark ? 0.13 : 0.10);

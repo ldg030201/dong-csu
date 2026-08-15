@@ -464,6 +464,25 @@ internal static class Ui
         return row;
     }
 
+    /// <summary>
+    /// 글자가 실제로 차지하는 폭. **자리를 못 박아야 할 때만 쓴다** — 갈래 딱지처럼
+    /// 여러 줄의 시작점을 맞춰야 하는 자리다.
+    /// </summary>
+    public static double TextWidth(string text, double size, FontWeight weight)
+    {
+        var typeface = new Typeface(
+            new FontFamily("Segoe UI"), FontStyles.Normal, weight, FontStretches.Normal);
+        var formatted = new FormattedText(
+            text,
+            System.Globalization.CultureInfo.CurrentUICulture,
+            System.Windows.FlowDirection.LeftToRight,
+            typeface,
+            size,
+            Brushes.Black,
+            VisualTreeHelper.GetDpi(new Border()).PixelsPerDip);
+        return formatted.Width;
+    }
+
     /// <summary>상태를 한마디로 알리는 알약.</summary>
     public static Border Pill(SettingsPalette palette, string text, Color color) => new()
     {

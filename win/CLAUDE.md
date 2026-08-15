@@ -179,6 +179,18 @@ python3 make-icon.py
 [`src/DongCSU.Core/Changelog.cs`](src/DongCSU.Core/Changelog.cs) 맨 위 항목에 한 줄
 추가하고 JSON 을 다시 뽑는다. CI 가 소스와 다르면 실패시킨다.
 
+**2.2.1 부터 `Groups` 를 쓴다.** 기능 단위로 묶고(`ChangelogGroup`) 항목마다 갈래
+(`ChangelogNote.New/Improve/Change/Fix/Remove`)를 단다. 문구 규칙은 뿌리
+[`../CLAUDE.md`](../CLAUDE.md) 의 "묶음과 갈래" 절에 있다.
+
+- **설정 탭 이야기면 `Tab` 에 그 탭 키를 적는다** — 제목 앞에 사이드바와 **같은 아이콘**이
+  나온다. 아이콘 이름을 여기 적지 않는 이유가 그거다. 표는 [`Settings/TabIcon.cs`](src/DongCSU.App/Settings/TabIcon.cs)
+  한 곳뿐이고, 탭에 없는 것(마스코트·HUD·설치)은 비워 두면 공통 아이콘으로 묶인다
+- **평평한 `Notes` 를 손으로 적지 않는다.** `Groups` 에서 뽑아 낸다 — 두 곳에 적으면
+  반드시 어긋난다. 2.2.0 이하 앱이 같은 JSON 을 받아보는데 그쪽은 `notes` 만 읽는다
+- **이미 나간 버전은 뒤늦게 나누지 않는다.** 사용자가 그때 본 것과 달라진다.
+  2.2.0 이하는 평평한 목록 그대로 둔다 (`ChangelogGroupTests` 가 검사한다)
+
 ```bash
 dotnet run --project tools/DongCSU.Tools -- --dump-changelog docs/changelog.json
 ```
