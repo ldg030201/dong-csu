@@ -220,6 +220,8 @@ public sealed class AppController : IDisposable
         hud.SetMode(settings.Mode);
         hud.View.BackdropOpacity = settings.Backdrop;
         hud.View.IsDark = IsDarkTheme();
+        // 트레이 메뉴와 HUD 우클릭 메뉴는 같은 것이다. 셋이 나란히 떠 있으므로 색을 맞춘다.
+        tray?.ApplyTheme(IsDarkTheme());
         hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.BadgeText : null;
         hud.View.VersionBadgeIsTest = AppInfo.IsTestBuild;
         hud.View.HasUpdate = updates.HasUpdate;

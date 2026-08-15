@@ -196,6 +196,20 @@ public sealed class SettingsWindow : Window
                 VerticalAlignment = VerticalAlignment.Center,
             });
 
+            // **새 버전이 있을 때만.** 설정 창을 열어도 어느 탭을 봐야 하는지 알 방법이
+            // 없었다 — HUD 딱지는 창을 열면 사라진다.
+            if (TabList[i].Key == "version" && updates.HasUpdate)
+            {
+                row.Children.Add(new System.Windows.Shapes.Ellipse
+                {
+                    Width = 7,
+                    Height = 7,
+                    Fill = palette.Brush(palette.Accent),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(6, 1, 0, 0),
+                });
+            }
+
             var item = new Border
             {
                 CornerRadius = new CornerRadius(Ui.Radius),
@@ -948,19 +962,24 @@ public sealed class SettingsWindow : Window
             }, enabled: !updates.IsChecking && !AppInfo.IsTestBuild),
         };
 
-        if (updates.HasUpdate && updates.IsInstalled)
+        // **받는 중·다 받음 단계에서는 그 줄이 버튼을 대신한다.** 아래 UpdateStage 가
+        // 무엇을 눌러야 하는지 정한다.
+        if (updates.HasUpdate && updates.IsInstalled && !updates.IsBusy)
         {
             buttons.Insert(0, Ui.Button(palette,
-                // 68MB 를 받는다. 눌렀는데 아무 일도 안 일어나는 것처럼 보이면 안 된다.
-                updates.IsApplying ? "받는 중… (68MB)" : $"{updates.LatestVersion} 로 업데이트",
+                $"{updates.LatestVersion} 로 업데이트",
                 async () =>
                 {
                     ShowTab();
-                    await updates.ApplyAsync().ConfigureAwait(true);
+                    // **누르면 바로 받기 시작한다.** 확인은 진짜로 꺼지기 직전에 받는다 —
+                    // 받기 전에 물으면 정작 꺼지는 건 30초 넘게 받은 뒤라 시점이 어긋난다.
+                    await updates.DownloadAsync().ConfigureAwait(true);
                     ShowTab();
-                }, Ui.ButtonKind.Accent, enabled: !updates.IsApplying));
+                }, Ui.ButtonKind.Accent));
         }
         panel.Children.Add(Ui.ButtonRow([.. buttons]));
+
+        if (UpdateStage(palette) is { } stage) panel.Children.Add(stage);
 
         if (updates.LastError is { } updateError) panel.Children.Add(Ui.Hint(palette, updateError));
 
@@ -981,6 +1000,76 @@ public sealed class SettingsWindow : Window
         }
 
         return panel;
+    }
+
+    /// <summary>
+    /// 업데이트가 도는 동안 뜨는 줄. 아무것도 안 하는 중이면 null.
+    ///
+    /// **68MB 를 받는다.** 눌렀는데 아무 일도 안 일어나는 것처럼 보이면 안 된다 —
+    /// 몇 %까지 왔는지 보여주고, 다 받으면 여기서 멈춰 사람에게 물어본다.
+    /// </summary>
+    private UIElement? UpdateStage(SettingsPalette palette)
+    {
+        if (updates.Phase == UpdateService.UpdatePhase.Idle) return null;
+
+        var rows = new StackPanel();
+        rows.Children.Add(new TextBlock
+        {
+            Text = updates.Phase switch
+            {
+                UpdateService.UpdatePhase.Downloading => $"새 버전을 받는 중… {updates.DownloadedPercent}%",
+                UpdateService.UpdatePhase.Ready => "다 받았습니다 — 앱을 껐다 다시 띄우면 끝납니다",
+                _ => "앱을 갈아끼우는 중 — 곧 다시 뜹니다",
+            },
+            FontSize = 12.5,
+            TextWrapping = TextWrapping.Wrap,
+            Foreground = palette.Brush(palette.Primary),
+            Margin = new Thickness(0, 0, 0, 8),
+        });
+
+        if (updates.Phase == UpdateService.UpdatePhase.Downloading)
+        {
+            rows.Children.Add(new System.Windows.Controls.ProgressBar
+            {
+                Minimum = 0,
+                Maximum = 100,
+                Value = updates.DownloadedPercent,
+                Height = 6,
+                Foreground = palette.Brush(palette.Accent),
+                Background = palette.Brush(palette.TrackOff),
+                BorderThickness = new Thickness(0),
+                Margin = new Thickness(0, 0, 0, 4),
+            });
+        }
+
+        if (updates.Phase == UpdateService.UpdatePhase.Ready)
+        {
+            rows.Children.Add(Ui.ButtonRow(
+                Ui.Button(palette, "지금 다시 띄우기", updates.Restart, Ui.ButtonKind.Accent),
+                Ui.Button(palette, "나중에", () => { updates.Dismiss(); ShowTab(); })));
+        }
+
+        if (updates.Phase == UpdateService.UpdatePhase.Swapping)
+        {
+            // **빠져나갈 길을 둔다.** 여기서 멈추면 화면에 누를 것이 하나도 없어서
+            // 작업 관리자를 여는 수밖에 없다.
+            rows.Children.Add(Ui.ButtonRow(Ui.Button(palette, "강제 종료", ConfirmForceQuit)));
+        }
+
+        return Ui.Card(palette, rows);
+    }
+
+    private void ConfirmForceQuit()
+    {
+        var answer = MessageBox.Show(
+            this,
+            "갈아끼우는 도중이라 앱이 반쯤 바뀐 채로 남을 수 있습니다. "
+            + "그때는 설치본을 다시 받아 깔면 됩니다.",
+            "강제로 종료할까요?",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning,
+            MessageBoxResult.OK);
+        if (answer == MessageBoxResult.OK) UpdateService.ForceQuit();
     }
 
     private string StatusLine()

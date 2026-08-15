@@ -72,6 +72,8 @@ public sealed partial class TrayIcon : IDisposable
             quit,
         ]);
 
+        TrayMenuStyle.Apply(menu, dark: true);
+
         icon = new NotifyIcon
         {
             Text = AppInfo.Name,
@@ -80,6 +82,17 @@ public sealed partial class TrayIcon : IDisposable
             Icon = SystemIcons.Application,
         };
         icon.MouseClick += (_, e) => { if (e.Button == MouseButtons.Left) Activated?.Invoke(); };
+    }
+
+    /// <summary>
+    /// 메뉴 색을 지금 테마에 맞춘다. 설정에서 테마를 바꾸면 창이 부른다.
+    ///
+    /// **HUD·설정 창과 따로 놀면 안 된다** — 셋이 같이 떠 있는데 메뉴만 흰색이면
+    /// 다른 앱 것처럼 보인다.
+    /// </summary>
+    public void ApplyTheme(bool dark)
+    {
+        if (icon.ContextMenuStrip is { } strip) TrayMenuStyle.Apply(strip, dark);
     }
 
     /// <summary>

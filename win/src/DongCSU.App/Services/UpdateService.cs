@@ -119,23 +119,54 @@ public sealed class UpdateService(HttpClient http)
         }
     }
 
+    /// <summary>업데이트가 어디까지 갔는지.</summary>
+    public enum UpdatePhase
+    {
+        /// <summary>아무것도 안 하는 중.</summary>
+        Idle,
+        /// <summary>받는 중. 68MB 라 한참 걸린다 — 화면이 진행 상황을 보여줘야 한다.</summary>
+        Downloading,
+        /// <summary>
+        /// 다 받았다. **여기서 멈춰서 사람에게 물어본다.**
+        ///
+        /// 예전에는 곧바로 갈아끼우고 스스로 껐다. 그런데 갈아끼우는 쪽은 우리가 꺼지기를
+        /// 잠깐 기다리다 포기하게 되어 있어서, 그 안에 안 꺼지면 **옛 앱이 그대로 남고
+        /// 화면은 "곧 다시 뜹니다"에서 멈춘다.** 사람이 누른 뒤에 띄우면 그 겨루기가 없어진다.
+        ///
+        /// 물어보는 시점이 옳기도 하다 — 받기 전에 "앱이 꺼집니다"를 물으면 정작 꺼지는
+        /// 것은 30초 넘게 받은 뒤라 시점이 어긋난다. 받는 동안은 그대로 쓸 수 있다.
+        /// </summary>
+        Ready,
+        /// <summary>갈아끼우기를 띄웠고 곧 꺼진다.</summary>
+        Swapping,
+    }
+
+    public UpdatePhase Phase { get; private set; } = UpdatePhase.Idle;
+
+    /// <summary>받은 비율(0~100). 받는 중일 때만 뜻이 있다.</summary>
+    public int DownloadedPercent { get; private set; }
+
+    private UpdateInfo? downloaded;
+
     /// <summary>
-    /// 받아서 깔고 다시 뜬다. 성공하면 이 프로세스는 끝난다.
+    /// 새 버전을 받는다. **여기서 앱을 끄지 않는다** — 다 받으면 <see cref="UpdatePhase.Ready"/>
+    /// 에서 멈춰 사람에게 물어본다.
     ///
     /// 실패해도 던지지 않는다. 대신 <see cref="LastError"/> 에 남긴다 —
     /// 눌렀는데 아무 일도 안 일어나는 것처럼 보이는 게 제일 나쁘다.
     /// </summary>
-    public async Task<bool> ApplyAsync()
+    public async Task DownloadAsync()
     {
-        if (IsApplying) return false;
+        if (Phase != UpdatePhase.Idle) return;
         if (!IsInstalled || manager is not { } updateManager)
         {
             LastError = "설치본이 아니라 업데이트를 걸 수 없습니다.";
             Changed?.Invoke();
-            return false;
+            return;
         }
 
-        IsApplying = true;
+        Phase = UpdatePhase.Downloading;
+        DownloadedPercent = 0;
         LastError = null;
         Changed?.Invoke();
         try
@@ -144,28 +175,79 @@ public sealed class UpdateService(HttpClient http)
             if (update is null)
             {
                 LastError = "받을 새 버전이 없습니다.";
-                return false;
+                Phase = UpdatePhase.Idle;
+                return;
             }
 
             AppLog.Write($"업데이트 받는 중: {update.TargetFullRelease.Version}");
-            await updateManager.DownloadUpdatesAsync(update).ConfigureAwait(false);
-            AppLog.Write("업데이트 내려받기 끝 — 앱을 정리하고 갈아 끼운다");
+            await updateManager.DownloadUpdatesAsync(update, Progress).ConfigureAwait(false);
+            AppLog.Write("업데이트 내려받기 끝 — 사람이 누르면 갈아 끼운다");
 
-            BeforeRestart?.Invoke();
-            updateManager.ApplyUpdatesAndRestart(update);
-            return true;
+            downloaded = update;
+            DownloadedPercent = 100;
+            Phase = UpdatePhase.Ready;
         }
         catch (Exception error)
         {
             LastError = $"업데이트 실패: {error.Message}";
-            AppLog.Write($"업데이트 적용 실패: {error}");
-            return false;
+            AppLog.Write($"업데이트 받기 실패: {error}");
+            Phase = UpdatePhase.Idle;
         }
         finally
         {
-            IsApplying = false;
             Changed?.Invoke();
         }
+    }
+
+    private void Progress(int percent)
+    {
+        // 한 자리씩 다 알릴 이유가 없다. 바뀔 때만 다시 그린다.
+        if (percent == DownloadedPercent) return;
+        DownloadedPercent = percent;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// 받아 둔 것으로 갈아끼우고 앱을 끈다. **사람이 눌러야 여기 온다.**
+    /// </summary>
+    public void Restart()
+    {
+        if (Phase != UpdatePhase.Ready || downloaded is null || manager is not { } updateManager) return;
+
+        Phase = UpdatePhase.Swapping;
+        Changed?.Invoke();
+        try
+        {
+            BeforeRestart?.Invoke();
+            updateManager.ApplyUpdatesAndRestart(downloaded);
+        }
+        catch (Exception error)
+        {
+            LastError = $"갈아끼우기 실패: {error.Message}";
+            AppLog.Write($"업데이트 적용 실패: {error}");
+            Phase = UpdatePhase.Ready;
+            Changed?.Invoke();
+        }
+    }
+
+    /// <summary>받아 둔 것을 그대로 두고 화면만 접는다. 다음에 켤 때 이어서 할 수 있다.</summary>
+    public void Dismiss()
+    {
+        if (Phase is UpdatePhase.Downloading or UpdatePhase.Swapping) return;
+        Phase = UpdatePhase.Idle;
+        downloaded = null;
+        Changed?.Invoke();
+    }
+
+    /// <summary>
+    /// 갈아끼우다 멈춘 것 같을 때 손으로 끊는다. **화면에서 확인을 받고 부른다.**
+    ///
+    /// 여기서 멈추면 화면에 누를 것이 하나도 없어서 작업 관리자를 여는 수밖에 없다.
+    /// </summary>
+    public static void ForceQuit()
+    {
+        AppLog.Write("갈아끼우다 멈춰서 강제 종료했다");
+        Environment.Exit(0);
     }
 
     /// <summary>마지막 업데이트 시도가 왜 실패했는지. 성공했거나 아직 안 눌렀으면 null.</summary>
@@ -184,6 +266,6 @@ public sealed class UpdateService(HttpClient http)
     /// <summary>지금 버전보다 새 것이 있나.</summary>
     public bool HasUpdate => AppVersion.IsNewer(LatestVersion, AppInfo.Version);
 
-    /// <summary>업데이트를 받는 중인지. 68MB 라 한참 걸린다 — 화면이 이걸 보여줘야 한다.</summary>
-    public bool IsApplying { get; private set; }
+    /// <summary>업데이트가 도는 중인지. 그동안에는 확인 버튼 따위를 잠근다.</summary>
+    public bool IsBusy => Phase != UpdatePhase.Idle;
 }
