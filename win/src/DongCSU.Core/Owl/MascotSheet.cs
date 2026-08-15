@@ -142,7 +142,26 @@ public static class MascotSheet
     /// 성기므로(수백 → 스물) 여기서 뭉뚱그린다.
     /// </summary>
     /// <param name="beat">걸음의 박자. 홀짝으로 두 그림을 번갈아 쓴다.</param>
-    public static MascotSprite Choose(OwlMood mood, OwlEyes eyes, PetGaitKind gait, int beat)
+    /// <param name="restingEyes">
+    /// 그 기분이 **평소에** 하고 있는 눈. 평소가 이미 감긴 기분(탈진)은 깜빡일 것이 없다 —
+    /// 거기서 실눈을 뜨는 것은 감는 게 아니라 뜨는 것이다.
+    /// </param>
+    public static MascotSprite Choose(
+        OwlMood mood, OwlEyes eyes, PetGaitKind gait, int beat, OwlEyes restingEyes = OwlEyes.Open)
+    {
+        var and = Base(mood, eyes, gait, beat);
+
+        // **감은 얼굴이 따로 있는 자세만 깜빡인다.** 없으면 뜬 얼굴 그대로다.
+        //
+        // **완전히 감았을 때만 친다.** 그림에는 중간 단계가 없어서, 반쯤 감긴 칸까지
+        // 세면 깜빡임이 두 배 넘게 길어진다 — 잠깐 깜빡이는 게 아니라 질끈 감았다
+        // 뜨는 것으로 보인다. 격자 부엉이는 실눈 칸이 따로 있어서 안 그렇다.
+        if (eyes != OwlEyes.Closed || restingEyes == OwlEyes.Closed) return and;
+        return Blinking(and) ?? and;
+    }
+
+    /// <summary>눈을 빼고 본 자세.</summary>
+    private static MascotSprite Base(OwlMood mood, OwlEyes eyes, PetGaitKind gait, int beat)
     {
         if (mood == OwlMood.Offline) return MascotSprite.Dead;
 

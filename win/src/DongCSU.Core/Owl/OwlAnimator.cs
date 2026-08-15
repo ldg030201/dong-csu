@@ -463,7 +463,10 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// </summary>
     public MascotSprite MascotFrame => MascotSheet.Choose(
         IsUnusable ? OwlMood.Offline : mood,
-        dragged || IsWalking ? eyes : CurrentFrame.Pose.Eyes,
+        // **끌리는 동안에는 합성해 둔 자세에서 읽는다.** 그때 눈을 고르는 것은
+        // `AdvanceDrag` 이고 결과가 `carried` 에만 들어가서, 여기서 `eyes` 를 보면
+        // 잡고 있는 내내 낡은 값이 나온다 — 매달린 부엉이가 영영 안 깜빡였다.
+        dragged ? carried.Eyes : IsWalking ? eyes : CurrentFrame.Pose.Eyes,
         dragged ? PetGaitKind.Dragged
             : gait switch
             {
@@ -471,7 +474,13 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
                 DongCSU.Core.Pet.PetGait.Run => PetGaitKind.Run,
                 _ => PetGaitKind.Still,
             },
-        frameIndex);
+        frameIndex,
+        // 평소 눈. 탈진처럼 이미 감고 있으면 여기서 걸러 깜빡이지 않는다.
+        //
+        // **기분이 아니라 지금 자세에서 본다.** 기분으로 보면 탈진한 부엉이를 집어
+        // 들었을 때 매달린 얼굴은 눈을 뜨고 있는데도 깜빡임이 막힌다 — 걸러야 할 것은
+        // "탈진해서 감고 있음"이지 "탈진한 적이 있음"이 아니다.
+        Animation.Frames[0].Pose.Eyes);
 
     /// <summary>지금 칠할 팔레트 이름. 다 썼으면 색이 빠진다.</summary>
     public string PaletteName =>
