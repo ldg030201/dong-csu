@@ -25,7 +25,7 @@ internal static class MascotRenderer
     /// **칸에는 여백이 많다.** 256 칸 안에 그림이 가운데쯤 떠 있어서, 칸을 그대로
     /// 그리면 마스코트가 자리보다 훨씬 작게 보인다. 잉크 상자를 재서 그것을 채운다.
     /// </summary>
-    private sealed record Slice(MascotSprite Sprite, BitmapSource Image, Int32Rect Ink, int HeadCenterX);
+    private sealed record Slice(BitmapSource Image, Int32Rect Ink, int HeadCenterX);
 
     private static readonly Dictionary<MascotSprite, Slice?> Cache = [];
     private static BitmapSource? sheet;
@@ -74,18 +74,9 @@ internal static class MascotRenderer
 
         var target = new Rect(left, bottom - height, width, height);
 
-        // **그림자부터 깐다.** 펫 모드에는 카드도 링도 없어서 그림이 바탕 위에 곧바로
-        // 놓이는데, 밝은 창 위에 파란 부엉이만 있으면 종이에 인쇄된 것처럼 납작하다.
-        //
-        // 뒤집기 **바깥**이다. 그림자는 좌우 대칭이라 뒤집어도 같고, 안에 두면 뒤집힐
-        // 때 아래로 지는 방향까지 계산에 끼어든다.
-        if (ShadowFor(slice, scale) is { } shade)
-        {
-            var grown = (shade.PixelWidth - slice.Ink.Width) * scale / 2;
-            context.DrawImage(shade, new Rect(
-                target.X - grown, target.Y - grown + ShadowDrop,
-                target.Width + grown * 2, target.Height + grown * 2));
-        }
+        // **그림자를 안 깐다.** 맥은 `.shadow(검정 45%, 번짐 2)` 를 붙이지만, 여기서
+        // 같은 값을 내려면 알파를 직접 흐려야 하고 그 결과가 그림 둘레에 뿌연 테로
+        // 남았다 — 맥의 그것과 다르게 보인다. 없는 편이 어설픈 것보다 낫다.
 
         if (flipped)
         {
@@ -102,101 +93,6 @@ internal static class MascotRenderer
         }
 
         return true;
-    }
-
-    // ── 그림자 ──────────────────────────────────────────────────────
-    //
-    // 맥은 `.shadow(black 0.45, radius 2, y 1)` 한 줄이면 되지만, WPF 의
-    // `DrawingContext` 에는 이펙트를 걸 자리가 없다(`Effect` 는 UIElement 것이다).
-    // 알파에서 직접 만든다.
-
-    private const double ShadowOpacity = 0.45;
-    private const double ShadowBlur = 2;
-    private const double ShadowDrop = 1;
-
-    /// <summary>
-    /// 흐린 정도는 **화면 기준**이라 배율마다 다르다. 원본 픽셀로 환산해서 만든다 —
-    /// 원본에서 2px 를 흐리면 44pt 로 줄었을 때 아무것도 안 보인다.
-    ///
-    /// 크기는 몇 가지뿐이라(HUD 배율 넷 × 보기 셋) 캐시가 금방 찬다.
-    /// </summary>
-    private static readonly Dictionary<(MascotSprite, int), BitmapSource?> Shadows = [];
-
-    private static BitmapSource? ShadowFor(Slice slice, double scale)
-    {
-        var radius = (int)Math.Round(ShadowBlur / Math.Max(scale, 0.01));
-        if (radius <= 0) return null;
-
-        var key = (slice.Sprite, radius);
-        if (Shadows.TryGetValue(key, out var cached)) return cached;
-
-        var made = Blurred(slice, radius);
-        Shadows[key] = made;
-        return made;
-    }
-
-    /// <summary>알맹이의 알파를 상자 흐림으로 두 번 문질러 검정 그림자를 만든다.</summary>
-    private static BitmapSource? Blurred(Slice slice, int radius)
-    {
-        var alpha = AlphaMap(slice.Image, out var cellWidth, out _);
-
-        // 흐리면 번져 나가므로 알맹이 상자보다 넓게 잡는다.
-        var width = slice.Ink.Width + radius * 4;
-        var height = slice.Ink.Height + radius * 4;
-        if (width <= 0 || height <= 0) return null;
-
-        var source = new float[width * height];
-        for (var row = 0; row < slice.Ink.Height; row++)
-        {
-            for (var column = 0; column < slice.Ink.Width; column++)
-            {
-                source[(row + radius * 2) * width + column + radius * 2] =
-                    alpha[(slice.Ink.Y + row) * cellWidth + slice.Ink.X + column];
-            }
-        }
-
-        var work = new float[source.Length];
-        for (var pass = 0; pass < 2; pass++)
-        {
-            BoxBlur(source, work, width, height, radius, horizontal: true);
-            BoxBlur(work, source, width, height, radius, horizontal: false);
-        }
-
-        var pixels = new byte[width * height * 4];
-        for (var i = 0; i < source.Length; i++)
-        {
-            // Bgra32 는 곱해 두지 않은 알파다. 색은 검정이니 알파만 채운다.
-            pixels[i * 4 + 3] = (byte)Math.Clamp(source[i] * ShadowOpacity, 0, 255);
-        }
-
-        var made = BitmapSource.Create(width, height, 96, 96, PixelFormats.Bgra32, null, pixels, width * 4);
-        made.Freeze();
-        return made;
-    }
-
-    private static void BoxBlur(float[] from, float[] into, int width, int height, int radius, bool horizontal)
-    {
-        var span = radius * 2 + 1;
-        var outer = horizontal ? height : width;
-        var inner = horizontal ? width : height;
-        var step = horizontal ? 1 : width;
-
-        for (var line = 0; line < outer; line++)
-        {
-            var start = horizontal ? line * width : line;
-            var sum = 0f;
-            for (var i = -radius; i <= radius; i++)
-            {
-                sum += from[start + Math.Clamp(i, 0, inner - 1) * step];
-            }
-
-            for (var i = 0; i < inner; i++)
-            {
-                into[start + i * step] = sum / span;
-                sum -= from[start + Math.Clamp(i - radius, 0, inner - 1) * step];
-                sum += from[start + Math.Clamp(i + radius + 1, 0, inner - 1) * step];
-            }
-        }
     }
 
     /// <summary>안 그려진 칸이면 대신할 칸으로 내려간다. 끝까지 없으면 null.</summary>
@@ -235,7 +131,7 @@ internal static class MascotRenderer
         var ink = OpaqueBounds(cell);
         if (ink.Width <= 0 || ink.Height <= 0) return null;
 
-        return new Slice(sprite, cell, ink, HeadCenter(cell, ink));
+        return new Slice(cell, ink, HeadCenter(cell, ink));
     }
 
     /// <summary>그림이 실제로 있는 자리. 투명한 여백을 뺀다.</summary>
@@ -423,6 +319,7 @@ internal static class MascotRenderer
         gaitGround = lowest > 0 ? lowest : null;
     }
 }
+
 
 
 
