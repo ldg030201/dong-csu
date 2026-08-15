@@ -11,6 +11,41 @@ public sealed record UsageSnapshot
     public UsageWindow? FiveHour { get; init; }
     public UsageWindow? SevenDay { get; init; }
     public required DateTimeOffset FetchedAt { get; init; }
+
+    // 아래 둘은 서버가 아니라 **자격 증명에서 온다.** 계정 탭이 보여준다.
+    // 조회할 때 자격 증명을 이미 읽으므로 같이 실어 보내면 따로 읽을 일이 없다.
+
+    /// <summary><c>default_claude_max_5x</c> 같은 요금제 등급 원문.</summary>
+    public string? RateLimitTier { get; init; }
+
+    /// <summary>지금 쓰는 액세스 토큰이 언제까지인지.</summary>
+    public DateTimeOffset? TokenExpiresAt { get; init; }
+
+    /// <summary>
+    /// <c>default_claude_max_5x</c> → <c>Max 5x</c>.
+    ///
+    /// **못 알아보는 값이면 원문을 그대로 둔다.** 서버가 형태를 바꿨을 때 빈칸이 되는
+    /// 것보다, 낯설어도 실제 값이 보이는 편이 낫다.
+    /// </summary>
+    public static string? TierText(string? raw)
+    {
+        var trimmed = raw?.Trim();
+        if (string.IsNullOrEmpty(trimmed)) return null;
+
+        // `default_claude_max_5x` 처럼 앞에 붙는 것들을 걷어내고 배수만 남긴다.
+        var parts = trimmed.Split('_', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length < 2) return trimmed;
+
+        var multiple = parts[^1];
+        if (!multiple.EndsWith('x') || multiple.Length < 2
+            || !multiple[..^1].All(char.IsDigit))
+        {
+            return trimmed;
+        }
+
+        var plan = parts[^2];
+        return $"{char.ToUpperInvariant(plan[0])}{plan[1..]} {multiple}";
+    }
 }
 
 public enum UsageErrorKind

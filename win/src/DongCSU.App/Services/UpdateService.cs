@@ -52,9 +52,22 @@ public sealed class UpdateService(HttpClient http)
         }
     }
 
+    /// <summary>
+    /// 확인 사이 최소 간격. 사용량 조회와 같은 이유로 바닥을 깐다 —
+    /// **버튼을 잇달아 누르면 그만큼 그대로 나간다.**
+    /// </summary>
+    public static readonly TimeSpan MinCheckInterval = TimeSpan.FromSeconds(10);
+
+    private DateTimeOffset? lastCheckAt;
+
+    public bool CanCheckNow =>
+        lastCheckAt is not { } last || DateTimeOffset.UtcNow - last >= MinCheckInterval;
+
     public async Task CheckAsync(CancellationToken cancellationToken = default)
     {
-        if (IsChecking) return;
+        if (IsChecking || !CanCheckNow) return;
+
+        lastCheckAt = DateTimeOffset.UtcNow;
         IsChecking = true;
         Changed?.Invoke();
         try

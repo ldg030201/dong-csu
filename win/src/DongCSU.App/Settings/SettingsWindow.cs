@@ -356,12 +356,18 @@ public sealed class SettingsWindow : Window
 
         if (store.ErrorText is { } error) panel.Children.Add(Ui.Hint(palette, $"마지막 조회 실패: {error}"));
 
+        // **바닥에 걸려 있는 동안은 눌러도 안 나간다.** 눌리는데 아무 일도 안 일어나면
+        // 고장으로 보이므로 몇 초 남았는지 적고 잠가 둔다. 이 탭은 1초마다 다시 그려져서
+        // 알아서 풀린다.
+        var left = (int)Math.Ceiling(store.FetchCooldown().TotalSeconds);
+        var title = store.IsRefreshing ? "조회 중…" : left > 0 ? $"새로고침 ({left}초)" : "새로고침";
+
         panel.Children.Add(Ui.ButtonRow(
-            Ui.Button(palette, store.IsRefreshing ? "조회 중…" : "새로고침", async () =>
+            Ui.Button(palette, title, async () =>
             {
                 await store.RefreshAsync(force: true).ConfigureAwait(true);
                 ShowTab();
-            }, Ui.ButtonKind.Accent, enabled: !store.IsRefreshing)));
+            }, Ui.ButtonKind.Accent, enabled: !store.IsRefreshing && store.CanFetchNow)));
 
         return panel;
     }
@@ -760,6 +766,25 @@ public sealed class SettingsWindow : Window
         }
         panel.Children.Add(header);
 
+        // 무엇으로 로그인돼 있는지. **조회에 성공한 적이 있어야 안다** — 플랜 이름은
+        // 서버가 주고, 등급과 만료는 자격 증명에서 온다.
+        if (store.Snapshot is { } snapshot)
+        {
+            panel.Children.Add(Ui.Section(palette, "로그인"));
+
+            var rows = new StackPanel();
+            rows.Children.Add(InfoRow(palette, "플랜", snapshot.PlanName ?? "—"));
+            if (UsageSnapshot.TierText(snapshot.RateLimitTier) is { } tier)
+            {
+                rows.Children.Add(Ui.Divider(palette));
+                rows.Children.Add(InfoRow(palette, "한도 등급", tier));
+            }
+            rows.Children.Add(Ui.Divider(palette));
+            rows.Children.Add(InfoRow(palette, "토큰 만료", TokenExpiryText(snapshot.TokenExpiresAt)));
+
+            panel.Children.Add(Ui.Card(palette, rows));
+        }
+
         // 살펴본 자리를 전부 늘어놓는다 — 왜 안 됐는지가 여기서 갈린다.
         panel.Children.Add(Ui.Section(palette, "찾아본 자리"));
         var looked = new StackPanel();
@@ -829,6 +854,19 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Ui.ButtonRow([.. buttons]));
 
         return panel;
+    }
+
+    /// <summary>
+    /// 토큰이 언제까지인지.
+    ///
+    /// **이미 지났어도 "만료됨"으로 끝내지 않는다** — 앱이 스스로 갱신하므로 그대로
+    /// 두면 사용자가 할 일이 있는 줄 안다.
+    /// </summary>
+    private static string TokenExpiryText(DateTimeOffset? expiresAt)
+    {
+        if (expiresAt is not { } at) return "—";
+        var now = DateTimeOffset.UtcNow;
+        return at <= now ? "만료됨 (곧 갱신)" : $"{RemainingTime.ClockText(at, now)} 뒤";
     }
 
     /// <summary>탐색기로 Claude 설정 폴더를 연다. 없으면 만들지 않고 상위를 연다.</summary>

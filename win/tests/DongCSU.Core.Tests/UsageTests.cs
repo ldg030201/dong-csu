@@ -127,6 +127,10 @@ public class UsageApiTests
 {
     private static readonly DateTimeOffset Now = new(2026, 8, 6, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>조회 응답을 읽을 때 같이 넘기는 자격 증명. 여기서는 플랜 이름만 쓴다.</summary>
+    private static ClaudeCredentials Cred(string? plan) =>
+        new() { AccessToken = "x", SubscriptionType = plan };
+
     [Fact]
     public void 응답을_스냅숏으로_읽는다()
     {
@@ -137,7 +141,7 @@ public class UsageApiTests
             }
             """;
 
-        var result = UsageApi.Parse(body, "max", Now);
+        var result = UsageApi.Parse(body, Cred("max"), Now);
 
         Assert.True(result.IsSuccess);
         var snapshot = result.Snapshot!;
@@ -152,10 +156,10 @@ public class UsageApiTests
     [Fact]
     public void 사용률을_0에서_100_사이로_자른다()
     {
-        var result = UsageApi.Parse("""{"five_hour":{"utilization":140}}""", null, Now);
+        var result = UsageApi.Parse("""{"five_hour":{"utilization":140}}""", Cred(null), Now);
         Assert.Equal(100, result.Snapshot!.FiveHour!.Value.Utilization);
 
-        result = UsageApi.Parse("""{"five_hour":{"utilization":-5}}""", null, Now);
+        result = UsageApi.Parse("""{"five_hour":{"utilization":-5}}""", Cred(null), Now);
         Assert.Equal(0, result.Snapshot!.FiveHour!.Value.Utilization);
     }
 
@@ -165,7 +169,7 @@ public class UsageApiTests
     [InlineData("""{}""")]
     public void 창이_없거나_이상하면_null_이지_실패가_아니다(string body)
     {
-        var result = UsageApi.Parse(body, null, Now);
+        var result = UsageApi.Parse(body, Cred(null), Now);
         Assert.True(result.IsSuccess);
         Assert.Null(result.Snapshot!.FiveHour);
     }
@@ -175,7 +179,7 @@ public class UsageApiTests
     [InlineData("[1,2,3]")]
     public void 본문이_형식이_아니면_실패한다(string body)
     {
-        var result = UsageApi.Parse(body, null, Now);
+        var result = UsageApi.Parse(body, Cred(null), Now);
         Assert.False(result.IsSuccess);
         Assert.Equal(UsageErrorKind.Decode, result.Error!.Kind);
     }

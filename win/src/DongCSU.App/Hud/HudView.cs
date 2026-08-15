@@ -547,7 +547,7 @@ public sealed class HudView : FrameworkElement
     {
         HudHit.Collapse => Mode == HudMode.Collapsed ? "펼치기" : "접기",
         HudHit.Settings => "설정",
-        HudHit.Refresh => ErrorText is { } error ? $"갱신 실패: {error} — 눌러서 다시 시도" : "새로고침",
+        HudHit.Refresh => RefreshTooltip,
         HudHit.UpdateBadge => "새 버전이 나왔다 — 눌러서 확인",
         // 펫에는 숫자를 안 그린다. 올려서 읽는 것이 그 자리를 대신한다.
         HudHit.Mascot => Mode == HudMode.Pet
@@ -558,6 +558,19 @@ public sealed class HudView : FrameworkElement
         HudHit.VersionBadge => VersionBadgeIsTest ? "테스트 빌드다 — 배포본이 아니다" : "지금 버전",
         _ => null,
     };
+
+    /// <summary>다음 조회까지 남은 초. 0 이면 지금 할 수 있다. 창이 넣어 준다.</summary>
+    public int FetchCooldownSeconds { get; set; }
+
+    /// <summary>
+    /// 새로고침 버튼 설명.
+    ///
+    /// **잇달아 누르면 요청 제한에 걸린다.** 그 사이에는 눌러도 안 나가므로, 마우스를
+    /// 올렸을 때 몇 초 남았는지 알려 준다 — 아무 일도 안 일어나면 고장으로 보인다.
+    /// </summary>
+    private string RefreshTooltip => ErrorText is { } error
+        ? $"갱신 실패: {error} — 눌러서 다시 시도"
+        : FetchCooldownSeconds > 0 ? $"새로고침 — {FetchCooldownSeconds}초 뒤에 가능" : "새로고침";
 
     /// <summary>카운트다운 자리가 지금 무슨 뜻인지. 숫자만으로는 멈춘 건지 도는 건지 모른다.</summary>
     private string CountdownHelp

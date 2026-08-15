@@ -160,6 +160,8 @@ public sealed class AppController : IDisposable
         hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
         hud.SettingsRequested += () => OpenSettings();
         hud.RefreshRequested += () => _ = store.RefreshAsync(force: true);
+        hud.FetchCooldownWanted += () =>
+            hud.View.FetchCooldownSeconds = (int)Math.Ceiling(store.FetchCooldown().TotalSeconds);
         hud.UpdatesRequested += () => OpenSettings("version");
 
         // 윈도우 테마를 바꾸면 곧바로 따라간다. 안 그러면 HUD 만 옛 색으로 남는다.

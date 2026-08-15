@@ -7,6 +7,10 @@ public sealed record ClaudeCredentials
 {
     public required string AccessToken { get; init; }
     public string? SubscriptionType { get; init; }
+
+    /// <summary><c>default_claude_max_5x</c> 처럼 몇 배 플랜인지까지 들어 있다. 계정 탭이 쓴다.</summary>
+    public string? RateLimitTier { get; init; }
+
     public DateTimeOffset? ExpiresAt { get; init; }
 
     /// <summary>
@@ -113,6 +117,9 @@ public sealed record ClaudeCredentials
                 AccessToken = token,
                 SubscriptionType = oauth.TryGetProperty("subscriptionType", out var sub)
                     ? sub.GetString()
+                    : null,
+                RateLimitTier = oauth.TryGetProperty("rateLimitTier", out var tier)
+                    ? tier.GetString()
                     : null,
                 ExpiresAt = expiresAt,
                 RefreshToken = oauth.TryGetProperty("refreshToken", out var refresh)
@@ -346,6 +353,7 @@ public sealed class CredentialStore(
             {
                 AccessToken = token.AccessToken,
                 SubscriptionType = file?.SubscriptionType,
+                RateLimitTier = file?.RateLimitTier,
                 ExpiresAt = token.ExpiresAt,
                 RefreshToken = token.RefreshToken ?? file?.RefreshToken,
             };

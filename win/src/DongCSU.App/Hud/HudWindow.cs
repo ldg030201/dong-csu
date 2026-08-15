@@ -46,6 +46,12 @@ public sealed class HudWindow : Window
     /// <summary>흔들림 점수. 끌 때마다 새로 센다.</summary>
     public PetShake Shake { get; } = new();
 
+    /// <summary>
+    /// 새로고침 버튼 설명에 넣을 남은 초를 채워 달라. **띄우기 직전에 부른다** —
+    /// 시시각각 줄어드는 값이라 미리 넣어 두면 옛 숫자가 뜬다.
+    /// </summary>
+    public event Action? FetchCooldownWanted;
+
     public event Action? ContextMenuRequested;
     public event Action? SettingsRequested;
     public event Action? RefreshRequested;
@@ -523,6 +529,8 @@ public sealed class HudWindow : Window
         // 누르는 자리에서만 손가락 커서를 띄운다. 마스코트는 끄는 자리고,
         // 카운트다운·자원 줄·버전 딱지는 **읽는 자리**라 화살표 그대로 둔다.
         Cursor = hit.IsButton() ? Cursors.Hand : Cursors.Arrow;
+        // 남은 초는 시시각각 달라진다. **띄우기 직전에** 값을 넣는다.
+        FetchCooldownWanted?.Invoke();
         ShowTip(view.TooltipFor(hit));
         view.InvalidateVisual();
     }

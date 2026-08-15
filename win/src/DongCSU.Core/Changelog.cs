@@ -133,6 +133,17 @@ public static class Changelog
                     Notes =
                     [
                         ChangelogNote.New("재로그인이 필요할 때 앱에서 바로 로그인 창 띄우기 (트레이 메뉴·계정 탭)"),
+                        ChangelogNote.New("플랜·한도 등급·토큰 만료 표시"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "조회",
+                    Tab = "status",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("조회 사이에 최소 10초를 두어 요청 제한에 덜 걸리도록 개선"),
+                        ChangelogNote.Improve("새로고침을 지금 할 수 없으면 몇 초 뒤에 되는지 표시"),
                     ],
                 },
                 new ChangelogGroup

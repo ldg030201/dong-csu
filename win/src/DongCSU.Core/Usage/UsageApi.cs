@@ -21,6 +21,25 @@ public sealed class UsageApi(
 
     private readonly TimeProvider time = time ?? TimeProvider.System;
 
+    /// <summary>
+    /// 갱신 요청 사이 최소 간격.
+    ///
+    /// 갱신은 사용량 조회 안에서만 일어나므로 대개 그쪽 바닥에 함께 걸린다. 다만
+    /// **갱신용 토큰까지 죽으면 조회마다 갱신을 다시 시도하게 되어**, 조회를 막아도
+    /// 갱신 쪽만 계속 나갈 수 있다. 여기서도 한 번 더 막는다.
+    /// </summary>
+    public static readonly TimeSpan MinRefreshInterval = TimeSpan.FromSeconds(10);
+
+    private DateTimeOffset? lastRefreshAt;
+
+    private bool CanRefreshNow()
+    {
+        var now = time.GetUtcNow();
+        if (lastRefreshAt is { } last && now - last < MinRefreshInterval) return false;
+        lastRefreshAt = now;
+        return true;
+    }
+
     /// <summary>기본 설정의 HttpClient. 앱 전체가 하나를 돌려 쓴다.</summary>
     public static HttpClient CreateHttpClient() => new(new SocketsHttpHandler
     {
@@ -53,7 +72,10 @@ public sealed class UsageApi(
         // 여기서 갱신하지 않으면 그 파일이 만료된 뒤로 사용량이 **다시는** 안 나온다.
         if (attempt.Rejected)
         {
+            // **갱신에도 바닥을 깐다.** 대개는 조회 쪽 바닥에 함께 걸리지만, 갱신용
+            // 토큰까지 죽으면 조회마다 갱신을 다시 시도하게 되어 갱신 쪽만 계속 나간다.
             var renewed = credential.RefreshToken is { } refreshToken && refresher is not null
+                && CanRefreshNow()
                 ? await refresher.RefreshAsync(refreshToken, cancellationToken).ConfigureAwait(false)
                 : null;
 
@@ -79,7 +101,7 @@ public sealed class UsageApi(
             }
         }
 
-        return Parse(attempt.Body ?? "", credential.SubscriptionType, time.GetUtcNow());
+        return Parse(attempt.Body ?? "", credential, time.GetUtcNow());
     }
 
     /// <summary>한 번 걸어 본 결과. 셋 중 하나다 — 본문을 받았거나, 거절당했거나, 실패했다.</summary>
@@ -149,7 +171,7 @@ public sealed class UsageApi(
     }
 
     /// <summary>응답 본문을 스냅숏으로. 형식이 아니면 <see cref="UsageErrorKind.Decode"/>.</summary>
-    public static UsageResult Parse(string body, string? subscriptionType, DateTimeOffset now)
+    public static UsageResult Parse(string body, ClaudeCredentials credential, DateTimeOffset now)
     {
         try
         {
@@ -159,7 +181,9 @@ public sealed class UsageApi(
 
             return UsageResult.Ok(new UsageSnapshot
             {
-                PlanName = ClaudeCredentials.PlanName(subscriptionType),
+                PlanName = ClaudeCredentials.PlanName(credential.SubscriptionType),
+                RateLimitTier = credential.RateLimitTier,
+                TokenExpiresAt = credential.ExpiresAt,
                 FiveHour = Window(root, "five_hour"),
                 SevenDay = Window(root, "seven_day"),
                 FetchedAt = now,

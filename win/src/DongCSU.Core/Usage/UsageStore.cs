@@ -93,7 +93,10 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
         if (IsRefreshing) return;
         // 손으로 새로고침한 것은 물러나기를 무시한다. 사용자가 기다리고 있다.
         if (!force && backoffUntil is { } until && time.GetUtcNow() < until) return;
+        // **바닥은 force 로도 못 뚫는다.** 위의 물러나기와 다른 물건이다.
+        if (!CanFetchNow) return;
 
+        lastFetchAt = time.GetUtcNow();
         IsRefreshing = true;
         Changed?.Invoke();
         try
@@ -107,6 +110,39 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
             Changed?.Invoke();
         }
     }
+
+    /// <summary>
+    /// 조회 사이 최소 간격.
+    ///
+    /// **<c>force</c> 로도 못 뚫는 바닥이다.** 새로고침 버튼·절전 복귀·화면 켜짐이
+    /// 겹치면 몇 초 안에 여러 번 나가는데, 사용량 API 는 창이 좁아서 그것만으로 429 가 된다.
+    ///
+    /// 429 를 맞은 뒤 쉬는 백오프와 **다른 물건이다** — 저쪽은 맞고 나서 물러서는 것이고
+    /// 이건 맞기 전에 막는 것이다. <c>force</c> 가 백오프를 무시하도록 둔 이유(재로그인
+    /// 직후처럼 사람이 상황을 바꾼 뒤엔 바로 봐야 한다)는 그대로 살아 있다.
+    /// </summary>
+    public static readonly TimeSpan MinFetchInterval = TimeSpan.FromSeconds(10);
+
+    /// <summary>
+    /// 마지막으로 조회를 **내보낸** 시각. 성공·실패를 가리지 않는다 — 실패한 요청도
+    /// 서버 쪽 계산에는 똑같이 들어간다.
+    /// </summary>
+    private DateTimeOffset? lastFetchAt;
+
+    /// <summary>
+    /// 다음 조회까지 남은 시간. 0 이면 지금 할 수 있다.
+    ///
+    /// **눌렀는데 아무 일도 안 일어나면 고장으로 보인다.** 버튼에 숫자로 보여준다.
+    /// </summary>
+    public TimeSpan FetchCooldown()
+    {
+        if (lastFetchAt is not { } last) return TimeSpan.Zero;
+        var left = MinFetchInterval - (time.GetUtcNow() - last);
+        return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+    }
+
+    /// <summary>지금 조회를 내보낼 수 있는지. 버튼을 잠그는 데도 쓴다.</summary>
+    public bool CanFetchNow => FetchCooldown() <= TimeSpan.Zero;
 
     /// <summary>결과를 상태에 반영한다. 테스트가 네트워크 없이 이걸 직접 부른다.</summary>
     public void Apply(UsageResult result)
