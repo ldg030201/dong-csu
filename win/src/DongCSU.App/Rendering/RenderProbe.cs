@@ -32,6 +32,8 @@ internal static class RenderProbe
     /// </summary>
     public static int Hud(string[] args)
     {
+        ReleaseLook();
+
         if (args.Length < 2)
         {
             Console.WriteLine("--render <out.png> [세션%] [주간%] [expanded|collapsed|pet] "
@@ -71,7 +73,7 @@ internal static class RenderProbe
             Scale = scale.Factor(),
             IsDark = dark,
             VersionBadge = AppInfo.Version,
-            VersionBadgeIsTest = AppInfo.IsTestBuild,
+            VersionBadgeIsTest = false,
             // 펫은 링이 마우스를 올려야 뜬다. 뽑을 때는 보이는 편이 쓸모 있다.
             PetRingDisplay = PetRingDisplay.Always,
             PetRingFade = 1,
@@ -97,6 +99,8 @@ internal static class RenderProbe
     /// </summary>
     public static int SettingsTab(string[] args)
     {
+        ReleaseLook();
+
         if (args.Length < 2)
         {
             Console.WriteLine("--render-settings <out.png> [status|display|icon|pet|account|version] "
@@ -207,6 +211,13 @@ internal static class RenderProbe
         Console.WriteLine($"wrote: {args[1]}  ({rows}줄 x 최대 {columns}칸)");
         return 0;
     }
+
+    /// <summary>
+    /// **정식판 색으로 그린다.** 문서 그림은 테스트 바이너리로 뽑는데, 그대로 두면
+    /// 마스코트가 전부 보라색이고 버전 딱지에 `test` 가 붙는다 — 사용자가 볼 화면이
+    /// 아니다. 테스트판 모습을 보고 싶으면 앱을 띄워서 본다.
+    /// </summary>
+    private static void ReleaseLook() => MascotRenderer.TestLook = false;
 
     // ── 도구 ────────────────────────────────────────────────────────
 

@@ -144,6 +144,10 @@ DongCSU.exe --render-owl out.png 64
 찍는 것은 느리고 잘 어긋난다 — 설정 창이 다른 창 뒤에 깔리면 엉뚱한 것이 찍힌다.
 실제로 그렇게 두 번 헛돌았다.
 
+**문서 그림도 여기서 뽑는다**(`docs/images/`). 테스트 바이너리로 뽑아도 **정식판 색**이
+나온다 — 렌더 통로가 `MascotRenderer.TestLook = false` 를 꽂는다. 안 꽂으면 문서의
+마스코트가 전부 보라색이 되고 버전 딱지에 `test` 가 붙는다.
+
 > **`VisualBrush` 로 뷰를 찍지 마라.** 기본이 `Stretch.Fill` 이라 **뷰의 내용 경계**를
 > 대상 사각형에 맞춰 늘린다. 펫처럼 배경이 없는 보기에서는 경계가 마스코트만큼
 > 줄어들어 **그림이 확대된 채로 찍힌다.** `RenderProbe` 는 `RenderTargetBitmap` 을 쓴다.

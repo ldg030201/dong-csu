@@ -36,6 +36,22 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 더블클릭하면 접었다 펴지고, **마스코트를 더블클릭하면** 펫 모드로 들어간다.
 크기는 4단계, 배경 불투명도도 고를 수 있다.
 
+<table>
+<tr>
+<td align="center"><img src="docs/images/hud.png" width="240" alt="펼친 모습"><br><sub><b>펼침</b></sub></td>
+<td align="center"><img src="docs/images/collapsed.png" width="108" alt="접은 모습"><br><sub><b>접힘</b></sub></td>
+<td align="center"><img src="docs/images/pet.png" width="96" alt="펫 모드"><br><sub><b>펫 모드</b></sub></td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td align="center"><img src="docs/images/settings-status.png" width="300" alt="상태 탭"><br><sub><b>상태</b></sub></td>
+<td align="center"><img src="docs/images/settings-icon.png" width="300" alt="아이콘 탭"><br><sub><b>아이콘</b></sub></td>
+<td align="center"><img src="docs/images/settings-pet.png" width="300" alt="펫 탭"><br><sub><b>펫</b></sub></td>
+</tr>
+</table>
+
 가운데 마스코트는 상태에 따라 움직인다. **그림은 맥 판과 같은 것을 쓴다** —
 자세한 건 **[캐릭터](../docs/characters/README.md)**.
 
@@ -134,6 +150,9 @@ dotnet test
 
 | | |
 | --- | --- |
+| [설치](docs/install.md) | 받아서 깔고 처음 띄우기까지 |
+| [문제 해결](docs/troubleshooting.md) | 사용량이 안 나올 때, 창이 안 보일 때 |
+| [사용량과 토큰](docs/privacy.md) | 무엇을 읽고 어디에 접속하는지 |
 | [작업 규칙](CLAUDE.md) | 프로젝트 구성, 진단 통로, 배포 |
 | [이어받기](docs/handoff.md) | 윈도우 쪽에서 개발을 이어받을 때 |
 | [캐릭터](../docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](../docs/characters/owl.md) |

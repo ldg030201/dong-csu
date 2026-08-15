@@ -213,7 +213,7 @@ internal static class MascotRenderer
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.EndInit();
             image.Freeze();
-            sheet = AppInfo.IsTestBuild ? HueRotated(image, TestLookDegrees) : image;
+            sheet = (TestLook ?? AppInfo.IsTestBuild) ? HueRotated(image, TestLookDegrees) : image;
 
             MeasureGaitGround();
             return sheet;
@@ -234,6 +234,14 @@ internal static class MascotRenderer
     /// 나중에 사용자 그림을 받게 돼도 그대로 먹는다. 맥과 같은 42도다.
     /// </summary>
     private const double TestLookDegrees = 42;
+
+    /// <summary>
+    /// 테스트판 색으로 그릴지. **null 이면 지금 빌드를 따른다.**
+    ///
+    /// 렌더 통로가 <c>false</c> 를 꽂는다 — 문서 그림은 테스트 바이너리로 뽑는데,
+    /// 그대로 두면 **전부 보라색이 된다.** 시트를 읽기 전에 정해야 한다.
+    /// </summary>
+    public static bool? TestLook { get; set; }
 
     /// <summary>
     /// 시트 전체의 색상을 돌린다. **불러올 때 한 번만** 한다 — 칸마다 돌리면 같은
