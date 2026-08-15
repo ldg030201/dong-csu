@@ -72,7 +72,7 @@ public sealed record ChangelogEntry
     public string? Date { get; init; }
 
     /// <summary>
-    /// 2.2.1 부터. 기능별로 묶고 항목마다 갈래를 단다.
+    /// 2.3.0 부터. 기능별로 묶고 항목마다 갈래를 단다.
     ///
     /// 옛 항목은 null 이고, 그때는 화면이 <see cref="Notes"/> 를 그대로 늘어놓는다.
     /// **이미 나간 버전은 뒤늦게 나누지 않는다** — 사용자가 그때 본 것과 달라진다.
@@ -122,8 +122,8 @@ public static class Changelog
     [
         new ChangelogEntry
         {
-            Version = "2.2.1",
-            Date = null,
+            Version = "2.3.0",
+            Date = "2026-08-15",
             Groups =
             [
                 new ChangelogGroup

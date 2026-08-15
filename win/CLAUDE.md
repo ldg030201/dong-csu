@@ -29,7 +29,7 @@
 | 설정·기록 | `%APPDATA%\DongCSU\` | `%APPDATA%\DongCSU-Test\` |
 | 자동 시작 등록 이름 | `DongCSU` | `DongCSU-Test` |
 | 자체 업데이트 | 함 | **안 함** (`AppInfo.IsTestBuild`) |
-| 마스코트 · 버전 딱지 | 평소 색 | **보라** · `2.2.0 test` |
+| 마스코트 · 버전 딱지 | 평소 색 | **보라** · `2.3.0 test` |
 
 **갱신한 토큰(`token.json`)만은 함께 쓴다.** 서버가 갱신할 때마다 리프레시 토큰을
 회전시켜서, 판마다 따로 두면 두 판이 서로의 토큰을 죽이고 둘 다 재로그인으로 떨어진다.
@@ -186,7 +186,7 @@ python3 make-icon.py
 [`src/DongCSU.Core/Changelog.cs`](src/DongCSU.Core/Changelog.cs) 맨 위 항목에 한 줄
 추가하고 JSON 을 다시 뽑는다. CI 가 소스와 다르면 실패시킨다.
 
-**2.2.1 부터 `Groups` 를 쓴다.** 기능 단위로 묶고(`ChangelogGroup`) 항목마다 갈래
+**2.3.0 부터 `Groups` 를 쓴다.** 기능 단위로 묶고(`ChangelogGroup`) 항목마다 갈래
 (`ChangelogNote.New/Improve/Change/Fix/Remove`)를 단다. 문구 규칙은 뿌리
 [`../CLAUDE.md`](../CLAUDE.md) 의 "묶음과 갈래" 절에 있다.
 

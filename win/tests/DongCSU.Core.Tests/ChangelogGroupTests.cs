@@ -102,15 +102,30 @@ public class ChangelogGroupTests
     }
 
     /// <summary>
-    /// **이미 나간 버전은 뒤늦게 나누지 않는다.** 사용자가 그때 본 것과 달라진다.
-    /// 지금 묶음을 쓰는 것은 아직 안 나간 맨 위 항목뿐이어야 한다.
+    /// **묶음이 생기기 전에 나간 것은 뒤늦게 나누지 않는다.** 사용자가 그때 본 것과
+    /// 달라진다. 2.2.0 이하는 평평한 목록 그대로 둔다.
     /// </summary>
     [Fact]
-    public void 나간_버전에는_묶음이_없다()
+    public void 묶음보다_먼저_나간_판은_평평한_그대로다()
     {
-        foreach (var entry in Changelog.Entries.Where(e => e.Date is not null))
+        var groupsArrived = new Version(2, 3, 0);
+
+        foreach (var entry in Changelog.Entries)
         {
+            if (Version.Parse(entry.Version) >= groupsArrived) continue;
             Assert.Null(entry.Groups);
         }
+    }
+
+    /// <summary>거꾸로, 묶음이 생긴 뒤의 판은 평평한 목록을 손으로 적지 않는다.</summary>
+    [Fact]
+    public void 묶음이_생긴_뒤의_판은_묶음을_쓴다()
+    {
+        var newest = Changelog.Entries[0];
+
+        Assert.NotNull(newest.Groups);
+        Assert.NotEmpty(newest.Notes);
+        // 평평한 목록은 묶음에서 나온 것이라 앞에 묶음 이름이 붙어 있다.
+        Assert.All(newest.Notes, note => Assert.StartsWith("[", note));
     }
 }
