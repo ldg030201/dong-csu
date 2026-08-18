@@ -11,11 +11,30 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case measure
     case display
     case icon
+    /// **rawValue 를 바꾸지 마라.** 변경 내역이 `tab: "pet"` 으로 이 탭을 가리킨다
+    /// (`ChangelogGroup.tab`). 저장된 설정 탭도 이 값으로 남아 있다.
     case pet
     case account
     case version
 
     var id: String { rawValue }
+
+    /// 사이드바에서 몇 번째 묶음인지. **묶음이 바뀌는 자리에 선이 그어진다.**
+    ///
+    /// 항목이 아홉이라 평평하게 늘어놓으면 무엇이 무엇인지 안 잡힌다. 묶음 이름은
+    /// 달지 않는다 — 선만으로 충분하고, 이름을 달면 목록이 두 배로 길어진다.
+    var group: Int {
+        switch self {
+        // 지금 값을 보는 곳.
+        case .status, .measure: return 0
+        // 어떻게 보일지.
+        case .display, .icon: return 1
+        // 펫이 하는 것.
+        case .pet: return 2
+        // 앱 자체.
+        case .account, .version: return 3
+        }
+    }
 
     var title: String {
         switch self {
@@ -23,9 +42,9 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .measure: return "측정"
         case .display: return "표시"
         case .icon: return "아이콘"
-        case .pet: return "펫"
         case .account: return "계정"
         case .version: return "버전"
+        case .pet: return "펫 모드"
         }
     }
 
@@ -35,9 +54,23 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .measure: return "stopwatch"
         case .display: return "slider.horizontal.3"
         case .icon: return "face.smiling"
-        case .pet: return "pawprint"
         case .account: return "person.crop.circle"
         case .version: return "arrow.down.circle"
+        case .pet: return "pawprint"
+        }
+    }
+
+    /// 묶음 차례대로 자른 목록. 사이드바가 이대로 그리고 사이 사이에 선을 긋는다.
+    ///
+    /// **`allCases` 의 차례가 곧 묶음 차례**여야 한다 — 새 탭을 끼울 때 제 묶음 옆에
+    /// 넣어라. 아니면 같은 묶음이 두 번 잘려서 선이 엉뚱한 데 그어진다.
+    static var groups: [[SettingsTab]] {
+        allCases.reduce(into: [[SettingsTab]]()) { result, tab in
+            if let last = result.last?.last, last.group == tab.group {
+                result[result.count - 1].append(tab)
+            } else {
+                result.append([tab])
+            }
         }
     }
 
@@ -128,51 +161,71 @@ struct SettingsView: View {
     /// `ScrollView` 만으로는 안 된다. 스크롤 방향으로는 크기를 제안하지 않아서, 안에
     /// `maxWidth: .infinity` 를 줘도 내용은 제 크기에 머문다 — 창만 커지고 알맹이는
     /// 가운데 고정된 채 둘레만 비는 게 그래서 생긴다.
+    /// **스크롤은 오른쪽 본문에만 건다.** 예전에는 사이드바까지 통째로 한 `ScrollView`
+    /// 안에 있어서, 내용이 길면 **탭 목록이 같이 밀려 올라갔다** — 지금 어느 탭인지
+    /// 보려고 위로 되돌아가야 했다. 사이드바와 아래 버튼 줄은 창에 붙박아 둔다.
     var body: some View {
         GeometryReader { proxy in
-            ScrollView([.horizontal, .vertical]) {
-                content(viewportHeight: proxy.size.height)
-                    // **폭은 못 박는다.** 가로 스크롤이 열려 있으면 폭 제안이 무한이라,
-                    // `minWidth` 만 주면 긴 문장이 줄바꿈하지 않고 한 줄로 뻗는다.
-                    // 그러면 창을 열 때마다 가로 스크롤이 생긴다(2.1.3 에서 그랬다).
-                    // 창이 커지면 이 값도 같이 커져서 내용이 따라 늘어난다.
-                    .frame(width: max(Self.size.width, proxy.size.width), alignment: .topLeading)
-                    // 높이는 최소만 준다. 내용이 길면 넘쳐서 세로로 스크롤되어야 한다.
-                    .frame(minHeight: max(Self.size.height, proxy.size.height), alignment: .topLeading)
-            }
+            content(viewportHeight: proxy.size.height, viewportWidth: proxy.size.width)
         }
     }
 
     /// 스크롤 밖의 알맹이. 미리보기 렌더는 ScrollView를 그리지 못해서 이걸 직접 그린다.
-    var content: some View { content(viewportHeight: Self.size.height) }
+    var content: some View {
+        content(viewportHeight: Self.size.height, viewportWidth: Self.size.width)
+    }
 
-    private func content(viewportHeight: CGFloat) -> some View {
-        HStack(spacing: 0) {
-            sidebar
-            Divider()
-            VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack(spacing: 6) {
-                        Text(tab.title)
-                            .font(.system(size: 15, weight: .semibold))
-                        if tab.isBeta {
-                            pillBadge("beta", tint: .orange)
-                        }
-                        Spacer(minLength: 0)
-                    }
-                    tabBody(viewportHeight: viewportHeight)
-                    Spacer(minLength: 0)
-                }
-                .padding(18)
-                // 남는 폭·높이를 가져간다. 사이드바만 고정이고 본문은 창을 따라 늘어난다.
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
+    private func content(viewportHeight: CGFloat, viewportWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                sidebar
                 Divider()
-                footer
+                tabPane(viewportHeight: viewportHeight, viewportWidth: viewportWidth)
             }
+            Divider()
+            footer
         }
         // 미리보기 렌더에는 창이 없어서 폭을 정해 줘야 한다. 높이는 풀어 두고 전부 그린다.
         .frame(width: isPreviewRender ? Self.size.width : nil, alignment: .topLeading)
+    }
+
+    /// 탭 본문. 넘치면 **여기만** 스크롤된다.
+    @ViewBuilder
+    private func tabPane(viewportHeight: CGFloat, viewportWidth: CGFloat) -> some View {
+        // **폭은 못 박는다.** 가로 스크롤이 열려 있으면 폭 제안이 무한이라, `minWidth`
+        // 만 주면 긴 문장이 줄바꿈하지 않고 한 줄로 뻗는다 — 창을 열 때마다 가로
+        // 스크롤이 생긴다(2.1.3 에서 그랬다). 창이 커지면 이 값도 같이 커진다.
+        let paneWidth = max(Self.contentWidth, viewportWidth - Self.sidebarWidth - 1)
+        let inner = VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 6) {
+                Text(tab.title)
+                    .font(.system(size: 15, weight: .semibold))
+                if tab.isBeta {
+                    pillBadge("beta", tint: .orange)
+                }
+                Spacer(minLength: 0)
+            }
+            tabBody(viewportHeight: viewportHeight)
+            Spacer(minLength: 0)
+        }
+        .padding(18)
+        .frame(width: paneWidth, alignment: .topLeading)
+
+        if isPreviewRender {
+            inner.frame(maxHeight: .infinity, alignment: .topLeading)
+        } else {
+            ScrollView([.horizontal, .vertical]) {
+                // **최소 높이를 줘야 위로 붙는다.** `ScrollView` 는 내용이 뷰포트보다
+                // 짧으면 세로 **가운데**로 놓는다 — 짧은 탭에서 위가 한참 비는 것이
+                // 그래서 생긴다. 예전 구조에도 이 줄이 있었는데 스크롤을 오른쪽으로
+                // 옮기면서 같이 안 옮겨서 되살아났다.
+                inner.frame(
+                    minHeight: max(0, viewportHeight - Self.paneChromeHeight),
+                    alignment: .topLeading
+                )
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 
     // MARK: - 안에서 따로 스크롤하는 목록
@@ -197,6 +250,10 @@ struct SettingsView: View {
     /// 뜨는데, 넉넉하면 아래가 조금 빌 뿐이다.
     private static let chromeHeight: CGFloat = 148
 
+    /// 탭 본문 **바깥**에서 창 높이를 먹는 것 — 아래 구분선과 버전·종료 줄.
+    /// 스크롤 안 내용에 줄 최소 높이를 여기서 뺀다.
+    private static let paneChromeHeight: CGFloat = 62
+
     /// 재는 중일 때 기록 목록에 주는 높이.
     ///
     /// 그때는 위쪽 살아 있는 값이 자리를 거의 다 써서, 남는 만큼을 계산하면 음수가 된다.
@@ -207,47 +264,57 @@ struct SettingsView: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(SettingsTab.allCases) { item in
-                Button {
-                    settings.settingsTab = item
-                } label: {
-                    HStack(spacing: 7) {
-                        Image(systemName: item.symbol)
-                            .font(.system(size: 12))
-                            .frame(width: 16)
-                        Text(item.title)
-                            .font(.system(size: 12))
-                        if item.isBeta {
-                            Text("beta")
-                                .font(.system(size: 8, weight: .semibold))
-                                .foregroundStyle(.orange)
-                        }
-                        Spacer(minLength: 0)
-                        // **새 버전이 있을 때만.** 설정 창을 열어도 어느 탭을 봐야 하는지
-                        // 알 방법이 없었다 — HUD 딱지는 창을 열면 사라진다.
-                        if item == .version, updates.hasUpdate {
-                            Image(systemName: "arrow.down.circle.fill")
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color.accentColor)
-                        }
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background {
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(tab == item ? Color.accentColor.opacity(0.20) : .clear)
-                    }
-                    .foregroundStyle(tab == item ? Color.primary : Color.secondary)
-                    // 배경이 없는 부분도 눌리게 한다.
-                    .contentShape(Rectangle())
+            ForEach(Array(SettingsTab.groups.enumerated()), id: \.offset) { index, group in
+                // 묶음 사이에만 선. 맨 위에는 안 긋는다.
+                if index > 0 {
+                    Divider().padding(.vertical, 6)
                 }
-                .buttonStyle(.plain)
+                ForEach(group) { sidebarRow($0) }
             }
             Spacer(minLength: 0)
         }
         .padding(8)
+        // 높이를 안 채우면 탭이 적을 때 배경이 중간에 끊긴다.
         .frame(width: Self.sidebarWidth, alignment: .top)
+        .frame(maxHeight: .infinity, alignment: .top)
         .background(Color(nsColor: .underPageBackgroundColor).opacity(0.5))
+    }
+
+    private func sidebarRow(_ item: SettingsTab) -> some View {
+        Button {
+            settings.settingsTab = item
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: item.symbol)
+                    .font(.system(size: 12))
+                    .frame(width: 16)
+                Text(item.title)
+                    .font(.system(size: 12))
+                if item.isBeta {
+                    Text("beta")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(.orange)
+                }
+                Spacer(minLength: 0)
+                // **새 버전이 있을 때만.** 설정 창을 열어도 어느 탭을 봐야 하는지
+                // 알 방법이 없었다 — HUD 딱지는 창을 열면 사라진다.
+                if item == .version, updates.hasUpdate {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Color.accentColor)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(tab == item ? Color.accentColor.opacity(0.20) : .clear)
+            }
+            .foregroundStyle(tab == item ? Color.primary : Color.secondary)
+            // 배경이 없는 부분도 눌리게 한다.
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -879,6 +946,64 @@ struct SettingsView: View {
             : "왼쪽 위에 버전 표시"
     }
 
+    /// 자세마다 창 안으로 얼마나 넣을지.
+    ///
+    /// **그림마다 맞는 값이 다르다.** 규격은 "다리와 발이 아래 15%" 라고 요구하지만
+    /// 그리는 쪽이 그 자리를 정확히 맞추지 못한다 — 실제로 받은 시트는 매달리기의
+    /// 발·다리가 위 24% 에 있어서 15% 로는 다리가 창 밖에 삐져나왔다.
+    /// 남의 그림을 넣는 사람도 여기서 맞춘다.
+    private var perchDepthSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Divider()
+            HStack {
+                sectionTitle("잡는 깊이")
+                Spacer()
+                Button("기본값으로") { settings.resetPerchDepths() }
+                    .buttonStyle(.link)
+                    .font(.system(size: 11))
+            }
+            petNote("붙잡는 부위가 창 안으로 얼마나 넘어갈지다. "
+                    + "다리나 날개가 창 밖에 어중간하게 남으면 늘리고, "
+                    + "몸이 창에 잠기면 줄인다. 붙여 놓은 채로 밀면 바로 따라온다.")
+            perchDepthRow("걸터앉기 (창 위)", .top, $settings.perchDepthTop)
+            perchDepthRow("매달리기 (창 아래)", .bottom, $settings.perchDepthBottom)
+            perchDepthRow("껴안기 (창 좌우)", .left, $settings.perchDepthSide)
+        }
+    }
+
+    /// 한 줄에 슬라이더 · 화살표 · 숫자.
+    ///
+    /// **셋을 다 둔다.** 슬라이더로는 대충 맞추고 화살표로 1%씩 다듬는다 — 슬라이더만
+    /// 두면 원하는 자리에 못 세우고, 화살표만 두면 멀리 갈 때 한참 누른다.
+    ///
+    /// 숫자는 % 와 pt 를 같이 보여준다. **% 는 그림에 대한 비율이라 그림을 바꾸면
+    /// 뜻이 달라지는데**, 화면에서 몇 pt 인지는 눈으로 본 것과 바로 견줄 수 있다.
+    private func perchDepthRow(
+        _ title: String, _ perch: MascotPerch, _ value: Binding<Double>
+    ) -> some View {
+        let ink = UsageHUDView.petMascotInkRect(
+            perch: perch, scale: settings.scale.factor, style: settings.iconStyle
+        )
+        let span = (perch == .top || perch == .bottom) ? ink?.height : ink?.width
+        return HStack(spacing: 8) {
+            Text(title)
+                .font(.system(size: 11))
+                .frame(width: 118, alignment: .leading)
+            Slider(value: value, in: 0...HUDSettings.maxPerchDepth)
+            Stepper("", value: value, in: 0...HUDSettings.maxPerchDepth, step: 0.01)
+                .labelsHidden()
+            Text(readout(value.wrappedValue, span: span))
+                .font(.system(size: 11).monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 78, alignment: .trailing)
+        }
+    }
+
+    private func readout(_ depth: Double, span: CGFloat?) -> String {
+        guard let span else { return "\(Int((depth * 100).rounded()))%" }
+        return String(format: "%d%%  %.0fpt", Int((depth * 100).rounded()), span * depth)
+    }
+
     // MARK: - 아이콘
 
     /// 아이콘을 실제로 그려서 보여주고 고르게 한다.
@@ -889,15 +1014,9 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 14) {
             Toggle("펫 모드", isOn: Binding(
                 get: { settings.mode == .pet },
-                set: { on in
-                    // 펫에서 나올 때는 들어가기 직전의 보기로 돌아간다.
-                    if on {
-                        settings.modeBeforePet = settings.mode
-                        settings.mode = .pet
-                    } else if settings.mode == .pet {
-                        settings.mode = settings.modeBeforePet
-                    }
-                }
+                // 펫에서 나올 때 어디로 돌아갈지는 `setMode` 가 안다. 메뉴도 같은 것을
+                // 부른다 — 두 곳에 적으면 한쪽에서만 바꿨을 때 나오는 자리가 달라진다.
+                set: { on in settings.setMode(on ? .pet : settings.modeBeforePet) }
             ))
             .disabled(!settings.isHUDVisible)
 
@@ -921,25 +1040,17 @@ struct SettingsView: View {
 
             Divider()
             motionSection
+
+            Divider()
+            perchSection
         }
     }
 
-    /// 펫이 스스로 움직이는 것들. 전부 펫 모드에서만 돈다 —
-    /// 숫자가 붙은 카드가 혼자 걸어다니면 읽으려던 값이 도망간다.
-    private var motionSection: some View {
+    /// 창 테두리에 갖다 붙이는 것. **스스로 움직이는 것과 갈라 둔다** —
+    /// 저쪽은 펫이 알아서 하는 일이고 이쪽은 사용자가 끌어다 놓는 일이다.
+    private var perchSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("스스로 움직이기 (펫 모드에서만)")
-
-            Toggle("혼자 돌아다니기", isOn: $settings.petWanders)
-            petNote("가만히 두면 화면을 천천히 걸어다닌다. 글을 쓰는 동안에는 멈춘다.")
-
-            Toggle("커서 피하기", isOn: $settings.petDodgesCursor)
-            petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다. "
-                    + "창에 붙어 있는 동안에는 비키지 않는다.")
-
-            Toggle("들고 있을 때 감추기", isOn: $settings.petHidesRingWhileHeld)
-            petNote("집어 들면 사용량 링과 버튼 줄이 사라진다. "
-                    + "\"항상 표시\"로 해 뒀어도 들고 있는 동안은 안 보인다.")
+            sectionTitle("창에 붙이기")
 
             Toggle("창에 붙이기", isOn: $settings.petPerches)
                 // 매달림·앉음 자세가 그림 쪽에만 있다. 켤 수 있게 두면 켜 놓고
@@ -952,6 +1063,31 @@ struct SettingsView: View {
                     : "앉고 매달리는 자세가 그림 마스코트에만 있어서, "
                         + "지금 고른 아이콘에서는 붙지 않는다."
             )
+
+            if settings.petPerches, settings.iconStyle == .owlSheet {
+                perchDepthSection
+            }
+        }
+        .disabled(!settings.isHUDVisible || settings.mode != .pet)
+    }
+
+    /// 펫이 스스로 움직이는 것들. 전부 펫 모드에서만 돈다 —
+    /// 숫자가 붙은 카드가 혼자 걸어다니면 읽으려던 값이 도망간다.
+    private var motionSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            sectionTitle("스스로 움직이기")
+
+            Toggle("혼자 돌아다니기", isOn: $settings.petWanders)
+            petNote("가만히 두면 화면을 천천히 걸어다닌다. 글을 쓰는 동안에는 멈춘다.")
+
+            Toggle("커서 피하기", isOn: $settings.petDodgesCursor)
+            petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다. "
+                    + "창에 붙어 있는 동안에는 비키지 않는다.")
+
+            Toggle("들고 있을 때 감추기", isOn: $settings.petHidesRingWhileHeld)
+            petNote("집어 들면 사용량 링과 버튼 줄이 사라진다. "
+                    + "\"항상 표시\"로 해 뒀어도 들고 있는 동안은 안 보인다.")
+
         }
         // 제목에 "펫 모드에서만"이라고 적어 두고 켤 수 있게 두면 앞뒤가 안 맞는다.
         // 펫 모드가 아니면 실제로 아무 일도 일어나지 않으므로 함께 잠근다.

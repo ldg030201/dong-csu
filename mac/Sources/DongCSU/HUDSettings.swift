@@ -254,6 +254,67 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(!petHidesRingWhileHeld, forKey: Keys.petRingWhileHeldOff) }
     }
 
+    /// 창 위 테두리에 걸터앉을 때 창 안으로 넘어가는 깊이(잉크 세로에 대한 비율).
+    ///
+    /// **그림마다 맞는 값이 다르다.** 규격은 "걸터앉기의 아래 15%는 다리와 발"이라고
+    /// 못 박아 두었지만, 그리는 쪽이 그걸 정확히 맞추지 못한다 — 실제로 받아 본 시트는
+    /// 매달리기 칸의 발·다리가 위 24%를 차지해서 15%로는 다리가 창 밖에 삐져나왔다.
+    /// 그림을 다시 받는 대신 여기서 맞춘다.
+    @Published var perchDepthTop: Double = MascotSprite.sit.gripDepth {
+        didSet { defaults.set(perchDepthTop, forKey: Keys.perchDepthTop) }
+    }
+    /// 창 아래 테두리에 매달릴 때의 깊이.
+    @Published var perchDepthBottom: Double = MascotSprite.ledge.gripDepth {
+        didSet { defaults.set(perchDepthBottom, forKey: Keys.perchDepthBottom) }
+    }
+    /// 창 좌우 테두리를 껴안을 때의 깊이(잉크 **가로**에 대한 비율).
+    @Published var perchDepthSide: Double = MascotSprite.cling.gripDepth {
+        didSet { defaults.set(perchDepthSide, forKey: Keys.perchDepthSide) }
+    }
+
+    /// 손으로 맞출 수 있는 깊이의 위 끝.
+    ///
+    /// **자리가 모자랄 때 앱이 보태 주는 몫의 한계(`UsageHUDView.maxAutoExtra`, 12%)와
+    /// 다른 값이다.** 저쪽은 "조금 모자라면 보태 준다"는 자동 보정이라 몸이 잠기기 전에
+    /// 멈춰야 하지만, 여기는 사람이 눈으로 보고 정하는 값이라 막을 이유가 없다.
+    /// 그림마다 붙잡는 부위가 어디까지인지가 달라서 60% 가 필요한 그림도 있다.
+    static let maxPerchDepth: Double = 0.6
+
+    /// 붙는 깊이를 규격 기본값으로 되돌린다.
+    func resetPerchDepths() {
+        perchDepthTop = MascotSprite.sit.gripDepth
+        perchDepthBottom = MascotSprite.ledge.gripDepth
+        perchDepthSide = MascotSprite.cling.gripDepth
+    }
+
+    /// 저장된 붙는 깊이. **설정 인스턴스 없이 읽는다.**
+    ///
+    /// 자리 계산(`UsageHUDView.petPerchSink`)이 이걸 봐야 하는데 거기는 정적 함수라
+    /// 설정을 들고 있지 않다. 값을 인자로 흘려보내는 길도 있었지만, 그러면 진단
+    /// 통로(`--probe-perch`)가 설정을 모른 채 다른 숫자를 내서 **표와 실제가 갈린다.**
+    /// 읽기만 하므로 `init` 의 되쓰기(마이그레이션)를 타지 않는다.
+    static func storedGripDepth(
+        _ perch: MascotPerch, defaults: UserDefaults = .standard
+    ) -> CGFloat? {
+        let key: String
+        switch perch {
+        case .top: key = Keys.perchDepthTop
+        case .bottom: key = Keys.perchDepthBottom
+        case .left, .right: key = Keys.perchDepthSide
+        }
+        guard let value = defaults.object(forKey: key) as? Double else { return nil }
+        return CGFloat(value)
+    }
+
+    /// 보기를 바꾼다. **펫에서 나올 때 어디로 돌아갈지 기억한다.**
+    ///
+    /// 설정 창과 메뉴 두 곳에서 부르므로 여기 한 곳에 둔다 — 두 곳에 적으면 한쪽에서만
+    /// 바꿨을 때 펫에서 나오는 자리가 달라진다.
+    func setMode(_ next: HUDMode) {
+        if next == .pet, mode != .pet { modeBeforePet = mode }
+        mode = next
+    }
+
     static let minOpacity = 0.35
     static let maxOpacity = 1.0
     /// 배경 불투명도 기본값.
@@ -317,6 +378,10 @@ final class HUDSettings: ObservableObject {
         static let petDodgesCursorOff = "pet.dodgesCursorOff"
         static let petPerchesOff = "pet.perchesOff"
         static let petRingWhileHeldOff = "pet.hidesRingWhileHeldOff"
+        // 붙는 깊이는 기본값이 0이 아니라 그대로 저장한다. 없으면 규격 기본값.
+        static let perchDepthTop = "pet.gripDepth.top"
+        static let perchDepthBottom = "pet.gripDepth.bottom"
+        static let perchDepthSide = "pet.gripDepth.side"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -365,6 +430,13 @@ final class HUDSettings: ObservableObject {
         petDodgesCursor = !defaults.bool(forKey: Keys.petDodgesCursorOff)
         petPerches = !defaults.bool(forKey: Keys.petPerchesOff)
         petHidesRingWhileHeld = !defaults.bool(forKey: Keys.petRingWhileHeldOff)
+        // 저장된 값이 없으면 규격 기본값. `?? 0` 으로 두면 안 붙는 것처럼 보인다.
+        perchDepthTop = Self.storedGripDepth(.top, defaults: defaults)
+            .map(Double.init) ?? MascotSprite.sit.gripDepth
+        perchDepthBottom = Self.storedGripDepth(.bottom, defaults: defaults)
+            .map(Double.init) ?? MascotSprite.ledge.gripDepth
+        perchDepthSide = Self.storedGripDepth(.left, defaults: defaults)
+            .map(Double.init) ?? MascotSprite.cling.gripDepth
     }
 
     /// 저장해 둔 설정을 전부 지우고 기본값으로 되돌린다.
