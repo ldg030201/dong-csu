@@ -124,6 +124,25 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.5.1", date: "2026-08-17", groups: [
+            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
+                .new("잡는 깊이 조절 추가 (걸터앉기 · 매달리기 · 껴안기 따로)"),
+                .new("붙일 자리가 없는 테두리를 점선으로 표시"),
+                .improve("테두리에서 좀 떨어져 놓아도 붙도록 개선"),
+                .improve("설 자리가 조금 모자란 창에도 붙도록 개선"),
+                .change("창에 붙을 때 잡는 부위가 창 안으로 들어가도록 변경"),
+                .fix("붙을 자리를 잘못 골라 아무 데도 안 붙던 문제 수정"),
+                .fix("붙어 있을 때 앞뒤가 뒤바뀌던 문제 수정"),
+                .fix("어지러운 동안에도 걸어다니던 문제 수정"),
+            ]),
+            ChangelogGroup(title: "설정 창", notes: [
+                .change("탭 목록과 펫 화면을 묶음으로 나눔"),
+                .fix("내용을 내리면 왼쪽 탭 목록까지 같이 밀리던 문제 수정"),
+            ]),
+            ChangelogGroup(title: "마스코트", notes: [
+                .change("그림을 새로 그려 교체 (옆모습이 통통해지고 눈·표정이 또렷해짐)"),
+            ]),
+        ]),
         ChangelogEntry(version: "2.5.0", date: "2026-08-12", groups: [
             ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
                 .new("창에 붙이기 추가 "
