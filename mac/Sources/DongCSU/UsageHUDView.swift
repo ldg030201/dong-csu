@@ -184,20 +184,32 @@ struct UsageHUDView: View {
     /// `petMascotRect` 주석에 있다. 창 원점을 미는 것으로 푼다.
     @MainActor
     static func petPerchOrigin(
-        perch: MascotPerch, contact: CGPoint, scale: CGFloat, style: ClaudeIconStyle
+        perch: MascotPerch, contact: CGPoint, scale: CGFloat, style: ClaudeIconStyle,
+        // 화면 안에 다 들어와야 하는지. **미리보기에서 "여긴 자리가 없다" 를 그릴 때만
+        // 끈다** — 그때는 못 붙는 자리인 것을 알면서 어디에 놓일지를 보여주는 것이라,
+        // 화면 밖이라는 이유로 nil 을 받으면 그릴 자리를 못 낸다.
+        requireOnScreen: Bool = true
     ) -> NSPoint? {
         guard let ink = petMascotInkRect(perch: perch, scale: scale, style: style) else {
             return nil
         }
+        // **붙잡는 부위만 창 안으로 넣는다.** 그만큼 원점을 창 안쪽으로 민다.
+        let sink = petPerchSink(perch: perch, contact: contact, scale: scale, style: style)
         let origin: NSPoint
         switch perch {
-        case .top: origin = NSPoint(x: contact.x - ink.midX, y: contact.y - ink.minY)
-        case .bottom: origin = NSPoint(x: contact.x - ink.midX, y: contact.y - ink.maxY)
-        case .right: origin = NSPoint(x: contact.x - ink.minX, y: contact.y - ink.midY)
-        case .left: origin = NSPoint(x: contact.x - ink.maxX, y: contact.y - ink.midY)
+        case .top: origin = NSPoint(x: contact.x - ink.midX, y: contact.y - ink.minY - sink)
+        case .bottom: origin = NSPoint(x: contact.x - ink.midX, y: contact.y - ink.maxY + sink)
+        case .right: origin = NSPoint(x: contact.x - ink.minX - sink, y: contact.y - ink.midY)
+        case .left: origin = NSPoint(x: contact.x - ink.maxX + sink, y: contact.y - ink.midY)
         }
-        // 테두리에 **딱 맞춰** 놓는다. 창 안으로 조금 걸치게 해 봤고 버렸다 —
-        // 붙을 자리는 늘어나지만 몸이 창에 잠겨 보여서, 무엇에 붙어 있는지가 흐려진다.
+        // **테두리에 딱 맞추던 것을 그만뒀다.** 예전에는 그림 전체가 테두리 바깥에
+        // 있었는데, 그러면 붙잡는 부위가 선에 닿기만 하고 넘어가질 않아서 — 옆에 붙었을
+        // 때 날개로 껴안은 것이 아니라 벽에 부딪친 것으로 보였다.
+        //
+        // 그 전에 **그림 절반을 걸치게 해 봤고 그것도 버렸다.** 몸이 창에 잠겨서 무엇에
+        // 붙어 있는지가 흐려졌기 때문이다. 지금 넘어가는 것은 몸이 아니라 다리 · 발 ·
+        // 붙잡는 앞다리뿐이라(`MascotSprite.gripDepth`) 그 문제가 안 생긴다.
+        // **왜 그때는 틀렸고 지금은 맞는지가 남아야 또 안 뒤집는다.**
         //
         // **그림이 화면 밖으로 나가면 붙지 않는다.** 화면 안으로 밀어 넣지 않는 이유는
         // 밀어 넣으면 테두리에서 떨어진 자리에서 붙은 척을 하기 때문이다. 메뉴 막대 위에
@@ -212,11 +224,82 @@ struct UsageHUDView: View {
             x: origin.x + ink.minX, y: origin.y + ink.minY,
             width: ink.width, height: ink.height
         )
+        guard requireOnScreen else { return origin }
         guard let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(visual) }),
               screen.visibleFrame.contains(visual)
         else { return nil }
         return origin
     }
+
+    /// 붙잡는 부위가 창 안으로 넘어가는 깊이(pt).
+    ///
+    /// **잉크를 재서 비율을 곱한다.** 상수 pt 로 박아 두면 배율을 키우거나 남의 그림을
+    /// 넣었을 때 몸통까지 잠긴다 — 잠기는 양은 그림 크기를 따라가야 한다.
+    ///
+    /// **`petMascotInkRect` 에 섞지 않는다.** 저쪽은 "그림이 상자 어디를 덮나" 이고
+    /// 진단(`--probe-perch checkInk`)이 실제로 그려서 6pt 안으로 맞는지 검사한다.
+    /// 여기 보정을 섞으면 그 검사가 통째로 못 쓰게 되고, 실패 문구가 "그림 자리 예측이
+    /// 실제와 어긋난다" 라서 진짜 반전 실수와 구분이 안 된다.
+    @MainActor
+    static func petPerchSink(
+        perch: MascotPerch, contact: CGPoint, scale: CGFloat, style: ClaudeIconStyle
+    ) -> CGFloat {
+        guard let ink = petMascotInkRect(perch: perch, scale: scale, style: style),
+              let set = MascotSpriteStore.bundled,
+              // **잉크를 잰 칸에서 깊이도 읽는다.** 시트에 그 자세가 없으면 잉크는
+              // fallback 칸(선 자세)에서 나오는데, 깊이만 원래 칸에서 가져오면 붙잡는
+              // 부위가 없는 그림을 있는 만큼 밀어 넣는다.
+              let drawn = set.resolvedSprite(perch.sprite)
+        else { return 0 }
+        // 그 변에서 창 밖으로 뻗는 축의 길이.
+        let span = (perch == .top || perch == .bottom) ? ink.height : ink.width
+        // **사용자가 맞춘 값이 있으면 그것이 이긴다.** 규격이 요구한 자리에 그림이 정확히
+        // 오지 않아서(실제로 매달리기 발이 24%에 왔다) 자세마다 맞출 통로를 뒀다.
+        let base = span * (HUDSettings.storedGripDepth(perch) ?? drawn.gripDepth)
+
+        // **자리가 모자라면 그만큼 더 깊이 앉는다.**
+        //
+        // 창의 위 테두리가 화면 꼭대기에 가까우면 그 위에 설 자리가 없다 — 실제로 8pt
+        // 모자라서 안 붙는 창이 있었고, 그건 사용자 눈에 고장으로 보인다. 모자란 만큼만
+        // 창 안으로 더 넣으면 붙는다.
+        //
+        // **메뉴 막대 밑으로 머리를 넣는 길은 안 쓴다.** 메뉴 막대가 위 층이라 머리가
+        // 잘려 보인다 — 안 붙는 것보다 나쁘다.
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(contact) })
+                ?? NSScreen.screens.first(where: { $0.frame.intersects(
+                    CGRect(x: contact.x - 1, y: contact.y - 1, width: 2, height: 2)) })
+        else { return base }
+        let visible = screen.visibleFrame
+        // 창 밖에 남는 몫(span - sink)이 이 안에 들어가야 한다.
+        let room: CGFloat
+        switch perch {
+        case .top: room = visible.maxY - contact.y
+        case .bottom: room = contact.y - visible.minY
+        case .right: room = visible.maxX - contact.x
+        case .left: room = contact.x - visible.minX
+        }
+        let outside = span - base
+        guard outside > room else { return base }
+        // **조금 모자랄 때만 더 넣는다.** 많이 모자란데 억지로 넣으면 다리가 아니라
+        // 몸통이 잠겨서, 붙은 것이 아니라 창에 박힌 것으로 보인다 — 그때는 차라리
+        // 안 붙는 편이 낫다(더 넣어도 안 들어가면 `petPerchOrigin` 이 nil 을 낸다).
+        //
+        // 화면 바닥에 가까이 놓인 창에서 실제로 그랬다. 아래에 39pt 밖에 없는데
+        // 31pt 가 모자라서 한계까지 밀어 넣었고, 몸통 절반이 창에 잠겼다.
+        // **자리가 넉넉한 창에서는 기본값 그대로**여서 그 창만 이상해 보였다.
+        return base + min(span * maxAutoExtra, outside - room)
+    }
+
+    /// 자리가 모자랄 때 **더 넣어 주는 몫**의 한계. 잉크에 대한 비율이다.
+    ///
+    /// **깊이의 한계가 아니라 보태 주는 양의 한계다.** 깊이로 못 박아 두면 기본값이
+    /// 얕은 자세(15%)는 많이 보태지고 깊은 자세(25%)는 조금만 보태져서, 같은 만큼
+    /// 모자란 자리에서 자세마다 다르게 굴었다.
+    ///
+    /// 8pt(잉크의 10%) 모자란 창을 살리려고 넣은 값이라 그보다 조금 넉넉하다.
+    /// 사람이 손으로 맞추는 한계(`HUDSettings.maxPerchDepth`)와는 다른 값이다 —
+    /// 저쪽은 눈으로 보고 정하는 것이라 막을 이유가 없다.
+    static let maxAutoExtra: CGFloat = 0.12
 
     /// 그 자세의 그림이 창 안에서 실제로 덮는 자리(뷰 좌표, 아래가 0).
     ///

@@ -30,8 +30,13 @@ final class PetMotionController {
     var perchOrigin: (PerchSpot) -> NSPoint? = { _ in nil }
     /// 어느 테두리에 붙었는지 그림 쪽에 알린다. nil이면 떨어졌다.
     var setPerch: (MascotPerch?) -> Void = { _ in }
-    /// 붙은 창이 지금 맨 앞인지. 창 층에서 펫을 어디에 끼울지 정하는 데 쓴다.
-    var setPerchFront: (Bool) -> Void = { _ in }
+    /// 붙은 창이 지금 맨 앞인지와 **그 창이 무엇인지.** 창 층에서 펫을 어디에 끼울지
+    /// 정하는 데 쓴다. 창을 같이 넘기는 것은 받는 쪽이 **우리가 그 창보다 앞인지**를
+    /// 직접 확인해야 하기 때문이다 — 앞뒤 전이만 봐서는 이미 맨 앞인 창을 한 번 더
+    /// 눌렀을 때를 놓친다.
+    var setPerchFront: (Bool, CGWindowID) -> Void = { _, _ in }
+    /// 그 자리에 붙었을 때 창 안으로 넘어가는 깊이. 가림 판정이 같은 값을 봐야 한다.
+    var perchSink: (PerchSpot) -> CGFloat = { _ in 0 }
 
     // MARK: - 설정
 
@@ -53,6 +58,17 @@ final class PetMotionController {
     /// **배회만 끊는다.** 지쳐서 제 발로 산책 나갈 기운은 없어도, 커서가 밀고 들어오면
     /// 비켜야 한다 — 안 비키면 지친 게 아니라 멎은 것으로 보이고 화면도 가린다.
     var isDrained = false
+    /// 흔들려서 눈이 풀렸는지.
+    ///
+    /// **탈진과 달리 전부 멈춘다.** 비틀거리면서 산책을 나가면 어지러운 것이 아니라
+    /// 그냥 걷는 것으로 보인다 — 자리에 서서 비틀거려야 흔들린 결과로 읽힌다.
+    /// 2.4초짜리라(`OwlAnimator.dizzyDuration`) 그동안 안 비켜도 화면을 오래 가리지 않는다.
+    ///
+    /// **배회는 여기서 끊고, 커서 피하기는 부르는 쪽이 끊는다**(`HUDController.dodgeCursorIfIdle`).
+    /// 여기서 `dodgeCursor()` 를 그냥 막아 버리면 예약이 사라져서, 어지러움이 풀린 뒤에도
+    /// 커서가 계속 위에 있으면 영영 안 비킨다 — 글 쓰는 동안 안 비키는 것(`isTypingQuiet`)이
+    /// 같은 이유로 부르는 쪽에서 **예약을 다시 걸며** 걸러진다.
+    var isDizzy = false
 
     // MARK: - 치수
 
@@ -120,6 +136,15 @@ final class PetMotionController {
         case .walking, .dodging: return true
         case .still, .resting, .perched: return false
         }
+    }
+
+    /// 지금 붙어 있는 자리. 안 붙어 있으면 nil.
+    ///
+    /// 붙는 깊이가 접점에 따라 달라져서(화면 가장자리에서는 더 깊이 들어간다) 바깥에서도
+    /// 그 자리를 알아야 같은 값을 낼 수 있다.
+    var perchedSpot: PerchSpot? {
+        if case .perched(let spot) = motion { return spot }
+        return nil
     }
 
     private var isDodging: Bool {
@@ -305,7 +330,12 @@ final class PetMotionController {
         // 붙은 자리가 화면 밖으로 나갔다.
         guard let origin = perchOrigin(moved) else { return unperch() }
         motion = .perched(moved)
-        setPerchFront(found.isFront)
+        // **묻혔으면 앞으로 끌어올리지 않는다.** 올리면 그 창을 덮은 창 위에 펫만
+        // 떠서, 아무것도 없는 자리에 매달린 것으로 보인다.
+        let buried = WindowSurvey.isBuried(
+            moved, mascot: visualFrame().size, sink: perchSink(moved)
+        )
+        setPerchFront(found.isFront && !buried, spot.window)
         guard origin != frame().origin else { return }
         move(origin)
     }
@@ -432,7 +462,7 @@ final class PetMotionController {
     // MARK: - 배회
 
     /// 지금 혼자 걸어다녀도 되는지.
-    private var canWander: Bool { wanders && !isDrained }
+    private var canWander: Bool { wanders && !isDrained && !isDizzy }
 
     private func wanderTarget() -> NSPoint? {
         guard walkArea() != nil else { return nil }

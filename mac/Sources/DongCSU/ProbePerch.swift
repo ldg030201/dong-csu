@@ -23,9 +23,12 @@ enum ProbePerch {
 
     static func run(selftestOnly: Bool = false) -> Bool {
         if selftestOnly { return selftest() }
+        if CommandLine.arguments.contains("windows") { dumpWindows(); return true }
         var passed = true
         passed = surveyWindows() && passed
         passed = checkInk() && passed
+        passed = checkGrip() && passed
+        passed = checkPlacements() && passed
         surveySpots()
         passed = selftest() && passed
         return passed
@@ -215,6 +218,27 @@ enum ProbePerch {
                 parts.append("\(label(edge).replacingOccurrences(of: " ", with: "")) \(blocked ?? "가능")")
             }
             print("  \(pad(window.owner, 20))\(parts.joined(separator: " · "))")
+            // **같은 창을 화면 한가운데로 옮겨 본다.** 안 붙는 이유가 그 앱 때문인지
+            // 그 창이 놓인 자리 때문인지 가리는 유일한 방법이다 — 앱은 그대로 두고
+            // 자리만 바꿔 보는 것이라 둘 중 하나만 남는다.
+            if let screen = NSScreen.main {
+                let visible = screen.visibleFrame
+                let centered = CGRect(
+                    x: visible.midX - window.frame.width / 2,
+                    y: visible.midY - window.frame.height / 2,
+                    width: window.frame.width, height: window.frame.height
+                )
+                var moved: [String] = []
+                for edge in [MascotPerch.top, .bottom, .left, .right] {
+                    let blocked = obstacle(
+                        id: window.id, edge: edge, window: centered,
+                        mascot: box.size, scale: scale
+                    )
+                    moved.append("\(label(edge).replacingOccurrences(of: " ", with: ""))"
+                                 + " \(blocked.map { $0.hasPrefix("화면 밖") ? "화면 밖" : $0 } ?? "가능")")
+                }
+                print("  \(pad("  ↳ 한가운데로 옮기면", 20))\(moved.joined(separator: " · "))")
+            }
         }
         print("  붙을 수 있는 자리 \(open)개")
         if open == 0 {
@@ -236,13 +260,63 @@ enum ProbePerch {
         let middle = PerchSpot(window: id, edge: edge, offset: span / 2, windowFrame: window)
         guard UsageHUDView.petPerchOrigin(
             perch: edge, contact: middle.contact(in: window), scale: scale, style: .owlSheet
-        ) != nil else { return "화면 밖" }
+        ) != nil else {
+            return "화면 밖" + shortfall(
+                edge: edge, window: window, scale: scale,
+                contact: middle.contact(in: window)
+            )
+        }
         // 그 자리에 그림을 놓았다고 치고 실제로 이 모서리가 뽑히는지 본다.
         // 안 뽑히면 남의 창에 가려졌거나 더 가까운 모서리가 있다는 뜻이다.
-        let aim = WindowSurvey.landingArea(middle, mascot: mascot)
-        let picked = WindowSurvey.snap(mascot: aim, within: 40)
+        let sink = { (spot: PerchSpot) in
+            UsageHUDView.petPerchSink(
+                perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
+                scale: scale, style: .owlSheet
+            )
+        }
+        let aim = WindowSurvey.landingArea(middle, mascot: mascot, sink: sink(middle))
+        // **앱과 같은 술어를 넘긴다.** `sink` 만 넘기고 `placeable` 을 빼면, 앱은 놓을 수
+        // 없는 변을 걸러내고 다음 변으로 가는데 진단은 그 변을 골라서 "가려짐"을 찍는다 —
+        // 이 함수 주석이 못 박아 둔 어긋남이 그대로 생긴다.
+        let placeable = { (spot: PerchSpot) in
+            UsageHUDView.petPerchOrigin(
+                perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
+                scale: scale, style: .owlSheet
+            ) != nil
+        }
+        let picked = WindowSurvey.snap(mascot: aim, within: WindowSurvey.snapDistance(mascot: mascot),
+                                     sink: sink, placeable: placeable)
         guard picked?.window == id, picked?.edge == edge else { return "가려짐" }
         return nil
+    }
+
+    /// "화면 밖" 이 몇 pt 모자라서인지. 못 재면 빈 글자.
+    ///
+    /// **이것 때문에 안 붙는다는 말을 제일 많이 듣는다.** 창을 조금만 옮기면 되는데
+    /// 숫자가 안 보이면 고장으로 읽힌다.
+    private static func shortfall(
+        edge: MascotPerch, window: CGRect, scale: CGFloat, contact: CGPoint
+    ) -> String {
+        guard let ink = UsageHUDView.petMascotInkRect(
+                perch: edge, scale: scale, style: .owlSheet
+              ),
+              let screen = NSScreen.screens.first(where: { $0.frame.intersects(window) })
+        else { return "" }
+        let sink = UsageHUDView.petPerchSink(
+            perch: edge, contact: contact, scale: scale, style: .owlSheet
+        )
+        let visible = screen.visibleFrame
+        // 창 밖에 남는 몫만큼 자리가 있어야 한다.
+        let need: CGFloat
+        let have: CGFloat
+        switch edge {
+        case .top: need = ink.height - sink; have = visible.maxY - window.maxY
+        case .bottom: need = ink.height - sink; have = window.minY - visible.minY
+        case .right: need = ink.width - sink; have = visible.maxX - window.maxX
+        case .left: need = ink.width - sink; have = window.minX - visible.minX
+        }
+        guard need > have else { return "" }
+        return String(format: " (%.0fpt 모자람 — %.0f 필요한데 %.0f)", need - have, need, have)
     }
 
     /// 타이머가 몇 번 돌 만큼 런루프를 굴린다. 펫의 한 틱은 0.1초다.
@@ -258,7 +332,55 @@ enum ProbePerch {
 
     // MARK: - 창 목록
 
+    /// 걸러내기 전의 **날것 목록.** 안 보이는 창에 붙는다는 말을 들었을 때 볼 자리다.
+    ///
+    /// `onScreenWindows()` 는 층 0 · 화면에 뜸 · 알파 · 최소 크기 · 우리 앱을 걸러낸
+    /// 뒤를 준다. 무엇이 왜 남았는지 보려면 거르기 전을 봐야 한다.
+    private static func dumpWindows() {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]]
+        else { return print("창 목록을 못 읽었다") }
+        let kept = Set(WindowSurvey.onScreenWindows().map(\.id))
+        print("날것 창 목록 — \(raw.count)개 (앞이 위)")
+        print("  \(pad("앱", 22))\(pad("번호", 8))\(pad("층", 5))\(pad("알파", 6))"
+              + "\(pad("자리 (Quartz 좌표)", 30))쓰나")
+        for entry in raw {
+            let owner = entry[kCGWindowOwnerName as String] as? String ?? "?"
+            let id = entry[kCGWindowNumber as String] as? CGWindowID ?? 0
+            let layer = entry[kCGWindowLayer as String] as? Int ?? -999
+            let alpha = entry[kCGWindowAlpha as String] as? Double ?? -1
+            let onscreen = entry[kCGWindowIsOnscreen as String] as? Bool ?? false
+            let bounds = entry[kCGWindowBounds as String] as? [String: CGFloat]
+            let place = bounds.map {
+                String(format: "(%5.0f,%5.0f) %5.0fx%-5.0f",
+                       $0["X"] ?? 0, $0["Y"] ?? 0, $0["Width"] ?? 0, $0["Height"] ?? 0)
+            } ?? "?"
+            var why = "—"
+            if kept.contains(id) { why = "**붙을 수 있음**" }
+            else if layer != 0 { why = "층 0 아님" }
+            else if !onscreen { why = "화면에 없음" }
+            else if alpha <= 0.01 { why = "투명" }
+            else if let b = bounds, (b["Width"] ?? 0) < 120 || (b["Height"] ?? 0) < 80 {
+                why = "너무 작음"
+            } else if owner == AppInfo.name { why = "우리 앱" }
+            print("  \(pad(owner, 22))\(pad(String(id), 8))\(pad(String(layer), 5))"
+                  + "\(pad(String(format: "%.2f", alpha), 6))\(pad(place, 30))\(why)")
+        }
+    }
+
     private static func surveyWindows() -> Bool {
+        // **쓸 수 있는 화면 넓이를 먼저 보여준다.** 붙을 자리가 없는 이유가 거의 항상
+        // 여기서 나온다 — 창의 위 테두리가 화면 꼭대기에 가까우면 그 위에 앉을 자리가
+        // 없다. 숫자가 없으면 "화면 밖" 이라는 말만 남아서 왜 그런지 알 수가 없다.
+        for (index, screen) in NSScreen.screens.enumerated() {
+            let visible = screen.visibleFrame
+            print(String(
+                format: "화면 %d — 전체 %.0fx%.0f, 쓸 수 있는 자리 y %.0f~%.0f (메뉴 막대·Dock 제외)",
+                index + 1, screen.frame.width, screen.frame.height,
+                visible.minY, visible.maxY
+            ))
+        }
+
         let windows = WindowSurvey.onScreenWindows()
         print("창 목록 — \(windows.count)개 (손쉬운 사용·화면 기록 권한 없이)")
         guard !windows.isEmpty else {
@@ -337,6 +459,201 @@ enum ProbePerch {
         }
 
         print(passed ? "\n통과" : "\n실패 — 그림 자리 예측이 실제와 어긋난다")
+        return passed
+    }
+
+    /// 화면 곳곳에 창이 있다고 치고 **붙인 자리가 흔들리지 않는지.**
+    ///
+    /// 진짜 창으로는 몇 가지 자리밖에 못 본다. 여기서는 창 목록을 만들어 넣어
+    /// 가장자리 · 구석 · 아주 작은 창 · 화면을 넘는 창까지 훑는다.
+    ///
+    /// **재는 것은 왕복이다.** 어떤 자리에 붙였다고 치고 그 자리에서 다시 찾으면
+    /// **같은 창의 같은 변이 같은 오프셋으로** 나와야 한다. 안 그러면 붙이자마자
+    /// 다음 틱에 딴 데로 옮겨간다 — 사용자 눈에는 "놓으면 튄다" 로 보인다.
+    private static func checkPlacements() -> Bool {
+        guard NSScreen.main != nil else {
+            print("\n실패 — 화면을 못 찾았다")
+            return false
+        }
+        // **크기 설정 네 단계를 다 훑는다.** 그림이 커지면 잡는 깊이도 같이 커져서,
+        // 배율 1 에서 붙던 자리가 1.5 에서는 안 붙을 수 있다.
+        var all = true
+        for step in HUDScale.allCases {
+            all = placements(scale: step.factor) && all
+        }
+        return all
+    }
+
+    private static func placements(scale: CGFloat) -> Bool {
+        let box = UsageHUDView.petMascotRect(scale: scale, style: .owlSheet)
+        guard let screen = NSScreen.main else { return false }
+        let visible = screen.visibleFrame
+        let sink = { (spot: PerchSpot) in
+            UsageHUDView.petPerchSink(
+                perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
+                scale: scale, style: .owlSheet
+            )
+        }
+        let placeable = { (spot: PerchSpot) in
+            UsageHUDView.petPerchOrigin(
+                perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
+                scale: scale, style: .owlSheet
+            ) != nil
+        }
+
+        // 화면 안팎에 창을 흩어 놓는다. 이름이 곧 무엇을 보는지다.
+        var cases: [(String, CGRect)] = [
+            ("화면 한가운데", CGRect(x: visible.midX - 300, y: visible.midY - 200,
+                                     width: 600, height: 400)),
+            ("왼쪽 끝에 붙음", CGRect(x: visible.minX, y: visible.midY - 200,
+                                      width: 400, height: 400)),
+            ("오른쪽 끝에 붙음", CGRect(x: visible.maxX - 400, y: visible.midY - 200,
+                                        width: 400, height: 400)),
+            ("위쪽 끝에 붙음", CGRect(x: visible.midX - 200, y: visible.maxY - 300,
+                                      width: 400, height: 300)),
+            ("아래쪽 끝에 붙음", CGRect(x: visible.midX - 200, y: visible.minY,
+                                        width: 400, height: 300)),
+            ("왼쪽 아래 구석", CGRect(x: visible.minX, y: visible.minY,
+                                      width: 300, height: 250)),
+            ("오른쪽 위 구석", CGRect(x: visible.maxX - 300, y: visible.maxY - 250,
+                                      width: 300, height: 250)),
+            ("화면을 꽉 채움", visible),
+            ("아주 작은 창", CGRect(x: visible.midX - 70, y: visible.midY - 50,
+                                    width: 140, height: 100)),
+            ("화면보다 큰 창", visible.insetBy(dx: -200, dy: -150)),
+        ]
+        // 화면 밖으로 나간 창. 여기 붙으면 허공에 매달린 것으로 보인다.
+        cases.append(("화면 밖", CGRect(x: visible.maxX + 100, y: visible.midY,
+                                        width: 400, height: 300)))
+
+        var passed = true
+        var tried = 0
+        var settled = 0
+        print(String(format: "\n여러 자리에 붙여 보고 그 자리에서 다시 찾아본다 (배율 %.2g)", scale))
+        for (name, frame) in cases {
+            let windows = [(id: CGWindowID(9001), frame: frame, owner: "가짜")]
+            var notes: [String] = []
+            for edge in [MascotPerch.top, .bottom, .left, .right] {
+                let span = (edge == .top || edge == .bottom) ? frame.width : frame.height
+                let start = PerchSpot(
+                    window: 9001, edge: edge, offset: span / 2, windowFrame: frame
+                )
+                guard let landed = start.clamped(to: frame, mascot: box.size),
+                      placeable(landed)
+                else { continue }
+                tried += 1
+                // 붙인 자리에서 그림이 덮는 사각형을 만들고, 거기서 다시 찾는다.
+                let aim = WindowSurvey.landingArea(landed, mascot: box.size, sink: sink(landed))
+                let again = WindowSurvey.snap(
+                    mascot: aim, within: WindowSurvey.snapDistance(mascot: box.size),
+                    sink: sink, placeable: placeable, windows: windows
+                )
+                if again?.window == landed.window, again?.edge == landed.edge,
+                   abs((again?.offset ?? 0) - landed.offset) <= 0.5 {
+                    settled += 1
+                } else {
+                    passed = false
+                    let got = again.map { "\(label($0.edge)) 오프셋 \(Int($0.offset))" } ?? "못 찾음"
+                    notes.append("**\(label(edge)) → \(got)**")
+                }
+            }
+            print("  \(pad(name, 18))\(notes.isEmpty ? "그대로" : notes.joined(separator: " · "))")
+        }
+        print("  붙여 본 자리 \(tried)곳 중 \(settled)곳이 제자리")
+
+        // **창을 확 옮겨도 같은 자리에 남아야 한다.** 창을 끌면 매 틱 `follow` 가
+        // `clamped` → `perchOrigin` 을 다시 도는데, 거기서 오프셋이 흔들리면 창을
+        // 옮길 때마다 펫이 모서리를 따라 스르륵 미끄러진다.
+        var moved = 0
+        var kept = 0
+        // 옮겨 간 자리에 설 곳이 없어서 떨어진 것. 고장이 아니다 —
+        // 그림이 커지는 배율에서 늘어난다.
+        var dropped = 0
+        let base = CGRect(x: visible.midX - 300, y: visible.midY - 200, width: 600, height: 400)
+        for edge in [MascotPerch.top, .bottom, .left, .right] {
+            let span = (edge == .top || edge == .bottom) ? base.width : base.height
+            let start = PerchSpot(window: 9001, edge: edge, offset: span / 2, windowFrame: base)
+            guard let landed = start.clamped(to: base, mascot: box.size), placeable(landed)
+            else { continue }
+            for delta in [CGPoint(x: -220, y: 0), CGPoint(x: 260, y: -140),
+                          CGPoint(x: 0, y: 170), CGPoint(x: -80, y: -90)] {
+                let after = base.offsetBy(dx: delta.x, dy: delta.y)
+                moved += 1
+                guard let followed = landed.clamped(to: after, mascot: box.size),
+                      placeable(followed)
+                else { dropped += 1; continue }   // 못 붙는 자리로 갔으면 떨어지는 것이 맞다
+                if abs(followed.offset - landed.offset) <= 0.5 { kept += 1 } else {
+                    passed = false
+                    print("  **창을 옮기니 \(label(edge)) 오프셋이 "
+                          + "\(Int(landed.offset)) → \(Int(followed.offset)) 로 밀렸다**")
+                }
+            }
+        }
+        print("  창을 확 옮겨 본 \(moved)번 — 오프셋 그대로 \(kept)번"
+              + (dropped > 0 ? " · 설 자리가 없어 떨어짐 \(dropped)번" : ""))
+        print(passed ? "  통과" : "  **실패 — 붙인 자리에서 다시 찾으면 딴 데가 나온다 (놓으면 튄다)**")
+        return passed
+    }
+
+    /// 붙잡는 부위가 창 안으로 **정말 넘어가는지.**
+    ///
+    /// `checkInk` 는 "그림이 상자 어디에 그려져 있나" 만 본다. 겹침은 그 위에 얹히는
+    /// 것이라 저기서는 안 잡힌다 — 실제로 겹침을 `petMascotInkRect` 안에 넣으면
+    /// `checkInk` 가 깨지도록 일부러 갈라 놓았다(`UsageHUDView.petPerchSink` 주석).
+    /// 그래서 넘어간 깊이는 여기서 따로 잰다.
+    ///
+    /// **부호를 잡는 검사다.** 네 변이 각각 창 안쪽 방향이 달라서, 한 곳만 뒤집혀도
+    /// 그 변에서만 그림이 창 밖으로 더 밀려난다 — 눈으로는 "조금 떠 있네" 로 보인다.
+    private static func checkGrip() -> Bool {
+        let scale = HUDScale.normal.factor
+        guard let screen = NSScreen.main else {
+            print("\n실패 — 화면을 못 찾았다")
+            return false
+        }
+        // 화면 한가운데를 접점으로 삼는다. 가장자리로 잡으면 화면 밖 판정에 걸린다.
+        let contact = CGPoint(x: screen.frame.midX, y: screen.frame.midY)
+
+        print("\n붙잡는 부위가 창 안으로 넘어가는 깊이")
+        var passed = true
+        for perch in [MascotPerch.top, .bottom, .right, .left] {
+            let want = UsageHUDView.petPerchSink(
+                perch: perch, contact: contact, scale: scale, style: .owlSheet
+            )
+            guard
+                let origin = UsageHUDView.petPerchOrigin(
+                    perch: perch, contact: contact, scale: scale, style: .owlSheet
+                ),
+                let ink = UsageHUDView.petMascotInkRect(
+                    perch: perch, scale: scale, style: .owlSheet
+                )
+            else {
+                print("  \(label(perch)) — 자리를 못 냈다")
+                passed = false
+                continue
+            }
+            // 뷰 좌표의 잉크를 화면 좌표로 옮긴다.
+            let visual = CGRect(
+                x: origin.x + ink.minX, y: origin.y + ink.minY,
+                width: ink.width, height: ink.height
+            )
+            // 접점 선을 넘어 **창 안쪽으로** 들어간 길이.
+            let crossed: CGFloat
+            switch perch {
+            case .top: crossed = contact.y - visual.minY
+            case .bottom: crossed = visual.maxY - contact.y
+            case .right: crossed = contact.x - visual.minX
+            case .left: crossed = visual.maxX - contact.x
+            }
+            let ok = abs(crossed - want) <= 0.5
+            passed = ok && passed
+            let span = (perch == .top || perch == .bottom) ? ink.height : ink.width
+            print(String(
+                format: "  %@%.1fpt / 잉크 %.0fpt = %.0f%%  │ 실제로 넘어간 것 %.1fpt │ %@",
+                pad(label(perch), 16), want, span, span > 0 ? want / span * 100 : 0,
+                crossed, ok ? "맞다" : "**어긋남**"
+            ))
+        }
+        print(passed ? "\n통과" : "\n실패 — 넘어간 깊이가 예측과 다르다 (부호를 뒤집었을 수 있다)")
         return passed
     }
 

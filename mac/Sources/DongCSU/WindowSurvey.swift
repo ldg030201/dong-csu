@@ -41,6 +41,10 @@ enum WindowSurvey {
             // 빠지지만 **설정 창은 보통 창이라 layer 0 으로 뜬다** — 이게 없으면 설정 창을
             // 여는 순간 펫이 제 설정 창에 매달린다.
             guard entry[kCGWindowOwnerPID as String] as? Int != ownPID else { continue }
+            // **이름으로도 한 번 더 뺀다.** pid 만 보면 같은 앱의 **다른 프로세스**가
+            // 띄운 창이 남는다 — 진단 통로(`--probe-perch`)는 앱과 따로 도는 프로세스라
+            // 떠 있는 펫과 설정 창을 남의 창으로 보고 표에 올렸다.
+            guard entry[kCGWindowOwnerName as String] as? String != AppInfo.name else { continue }
             guard let id = entry[kCGWindowNumber as String] as? CGWindowID,
                   let bounds = entry[kCGWindowBounds as String] as? [String: CGFloat],
                   let rect = rect(from: bounds)
@@ -76,6 +80,116 @@ enum WindowSurvey {
         return (list[index].frame, index == 0)
     }
 
+    /// 왜 안 붙었는지 창·변마다 한 줄씩. **진단에만 쓴다.**
+    ///
+    /// `snap` 은 되는 자리 하나만 돌려주고 나머지는 조용히 버린다. 안 붙는다는 말을
+    /// 들었을 때 그 "조용히" 가 문제라, 같은 걸러내기를 순서대로 다시 걸으면서
+    /// 어디서 걸렸는지 남긴다.
+    static func explain(
+        mascot: CGRect, within limit: CGFloat,
+        sink: (PerchSpot) -> CGFloat,
+        placeable: (PerchSpot) -> Bool
+    ) -> [String] {
+        let list = onScreenWindows()
+        guard !list.isEmpty else { return ["창이 하나도 안 잡혔다"] }
+        var lines: [String] = []
+        for (rank, window) in list.enumerated() {
+            var parts: [String] = []
+            for edge in [MascotPerch.top, .bottom, .left, .right] {
+                let name = label(edge)
+                guard let distance = gap(from: mascot, to: window.frame, edge: edge) else {
+                    parts.append("\(name) 빗나감")
+                    continue
+                }
+                guard distance <= limit else {
+                    parts.append("\(name) \(Int(distance))pt 떨어짐")
+                    continue
+                }
+                guard let spot = PerchSpot(
+                    window: window.id, edge: edge,
+                    offset: offset(of: mascot, on: window.frame, edge: edge),
+                    windowFrame: window.frame
+                ).clamped(to: window.frame, mascot: mascot.size) else {
+                    parts.append("\(name) 모서리가 짧음")
+                    continue
+                }
+                if isCovered(spot, mascot: mascot.size, sink: sink(spot), by: list[..<rank]) {
+                    parts.append("\(name) 가려짐")
+                } else if !placeable(spot) {
+                    parts.append("\(name) 화면 밖")
+                } else {
+                    parts.append("\(name) **가능(\(Int(distance))pt)**")
+                }
+            }
+            lines.append("  \(window.owner) [\(window.id)] \(box(window.frame)) — "
+                         + parts.joined(separator: " · "))
+        }
+        return lines
+    }
+
+    private static func label(_ edge: MascotPerch) -> String {
+        switch edge {
+        case .top: return "위"
+        case .bottom: return "아래"
+        case .left: return "왼쪽"
+        case .right: return "오른쪽"
+        }
+    }
+
+    private static func box(_ rect: CGRect) -> String {
+        String(format: "(%.0f,%.0f) %.0fx%.0f", rect.minX, rect.minY, rect.width, rect.height)
+    }
+
+    /// 붙어 있는 자리가 지금 **남의 창에 묻혔는지.**
+    ///
+    /// **붙일 때만 보던 것을 붙어 있는 동안에도 본다.** 붙은 창이 다른 창에 가려지면
+    /// 펫도 같이 가려져야 하는데(그래서 붙는 동안 `.normal` 층으로 내려간다), 앞으로
+    /// 끌어올리는 코드가 그걸 뒤집어 놓는다 — **아무것도 없는 자리에 매달린 것으로
+    /// 보인다.** 전체화면 창 위에 펫이 떠 있는 것이 그래서 생겼다.
+    static func isBuried(_ spot: PerchSpot, mascot: CGSize, sink: CGFloat) -> Bool {
+        let list = onScreenWindows()
+        guard let rank = list.firstIndex(where: { $0.id == spot.window }) else { return false }
+        return isCovered(spot, mascot: mascot, sink: sink, by: list[..<rank])
+    }
+
+    /// 우리 창이 그 창보다 **앞에 있는지.** 둘 중 하나라도 못 찾으면 nil.
+    ///
+    /// **`onScreenWindows()` 로는 못 본다** — 거기는 우리 PID 를 통째로 걸러낸다.
+    /// 그래서 여기서만 걸러내지 않은 목록을 본다.
+    ///
+    /// 이게 필요한 이유: 붙어 있는 동안 펫은 `.normal` 층으로 내려가 있는데, 사용자가
+    /// **이미 맨 앞인 창을 한 번 더 누르면** OS 가 그 창을 우리 위로 올린다. 그때는
+    /// "뒤→앞 전이" 가 없어서 `raisePerched` 의 조건에 안 걸리고, 창 안으로 넘어간
+    /// 다리·날개가 그대로 창 뒤에 묻힌다 — **잡고 있는 것으로 안 보인다.**
+    static func isAhead(_ mine: CGWindowID, of other: CGWindowID) -> Bool? {
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]]
+        else { return nil }
+        var mineRank: Int?
+        var otherRank: Int?
+        for (rank, entry) in raw.enumerated() {
+            guard let id = entry[kCGWindowNumber as String] as? CGWindowID else { continue }
+            if id == mine, mineRank == nil { mineRank = rank }
+            if id == other, otherRank == nil { otherRank = rank }
+            if mineRank != nil, otherRank != nil { break }
+        }
+        guard let mineRank, let otherRank else { return nil }
+        return mineRank < otherRank
+    }
+
+    /// 놓은 자리가 테두리에서 이만큼 안이면 붙는다. **그림 크기를 따라간다.**
+    ///
+    /// 한동안 40pt 로 못 박아 뒀는데 조준을 너무 잘해야 했다 — 기록을 보니 42pt ·
+    /// 46pt 처럼 **몇 pt 차이로 놓치는 일**이 잦았다. 게다가 붙잡는 부위가 창 안으로
+    /// 넘어가면서 실제 착지 지점이 12~15pt 안쪽으로 옮겨졌는데 문턱은 그대로여서,
+    /// 조준 범위가 한쪽으로 쏠려 있었다.
+    ///
+    /// **그림 높이의 4/5.** 배율을 키우면 그림이 커지는 만큼 조준도 편해져야 한다.
+    /// 절대값으로 두면 큰 그림에서 상대적으로 더 정확히 겨눠야 한다.
+    static func snapDistance(mascot: CGSize) -> CGFloat {
+        max(mascot.width, mascot.height) * 0.8
+    }
+
     /// 이보다 작은 창에는 안 붙는다.
     private static let minimumWindowSize = CGSize(width: 120, height: 80)
 
@@ -92,8 +206,19 @@ enum WindowSurvey {
     ///     링만큼 커서 그것으로 재면 아직 한참 떨어져 있는데도 붙는다.
     ///   - limit: 이 거리 안이어야 붙는다.
     ///   - windows: 창 목록. 비워 두면 지금 화면을 읽는다 — 검사에서만 넣어 준다.
+    ///   - sink: 그 변에 붙었을 때 붙잡는 부위가 **창 안으로 넘어가는 깊이**(pt).
+    ///     그림 사정을 여기서 알 수 없어서 뷰 쪽이 재서 숫자로 건네준다
+    ///     (`UsageHUDView.petPerchSink`). 안 주면 0 — 예전처럼 테두리에 딱 맞춘다.
+    ///     **변이 아니라 자리(`PerchSpot`)를 받는다** — 화면 가장자리에서는 자리마다
+    ///     더 깊이 들어가야 해서 깊이가 접점에 따라 달라진다.
+    ///   - placeable: 그 자리에 **실제로 놓을 수 있는지.** 자리 계산(`petPerchOrigin`)이
+    ///     화면 밖이라 거절하는 변이 있는데, 그걸 여기서 안 물어보면 후보로 골라 놓고
+    ///     나중에 못 놓는다 — 사용자 눈에는 **아무 데도 안 붙는 것**으로 보인다.
+    ///     걸러 내면 그 다음으로 가까운 변으로 넘어간다.
     static func snap(
         mascot: CGRect, within limit: CGFloat,
+        sink: (PerchSpot) -> CGFloat = { _ in 0 },
+        placeable: (PerchSpot) -> Bool = { _ in true },
         windows: [(id: CGWindowID, frame: CGRect, owner: String)]? = nil
     ) -> PerchSpot? {
         let list = windows ?? onScreenWindows()
@@ -127,7 +252,13 @@ enum WindowSurvey {
                     offset: offset(of: mascot, on: window.frame, edge: edge),
                     windowFrame: window.frame
                 ).clamped(to: window.frame, mascot: mascot.size) else { continue }
-                guard !isCovered(spot, mascot: mascot.size, by: list[..<rank]) else { continue }
+                guard !isCovered(
+                    spot, mascot: mascot.size, sink: sink(spot), by: list[..<rank]
+                ) else { continue }
+                // **놓을 수 있는지 마지막에 묻는다.** 앞의 걸러내기를 다 통과해도 화면
+                // 가장자리라 자리가 안 나오는 변이 있다 — 창 위 테두리가 화면 꼭대기에
+                // 가까우면 그 위에 앉을 자리가 없다.
+                guard placeable(spot) else { continue }
                 best = (spot, distance)
             }
         }
@@ -163,11 +294,12 @@ enum WindowSurvey {
     /// **붙을 테두리 자체가 가려진 것**이 걸린다 — 그림이 놓일 자리만 보면, 테두리는
     /// 남의 창에 덮였는데 그 바깥은 비어 있는 자리가 통과한다.
     private static func isCovered(
-        _ spot: PerchSpot, mascot: CGSize,
+        _ spot: PerchSpot, mascot: CGSize, sink: CGFloat,
         by inFront: ArraySlice<(id: CGWindowID, frame: CGRect, owner: String)>
     ) -> Bool {
         guard !inFront.isEmpty else { return false }
-        let landing = landingArea(spot, mascot: mascot).insetBy(dx: -edgePeek, dy: -edgePeek)
+        let landing = landingArea(spot, mascot: mascot, sink: sink)
+            .insetBy(dx: -edgePeek, dy: -edgePeek)
         return inFront.contains { $0.frame.intersects(landing) }
     }
 
@@ -177,20 +309,24 @@ enum WindowSurvey {
     /// 자세별 알맹이는 뷰 쪽(`UsageHUDView`)만 아는 값이라 여기로 끌어올 수 없다.
     ///
     /// 진단 통로(`--probe-perch`)도 이걸 쓴다 — 거기서 따로 셈하면 표가 실제와 어긋난다.
-    static func landingArea(_ spot: PerchSpot, mascot: CGSize) -> CGRect {
+    ///
+    /// `sink` 만큼 **창 안쪽으로 밀어 놓는다.** 실제 자리(`petPerchOrigin`)가 그만큼
+    /// 들어가 있어서, 여기만 바깥에 두면 진단 통로의 `landingArea → snap` 왕복이
+    /// 앱과 다른 답을 낸다.
+    static func landingArea(_ spot: PerchSpot, mascot: CGSize, sink: CGFloat = 0) -> CGRect {
         let contact = spot.contact(in: spot.windowFrame)
         switch spot.edge {
         case .top:
-            return CGRect(x: contact.x - mascot.width / 2, y: contact.y,
+            return CGRect(x: contact.x - mascot.width / 2, y: contact.y - sink,
                           width: mascot.width, height: mascot.height)
         case .bottom:
-            return CGRect(x: contact.x - mascot.width / 2, y: contact.y - mascot.height,
+            return CGRect(x: contact.x - mascot.width / 2, y: contact.y - mascot.height + sink,
                           width: mascot.width, height: mascot.height)
         case .right:
-            return CGRect(x: contact.x, y: contact.y - mascot.height / 2,
+            return CGRect(x: contact.x - sink, y: contact.y - mascot.height / 2,
                           width: mascot.width, height: mascot.height)
         case .left:
-            return CGRect(x: contact.x - mascot.width, y: contact.y - mascot.height / 2,
+            return CGRect(x: contact.x - mascot.width + sink, y: contact.y - mascot.height / 2,
                           width: mascot.width, height: mascot.height)
         }
     }

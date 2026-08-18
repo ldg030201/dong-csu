@@ -139,6 +139,34 @@ enum MascotSprite: String, CaseIterable {
         }
     }
 
+    /// 창 테두리 선이 그림 안쪽 **어디를 지나는지.** 잉크 상자에 대한 비율이다.
+    ///
+    /// **붙잡는 부위만 창 안으로 넘어간다.** 0 이면 그림이 통째로 테두리 바깥에 딱
+    /// 붙는다 — 그때는 붙잡는 부위가 테두리에 **닿기만 하고 넘어가질 않아서**, 옆에
+    /// 붙었을 때 껴안은 것이 아니라 벽에 부딪친 것으로 보였다.
+    ///
+    /// **한때 그림 절반을 넣어 봤고 버렸다**(`UsageHUDView.petPerchOrigin` 의 옛 주석).
+    /// 그때 틀린 것은 겹친다는 것이 아니라 **몸까지 겹쳤다**는 것이다. 몸이 창에 잠기면
+    /// 무엇에 붙어 있는지가 흐려진다. 지금 넘어가는 것은 다리 · 발 · 붙잡는 앞다리뿐이다.
+    ///
+    /// **그리는 쪽에 요구하는 값과 같아야 한다.** `docs/characters/prompt.txt` 가
+    /// "걸터앉기의 아래 15% 는 다리와 발" 이라고 못 박아 두었다. 여기서 0.25 를 쓰면
+    /// 다리가 없는 자리까지 잠겨서 몸이 창에 박힌 것으로 보인다.
+    ///
+    /// 눈감음 짝도 같은 값을 든다 — 붙어 있는 동안 깜빡일 때 자리가 흔들리면 안 된다.
+    var gripDepth: CGFloat {
+        switch self {
+        // 다리와 발이 창 안으로. 프롬프트의 "다리는 키의 15%" 와 같은 숫자다.
+        case .sit, .blinkSit: return 0.15
+        // 발과 발목만. 몸통이 딸려 들어가면 매달린 것이 아니라 빠진 것으로 보인다.
+        case .ledge, .blinkLedge: return 0.15
+        // 뻗은 앞다리 하나가 옆모습 폭에서 차지하는 몫.
+        case .cling, .blinkCling: return 0.25
+        // 나머지는 창에 붙지 않는다.
+        default: return 0
+        }
+    }
+
     /// 가로 자리를 **머리 기준**으로 맞출지.
     ///
     /// 옆모습 걷기는 다리가 앞뒤로 벌어져서 잉크 상자가 그때그때 넓어진다.
@@ -622,6 +650,23 @@ struct MascotSpriteSet {
             )
         }
         return found
+    }
+
+    /// 그 자세를 그리면 **실제로 어느 칸이 나오는지.** 시트에 없으면 `fallback` 을 타고
+    /// 내려간 칸이다. 하나도 없으면 nil.
+    ///
+    /// **잉크를 재는 칸과 다른 칸의 값을 읽지 않으려고 둔다.** 예를 들어 벽붙기를 안
+    /// 그린 시트에서는 `inkFraction(.cling)` 이 선 자세의 잉크를 내놓는데, 창에 얼마나
+    /// 걸칠지(`gripDepth`)를 `.cling` 에서 읽으면 **붙잡는 앞다리가 없는 그림을 앞다리가
+    /// 있는 만큼 밀어 넣는다** — 껴안은 것이 아니라 몸통이 창에 박힌 것으로 보인다.
+    func resolvedSprite(_ sprite: MascotSprite) -> MascotSprite? {
+        if images[sprite] != nil { return sprite }
+        var current = sprite.fallback
+        while let step = current {
+            if images[step] != nil { return step }
+            current = step.fallback
+        }
+        return nil
     }
 
     /// 그 자세가 묶음 상자 안에서 덮는 자리. 없으면 `fallback` 을 타고 내려간다.

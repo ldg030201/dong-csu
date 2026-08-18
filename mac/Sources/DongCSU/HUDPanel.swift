@@ -378,7 +378,10 @@ final class HUDController {
             self.refreshPassThroughRects()
             self.refreshTrackingArea()
         }
-        motion.setPerchFront = { [weak self] isFront in self?.raisePerched(isFront) }
+        motion.setPerchFront = { [weak self] isFront, window in
+            self?.raisePerched(isFront, host: window)
+        }
+        motion.perchSink = { [weak self] spot in self?.perchSink(spot) ?? 0 }
         motion.didSettle = { [weak self] in
             guard let self else { return }
             self.saveOrigin()
@@ -451,6 +454,9 @@ final class HUDController {
         observe(settings.$showsVersionBadge) { $0.rebuildRootView() }
         observe(settings.$animatesIcon) { $0.syncOwlAnimator() }
         observe(settings.$petWanders) { $0.syncMotion() }
+        // **기분이 바뀌면 움직임도 다시 본다.** 어지러움은 2.4초 뒤 저절로 풀리는데,
+        // 그때 다시 걸어다니게 하려면 이 알림이 있어야 한다.
+        observe(owlAnimator.$mood) { $0.syncMotion() }
         observe(settings.$petPerches) { $0.syncMotion() }
         observe(settings.$petHidesRingWhileHeld) { $0.rebuildRootView() }
         // 커서를 피하려면 마스코트 위에 커서가 있는지를 알아야 한다.
@@ -540,6 +546,10 @@ final class HUDController {
         // **기분을 그대로 쓴다.** 여기서 임계값을 따로 견주면 마스코트는 주저앉았는데
         // 산책은 계속 나가는 어긋남이 생긴다.
         motion.isDrained = OwlMood.resolve(store: store, isDragging: false) == .exhausted
+        // **흔들린 동안에는 그 자리에 선다.** 비틀거리면서 걸어가면 어지러운 것이
+        // 아니라 그냥 걷는 것으로 보인다. 기분에서 그대로 가져온다 — 여기서 시간을
+        // 따로 세면 그림과 움직임이 어긋난다.
+        motion.isDizzy = owlAnimator.mood == .dizzy
         motion.dodgesCursor = settings.petDodgesCursor
         // **그림 마스코트에서만 붙는다.** 격자로 그리는 부엉이에는 매달림·앉음 자세가
         // 없어서, 붙여 놓아도 테두리에 그냥 서 있는 것으로 보인다 — 기능이 아니라
@@ -570,17 +580,18 @@ final class HUDController {
         //
         // 미리보기에서 찾아 둔 것을 그대로 쓰지 않고 다시 찾는다 — 끌던 사이에 창이
         // 움직였을 수 있다.
-        guard canPerch,
-              let spot = WindowSurvey.snap(
-                  mascot: mascotScreenRect(), within: Self.perchSnapDistance
-              ),
-              motion.perch(at: spot)
-        else {
+        guard canPerch else { return logPerchAttempt(nil) }
+        guard let spot = WindowSurvey.snap(
+                  mascot: mascotScreenRect(), within: perchSnapDistance,
+                  sink: perchSink, placeable: { self.perchOrigin($0) != nil }
+              ) else { return logPerchAttempt(nil) }
+        guard motion.perch(at: spot) else {
             // **미리 잡아 둔 자세를 되돌린다.** 안 되돌리면 아무 데도 안 붙은 채로
             // 매달린 그림이 남는다.
             owlAnimator.setPerch(nil)
-            return
+            return logPerchAttempt(nil)
         }
+        logPerchAttempt(spot)
     }
 
     /// 지금 상태에서 창에 붙을 수 있는지. 한 곳에서만 본다.
@@ -606,24 +617,43 @@ final class HUDController {
         guard now.timeIntervalSince(lastPerchProbeAt) >= Self.perchProbeInterval else { return }
         lastPerchProbeAt = now
         applyPerchPreview(WindowSurvey.snap(
-            mascot: mascotScreenRect(), within: Self.perchSnapDistance
+            mascot: mascotScreenRect(), within: perchSnapDistance,
+            sink: perchSink, placeable: { self.perchOrigin($0) != nil }
         ))
     }
 
     private func applyPerchPreview(_ spot: PerchSpot?) {
         guard let spot, let rect = perchVisualRect(spot) else {
             owlAnimator.setPerch(nil)
-            perchHint.hide()
+            // **붙을 자리가 없다는 것도 보여준다.** 아무것도 안 뜨면 "왜 안 붙지" 하고
+            // 같은 자리에 계속 갖다 대게 된다 — 창이 화면 높이를 꽉 채우고 있으면
+            // 위·아래에는 영영 못 붙는데 그걸 알려 줄 자리가 여기뿐이다.
+            if let blocked = WindowSurvey.snap(
+                mascot: mascotScreenRect(), within: perchSnapDistance, sink: perchSink
+            ) {
+                // **붙을 때와 같은 셈으로 그린다.** 상자로 그리면 잉크와 어긋나서
+                // 점선이 엉뚱하게 안쪽에 뜬다 — 실제로 그랬다.
+                if let rect = perchVisualRect(blocked, requireOnScreen: false) {
+                    perchHint.show(
+                        rect: rect, edge: blocked.edge,
+                        sink: perchSink(blocked), blocked: true
+                    )
+                } else {
+                    perchHint.hide()
+                }
+            } else {
+                perchHint.hide()
+            }
             return
         }
         // **자세를 먼저 바꾼다.** 손을 떼기 전에 어느 자세로 붙을지가 그림으로 보인다.
         owlAnimator.setPerch(spot.edge)
-        perchHint.show(rect: rect, edge: spot.edge)
+        perchHint.show(rect: rect, edge: spot.edge, sink: perchSink(spot))
     }
 
     /// 그 자리에 붙었을 때 **그림이 덮을** 화면 사각형. 표시가 이 자리에 뜬다.
-    private func perchVisualRect(_ spot: PerchSpot) -> NSRect? {
-        guard let origin = perchOrigin(spot),
+    private func perchVisualRect(_ spot: PerchSpot, requireOnScreen: Bool = true) -> NSRect? {
+        guard let origin = perchOrigin(spot, requireOnScreen: requireOnScreen),
               let ink = UsageHUDView.petMascotInkRect(
                   perch: spot.edge, scale: scale, style: settings.iconStyle
               )
@@ -652,7 +682,11 @@ final class HUDController {
         perchWasFront = perched
         // 층을 옮기면 그 층 맨 앞으로 온다. 방금 붙은 창은 사용자가 보고 있던 것이라
         // 그 위가 맞다.
-        if perched { panel.orderFront(nil) }
+        //
+        // **`orderFront` 가 아니라 `orderFrontRegardless` 다.** 같은 층에서는 비활성 앱의
+        // 창이 활성 앱의 창 위로 못 올라가고, `orderFront` 는 그때 조용히 무시된다 —
+        // 붙어 있는 동안 우리는 거의 항상 비활성 앱이다.
+        if perched { panel.orderFrontRegardless() }
     }
 
     /// 붙은 창이 맨 앞으로 왔으면 펫도 그 위로 올린다.
@@ -661,28 +695,103 @@ final class HUDController {
     /// 창이 펫을 덮어서, 붙은 창과 함께 가려진 것처럼 보인다 — 그게 원하는 모습이다.
     ///
     /// 뒤에서 앞으로 바뀌는 순간만 올린다. 틱마다 부르면 매번 층을 흔든다.
-    private func raisePerched(_ isFront: Bool) {
+    private func raisePerched(_ isFront: Bool, host: CGWindowID) {
         defer { perchWasFront = isFront }
-        guard isFront, !perchWasFront, panel.level == .normal else { return }
-        panel.orderFront(nil)
+        guard isFront, panel.level == .normal else { return }
+        // 뒤 → 앞 전이. 여기서 올리는 것이 보통이다.
+        if !perchWasFront { return panel.orderFrontRegardless() }
+        // **전이가 없어도 실제로 밑에 깔렸으면 올린다.** 이미 맨 앞인 창을 한 번 더
+        // 누르면 OS 가 그 창을 우리 위로 올리는데, 그때는 전이가 없어서 위 줄에 안
+        // 걸린다 — 창 안으로 넘어간 다리·날개가 창 뒤에 묻혀 **잡고 있는 것으로 안
+        // 보인다.** 겹치기 전에는 가릴 것이 없어서 드러나지 않던 결함이다.
+        //
+        // **매 틱 부르지 않는다.** 순서를 먼저 재고 정말 밑일 때만 올린다 — 그냥
+        // 부르면 붙어 있는 내내 창 층을 흔든다. 못 찾았으면(nil) 올리는 쪽으로 기운다.
+        //
+        // 올릴 때는 반드시 `orderFrontRegardless` 다. 여기 오는 상황이 바로 **호스트
+        // 앱이 활성이고 우리가 아닌** 경우라, `orderFront` 는 조용히 무시된다.
+        if WindowSurvey.isAhead(CGWindowID(panel.windowNumber), of: host) != true {
+            panel.orderFrontRegardless()
+        }
     }
 
     private var perchWasFront = false
 
     /// 그 자리에 붙었을 때 창이 놓일 원점. 붙을 수 없으면 nil.
-    private func perchOrigin(_ spot: PerchSpot) -> NSPoint? {
+    private func perchOrigin(_ spot: PerchSpot, requireOnScreen: Bool = true) -> NSPoint? {
         UsageHUDView.petPerchOrigin(
             perch: spot.edge,
             contact: spot.contact(in: spot.windowFrame),
             scale: scale,
-            style: settings.iconStyle
+            style: settings.iconStyle,
+            requireOnScreen: requireOnScreen
         )
     }
 
-    /// 놓은 자리가 테두리에서 이만큼 안이면 붙는다.
+    /// 놓았는데 안 붙었을 때 **왜 안 붙었는지 파일에 남긴다.**
     ///
-    /// 넓히면 붙일 생각이 없었는데 빨려 들어가고, 좁히면 조준을 해야 한다.
-    private static let perchSnapDistance: CGFloat = 40
+    /// 화면 없이 재현할 수 없는 것이라(어디에 놓았는지가 전부다) 눈으로 볼 기록이
+    /// 있어야 고칠 수 있다. 놓을 때마다 한 덩이씩 덧붙이고, 붙었으면 그것도 적는다.
+    private func logPerchAttempt(_ spot: PerchSpot?) {
+        guard settings.mode == .pet else { return }
+        let mascot = mascotScreenRect()
+        var lines = [
+            "── \(Self.logStamp.string(from: Date())) "
+                + (spot == nil ? "안 붙음" : "붙음 \(spot!.edge)"),
+            String(format: "  그림 자리 (%.0f,%.0f) %.0fx%.0f · 붙이기 %@ · 아이콘 %@",
+                   mascot.minX, mascot.minY, mascot.width, mascot.height,
+                   settings.petPerches ? "켬" : "끔", settings.iconStyle.rawValue),
+        ]
+        if let screen = NSScreen.screens.first(where: { $0.frame.intersects(mascot) }) {
+            let visible = screen.visibleFrame
+            lines.append(String(format: "  쓸 수 있는 화면 x %.0f~%.0f y %.0f~%.0f",
+                                visible.minX, visible.maxX, visible.minY, visible.maxY))
+        }
+        lines += WindowSurvey.explain(
+            mascot: mascot, within: perchSnapDistance,
+            sink: perchSink, placeable: { self.perchOrigin($0) != nil }
+        )
+        Self.appendPerchLog(lines.joined(separator: "\n") + "\n")
+    }
+
+    private static let logStamp: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter
+    }()
+
+    /// 붙기 기록이 쌓이는 파일. `tail -f` 로 보면 놓는 대로 흐른다.
+    static let perchLogPath = NSString(string: "~/Library/Logs/dong-csu-perch.log")
+        .expandingTildeInPath
+
+    private static func appendPerchLog(_ text: String) {
+        let url = URL(fileURLWithPath: perchLogPath)
+        guard let data = text.data(using: .utf8) else { return }
+        if let handle = try? FileHandle(forWritingTo: url) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: data)
+        } else {
+            try? data.write(to: url)
+        }
+    }
+
+    /// 그 변에 붙었을 때 붙잡는 부위가 창 안으로 넘어가는 깊이.
+    ///
+    /// **창 계산은 그림을 모른다**(`WindowSurvey.landingArea` 주석). 그래서 뷰 쪽이
+    /// 재서 숫자로만 건네준다 — 미리보기 · 착지 · 가림 판정이 같은 값을 본다.
+    private func perchSink(_ spot: PerchSpot) -> CGFloat {
+        UsageHUDView.petPerchSink(
+            perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
+            scale: scale, style: settings.iconStyle
+        )
+    }
+
+    /// 놓은 자리가 테두리에서 이만큼 안이면 붙는다. 그림 크기를 따라간다 —
+    /// 왜 절대값을 버렸는지는 `WindowSurvey.snapDistance` 에 있다.
+    private var perchSnapDistance: CGFloat {
+        WindowSurvey.snapDistance(mascot: mascotScreenRect().size)
+    }
 
     /// 마스코트가 실제로 화면을 가리는 자리(화면 좌표).
     ///
@@ -877,9 +986,12 @@ final class HUDController {
     /// HUD 우클릭 메뉴와 메뉴바 아이콘 메뉴가 같은 내용을 쓴다.
     /// NSMenuItem은 메뉴 하나에만 속할 수 있어서, 메뉴를 만들어 넘기는 대신 채워준다.
     ///
-    /// **여기에 설정 항목을 늘리지 않는다.** 모드·크기·테마·아이콘은 전부 설정 창에
-    /// 있고, 메뉴에 같은 걸 한 벌 더 두면 두 곳을 함께 고쳐야 하는 데다 자주 누르는
-    /// 항목이 목록에 파묻힌다. 메뉴에는 **바로 누르는 것**만 남긴다.
+    /// **여기에 설정 항목을 늘리지 않는다.** 메뉴에는 지금 한 번 하는 것만 둔다 —
+    /// 새로고침 · 재로그인 · 설정 열기 · 종료. 값을 고르는 것은 전부 설정 창에 있다.
+    ///
+    /// 보기 전환(펼침 · 링만 · 펫)을 넣어 봤다가 뺐다. 자주 오가는 것이라 값어치가
+    /// 있어 보였는데, 메뉴가 길어지면서 자주 누르는 새로고침이 목록에 파묻혔다.
+    /// 다시 넣는다면 **늘리는 줄 수를 아끼는 방법**부터 정하고 넣는다.
     func populateMenu(_ menu: NSMenu) {
         let status = NSMenuItem(title: store.summaryText, action: nil, keyEquivalent: "")
         status.isEnabled = false
@@ -905,6 +1017,7 @@ final class HUDController {
         let refresh = NSMenuItem(title: "새로고침", action: #selector(handleRefresh), keyEquivalent: "r")
         refresh.target = self
         menu.addItem(refresh)
+
 
         let settingsItem = NSMenuItem(
             title: "설정…",
@@ -1069,9 +1182,28 @@ final class HUDController {
     /// 커서를 링 쪽으로 조금만 옮겨도 영역을 벗어나 링이 사라진다.
     /// **붙어 있을 때만 그림 크기로 좁힌다.** 그때는 링이 남의 창 위에 얹혀 있다.
     private var petPointerRect: CGRect {
-        owlAnimator.perch == nil
-            ? UsageHUDView.petHitRect(scale: scale)
-            : UsageHUDView.petMascotRect(scale: scale, style: settings.iconStyle)
+        guard let perch = owlAnimator.perch else { return UsageHUDView.petHitRect(scale: scale) }
+        let box = UsageHUDView.petMascotRect(scale: scale, style: settings.iconStyle)
+        // **창 안으로 넘어간 쪽은 뺀다.** 거기는 남의 창의 제목 표시줄이라, 안 빼면 그
+        // 창을 끌려다 펫이 잡힌다 — 링(128pt)이 제목 표시줄을 덮어서 겪었던 것과 같은
+        // 일이고, 겹치면 그림 자체가 그 일을 하게 된다.
+        //
+        // 잃는 것은 넘어간 부위(다리 · 발 · 붙잡는 앞다리)를 잡아서 끌 수 없다는 것뿐이다.
+        // 12~15pt 라 몸통은 그대로 잡힌다.
+        // 붙은 자리를 모르면(창이 사라졌다) 상자를 그대로 쓴다.
+        guard let spot = motion.perchedSpot else { return box }
+        let sink = perchSink(spot)
+        guard sink > 0 else { return box }
+        switch perch {
+        case .top: return CGRect(x: box.minX, y: box.minY + sink,
+                                 width: box.width, height: box.height - sink)
+        case .bottom: return CGRect(x: box.minX, y: box.minY,
+                                    width: box.width, height: box.height - sink)
+        case .right: return CGRect(x: box.minX + sink, y: box.minY,
+                                   width: box.width - sink, height: box.height)
+        case .left: return CGRect(x: box.minX, y: box.minY,
+                                  width: box.width - sink, height: box.height)
+        }
     }
 
     /// 호버를 감시할 영역을 지금 모드에 맞춘다. 펫이 아니면 아예 걸지 않는다.
@@ -1197,6 +1329,9 @@ final class HUDController {
         // 글을 쓰는 동안에는 커서를 피하지 않는다(왼쪽으로 물러나면 쓴 글을 덮는다).
         // 다 쓰고 나서도 커서가 그대로 올라와 있으면 그때 비킨다.
         guard !motion.isTypingQuiet else { return scheduleHoverDodge(isHoveringPet) }
+        // 흔들려서 눈이 풀린 동안에는 제자리에 선다. **여기서도 예약을 다시 건다** —
+        // 그냥 빠져나오면 어지러움이 풀린 뒤에 커서가 그대로 위에 있어도 안 비킨다.
+        guard !motion.isDizzy else { return scheduleHoverDodge(isHoveringPet) }
         motion.dodgeCursor()
     }
 
