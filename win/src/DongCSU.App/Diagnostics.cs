@@ -199,6 +199,22 @@ public static partial class Diagnostics
     /// </summary>
     private static void AttachToConsole()
     {
+        // **이미 어딘가로 돌려져 있으면 손대지 않는다.**
+        //
+        // CI 나 `> 파일` 처럼 표준 출력이 파이프·파일로 묶여 있으면 붙을 콘솔이 없어서
+        // `AllocConsole()` 이 **새 콘솔을 만들고, 그것이 표준 핸들을 덮어쓴다.** 그러면
+        // 찍은 것이 아무도 안 보는 콘솔로 가고 파이프에는 한 줄도 안 남는다 —
+        // GitHub Actions 에서 `--probe-mascot` 이 실패했는데 **왜 실패했는지가 로그에
+        // 통째로 비어 있었다.** 종료 코드만 남아서 짚을 수가 없었다.
+        if (Console.IsOutputRedirected)
+        {
+            // **UTF-8 로 못 박는다.** 안 그러면 .NET 이 윈도우 기본 코드페이지(949)로 써서
+            // 파이프 건너편이 한글을 깨진 글자로 받는다 — CI 로그가 그렇게 나온다.
+            try { Console.OutputEncoding = System.Text.Encoding.UTF8; }
+            catch (IOException) { }
+            return;
+        }
+
         // 터미널에서 부른 게 아니면(더블클릭 등) 창을 하나 띄운다. 안 그러면 볼 수가 없다.
         if (!NativeConsole.AttachConsole(NativeConsole.AttachParentProcess)
             && !NativeConsole.AllocConsole())
