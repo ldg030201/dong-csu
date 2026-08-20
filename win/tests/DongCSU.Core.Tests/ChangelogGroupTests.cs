@@ -129,3 +129,41 @@ public class ChangelogGroupTests
         Assert.All(newest.Notes, note => Assert.StartsWith("[", note));
     }
 }
+
+/// <summary>
+/// 아직 안 나간 항목의 <b>갈래 차례</b>.
+///
+/// 한 묶음 안에서 신규·개선·변경·오류가 섞여 있으면 무엇이 늘고 무엇이 고쳐졌는지가
+/// 한눈에 안 잡힌다. <c>ChangeKind</c> 에 적어 둔 차례(신규 → 개선 → 변경 → 오류 →
+/// 제거)대로 모아 둔다.
+///
+/// <b>이미 나간 버전은 안 본다.</b> 사용자가 그때 본 차례와 달라지기 때문이다 —
+/// 뒤늦게 묶음으로 나누지 않는 것과 같은 이유다.
+/// </summary>
+public class ChangelogOrderTests
+{
+    [Fact]
+    public void 안_나간_항목은_갈래끼리_모여_있다()
+    {
+        foreach (var entry in Changelog.Entries.Where(e => e.Date is null))
+        {
+            foreach (var group in entry.Groups ?? [])
+            {
+                var kinds = group.Notes.Select(n => (int)n.Kind).ToList();
+                Assert.True(
+                    kinds.SequenceEqual(kinds.Order()),
+                    $"{entry.Version} · {group.Title} 의 갈래가 섞여 있다: "
+                    + string.Join(" → ", group.Notes.Select(n => n.Kind.Title())));
+            }
+        }
+    }
+
+    [Fact]
+    public void 차례는_신규_개선_변경_오류_제거다()
+    {
+        // 위 검사가 이 순서에 기대고 있다. 열거값 차례를 바꾸면 여기서 먼저 걸린다.
+        Assert.Equal(
+            ["신규", "개선", "변경", "오류", "제거"],
+            Enum.GetValues<ChangeKind>().Select(k => k.Title()));
+    }
+}

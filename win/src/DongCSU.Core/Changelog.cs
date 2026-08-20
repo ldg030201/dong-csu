@@ -140,21 +140,6 @@ public static class Changelog
             [
                 new ChangelogGroup
                 {
-                    Title = "업데이트",
-                    Tab = "version",
-                    Notes =
-                    [
-                        ChangelogNote.New("받는 동안 진행 상황 표시"),
-                        ChangelogNote.Change("다 받은 뒤에 물어보도록 변경 (\"지금 다시 띄우기\" / \"나중에\")"),
-                        ChangelogNote.New("갈아끼우다 멈췄을 때 강제 종료"),
-                        ChangelogNote.New("새 버전이 있으면 설정 창 버전 탭에 표시"),
-                        ChangelogNote.Change("자동 확인을 켜면 그 자리에서 한 번 확인하도록 변경"),
-                        ChangelogNote.Improve("확인이나 변경 내역 받기에 실패한 이유를 표시하도록 개선"),
-                        ChangelogNote.Fix("확인에 실패하면 확인한 적이 없는 것으로 보이던 문제 수정"),
-                    ],
-                },
-                new ChangelogGroup
-                {
                     Title = "조회",
                     Tab = "status",
                     Notes =
@@ -170,41 +155,8 @@ public static class Changelog
                     [
                         ChangelogNote.Change("세션 한도를 거의 다 쓰면 혼자 걸어다니지 않도록 변경"),
                         ChangelogNote.Change("커서 피하기 판정을 마스코트 둘레로 좁힘"),
-                        ChangelogNote.Fix("어지러운 동안에도 걸어다니던 문제 수정"),
+                        ChangelogNote.Fix("어지러운 동안이나 우클릭 메뉴가 떠 있는 동안에도 걸어다니던 문제 수정"),
                         ChangelogNote.Fix("마스코트나 아래 버튼을 누르고만 있어도 매달린 자세가 되던 문제 수정"),
-                        ChangelogNote.Fix("우클릭 메뉴가 떠 있는 동안에도 걸어나가던 문제 수정"),
-                    ],
-                },
-                new ChangelogGroup
-                {
-                    Title = "마스코트",
-                    Notes =
-                    [
-                        ChangelogNote.Change("마스코트를 새로 그린 그림으로 교체 (옆모습이 통통해지고 눈·표정이 또렷해짐)"),
-                        ChangelogNote.Change("캐릭터 애니메이션을 끄면 흔들어도 어지러워하지 않도록 변경"),
-                        ChangelogNote.Fix("주간 한도를 다 써도 주간 링과 주간 점은 색이 남던 문제 수정"),
-                        ChangelogNote.Fix("걸음을 멈출 때마다 눈을 감았다 뜨던 문제 수정"),
-                        ChangelogNote.Fix("펫 모드에서 마스코트가 맥보다 조금 작게 그려지던 문제 수정"),
-                    ],
-                },
-                new ChangelogGroup
-                {
-                    Title = "설정 창",
-                    Notes =
-                    [
-                        ChangelogNote.Improve("창을 닫았다 열어도 보던 탭과 창 자리가 그대로이도록 개선"),
-                        ChangelogNote.Improve("확인 창의 버튼에 무엇이 일어나는지 적도록 개선"),
-                        ChangelogNote.Fix("HUD 를 꺼 두면 크기·배경 불투명도를 미리 고를 수 없던 문제 수정"),
-                        ChangelogNote.Fix("펫 모드가 아닐 때도 펫 사용량 링을 고를 수 있던 문제 수정"),
-                        ChangelogNote.Fix("모든 설정 초기화가 일부 설정을 되돌리지 않던 문제 수정"),
-                    ],
-                },
-                new ChangelogGroup
-                {
-                    Title = "메뉴",
-                    Notes =
-                    [
-                        ChangelogNote.Improve("트레이·우클릭 메뉴의 모서리를 둥글게 하고 테마에 맞춰 색을 바꾸도록 개선"),
                     ],
                 },
                 new ChangelogGroup
@@ -217,6 +169,52 @@ public static class Changelog
                         ChangelogNote.Improve("조회할 때마다 로그인 정보 파일을 다시 읽던 것을 개선 (WSL 이 10분마다 깨어나지 않음)"),
                         ChangelogNote.Fix("잠깐 인터넷이 끊겼을 때 갱신해 둔 토큰까지 버리고 재로그인을 요구하던 문제 수정"),
                         ChangelogNote.Fix("토큰을 갱신한 직후에도 계정 탭이 만료됐다고 표시하던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "업데이트",
+                    Tab = "version",
+                    Notes =
+                    [
+                        ChangelogNote.New("받는 동안 진행 상황 표시"),
+                        ChangelogNote.New("갈아끼우다 멈췄을 때 강제 종료"),
+                        ChangelogNote.New("새 버전이 있으면 설정 창 버전 탭에 표시"),
+                        ChangelogNote.Change("다 받은 뒤에 물어보도록 변경 (\"지금 다시 띄우기\" / \"나중에\")"),
+                        ChangelogNote.Change("자동 확인을 켜면 그 자리에서 한 번 확인하도록 변경"),
+                        ChangelogNote.Fix("확인에 실패하면 아무 흔적도 남지 않던 문제 수정 (실패 사유와 마지막 확인 시각 표시)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "마스코트",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("작게 그릴 때 뭉개지던 것을 개선"),
+                        ChangelogNote.Change("새로 그린 그림으로 교체 (옆모습이 통통해지고 눈·표정이 또렷해짐)"),
+                        ChangelogNote.Change("캐릭터 애니메이션을 끄면 흔들어도 어지러워하지 않도록 변경"),
+                        ChangelogNote.Fix("그림이 가로로 눌리고 맥보다 작게 그려지던 문제 수정 (들고 있을 때 특히 길쭉했음)"),
+                        ChangelogNote.Fix("주간 한도를 다 써도 주간 링과 주간 점은 색이 남던 문제 수정"),
+                        ChangelogNote.Fix("걸음을 멈출 때마다 눈을 감았다 뜨던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "설정 창",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("창을 닫았다 열어도 보던 탭과 창 자리가 그대로이도록 개선"),
+                        ChangelogNote.Improve("확인 창의 버튼에 무엇이 일어나는지 적도록 개선"),
+                        ChangelogNote.Fix("설정을 잠그는 조건이 틀렸던 문제 수정 (HUD 를 꺼 두면 크기·불투명도를 못 고르고, 펫 모드가 아닌데 펫 링은 고를 수 있었음)"),
+                        ChangelogNote.Fix("모든 설정 초기화가 일부 설정을 되돌리지 않던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "메뉴",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("트레이·우클릭 메뉴의 모서리를 둥글게 하고 테마에 맞춰 색을 바꾸도록 개선"),
                     ],
                 },
             ],

@@ -82,29 +82,56 @@ internal static class MascotRenderer
         var boxLeft = bounds.Left + (bounds.Width - box.Width * scale) / 2;
         var boxTop = bounds.Top + (bounds.Height - box.Height * scale) / 2;
 
-        var width = slice.Ink.Width * scale;
-        var height = slice.Ink.Height * scale;
+        // **칸을 통째로 그린다. 잉크 크기에 맞추면 안 된다.**
+        //
+        // `slice.Image` 는 256 칸 전체이고 `slice.Ink` 는 그 안에서 그림이 있는
+        // 자리다. 예전에는 잉크 크기 사각형에 칸을 그려 넣었는데, 그러면 칸이
+        // **가로세로로 따로 눌린다** — 잉크가 좁은 칸일수록 심해서 들린 자세
+        // (잉크 158/256 = 62%)가 길쭉하게 늘어졌다. 서 있는 자세도 81% 로 눌려
+        // 있었지만 늘 그래서 그런 줄 알았다.
+        //
+        // 칸을 칸 크기 그대로 놓으면 안에 구워진 잉크가 저절로 제자리에 온다.
+        var side = slice.Image.PixelWidth;
         var target = new Rect(
-            boxLeft + (slice.Ink.X - box.X) * scale,
-            boxTop + (slice.Ink.Y - box.Y) * scale,
-            width, height);
+            boxLeft - box.X * scale,
+            boxTop - box.Y * scale,
+            side * scale,
+            side * scale);
 
         // **그림자를 안 깐다.** 맥은 `.shadow(검정 45%, 번짐 2)` 를 붙이지만, 여기서
         // 같은 값을 내려면 알파를 직접 흐려야 하고 그 결과가 그림 둘레에 뿌연 테로
         // 남았다 — 맥의 그것과 다르게 보인다. 없는 편이 어설픈 것보다 낫다.
 
+        // **줄여 그리는 방식을 골라 준다.**
+        //
+        // 시트는 한 칸이 256px 인데 화면에서는 HUD 34pt · 펫 126pt 로 쓴다 — 최대
+        // 7배를 줄인다. WPF 기본(`Linear`)은 이웃 네 점만 섞어서, 그만큼 줄이면
+        // 원본 픽셀 대부분이 아예 안 읽히고 가는 선이 끊겨 보인다. `HighQuality`
+        // (Fant)는 줄어드는 만큼의 넓이를 평균 내서 선이 살아남는다.
+        //
+        // **맥이 같은 판단을 한다** — `MascotSpriteView.interpolation` 이 원본이 크면
+        // `.high` 를 쓴다(작은 픽셀 그림일 때만 최근접). 지금 시트는 256 칸이라 큰 쪽이다.
+        //
+        // `DrawingContext` 에는 직접 걸 수 없어서 묶음을 하나 만들어 거기에 건다.
+        // 격자 부엉이를 `DrawPixelated` 로 감싸는 것과 같은 수법이다.
+        var group = new DrawingGroup();
+        RenderOptions.SetBitmapScalingMode(group, BitmapScalingMode.HighQuality);
+        using (var inner = group.Open())
+        {
+            inner.DrawImage(slice.Image, target);
+        }
+
         if (flipped)
         {
-            // **자리의 가운데를 축으로 돌린다.** 위에서 머리(걷기)나 알맹이 가운데를 이미
-            // 자리 한가운데에 맞춰 놨으므로, 여기서 돌리면 그 점이 제자리에 남는다.
-            // 그려 놓은 상자를 축으로 삼으면 머리가 좌우로 튄다.
+            // **자리의 가운데를 축으로 돌린다.** 묶음 상자를 이미 자리 한가운데에
+            // 놓았으므로 여기서 돌리면 그 점이 제자리에 남는다.
             context.PushTransform(new ScaleTransform(-1, 1, bounds.Left + bounds.Width / 2, bounds.Top));
-            context.DrawImage(slice.Image, target);
+            context.DrawDrawing(group);
             context.Pop();
         }
         else
         {
-            context.DrawImage(slice.Image, target);
+            context.DrawDrawing(group);
         }
 
         return true;
