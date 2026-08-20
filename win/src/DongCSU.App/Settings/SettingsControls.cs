@@ -537,6 +537,20 @@ internal static class Ui
         return formatted.Width;
     }
 
+    /// <summary>
+    /// 알약 글꼴. **그리는 쪽과 재는 쪽이 같은 값을 봐야 해서 여기 한 곳에서 내놓는다.**
+    ///
+    /// 변경 내역의 갈래 딱지는 폭을 못 박는데(<c>SettingsWindow.BadgeWidth</c>), 그 폭은
+    /// 가장 넓은 갈래 이름을 <see cref="TextWidth"/> 로 재서 나온다. 재는 글꼴을 저쪽에
+    /// 따로 적어 두면 이 값을 고칠 때 반드시 한쪽만 고치게 되고, **재는 쪽이 작으면
+    /// 갈래 이름이 잘린다.** 지금은 이름이 다 두 글자라 잘려도 안 보이지만, 갈래가
+    /// 하나 늘거나 이름이 길어지는 순간 드러난다.
+    /// </summary>
+    public const double PillFontSize = 11;
+
+    /// <inheritdoc cref="PillFontSize"/>
+    public static readonly FontWeight PillFontWeight = FontWeights.SemiBold;
+
     /// <summary>상태를 한마디로 알리는 알약.</summary>
     public static Border Pill(SettingsPalette palette, string text, Color color) => new()
     {
@@ -547,8 +561,8 @@ internal static class Ui
         Child = new TextBlock
         {
             Text = text,
-            FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
+            FontSize = PillFontSize,
+            FontWeight = PillFontWeight,
             Foreground = palette.Brush(color),
         },
     };

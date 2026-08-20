@@ -24,6 +24,43 @@ public static class RingRenderer
     /// </summary>
     public const double MinimumFraction = 0.004;
 
+    /// <summary>
+    /// 진행선 둘레 후광의 번짐 반경. **배율 1 기준이고 실제로는 배율을 곱해 쓴다.**
+    /// 맥의 <c>.shadow(color: color.opacity(0.30), radius: s(1.5))</c> 에서 온 값이다.
+    /// </summary>
+    private const double GlowRadius = 1.5;
+
+    /// <summary>후광이 가장 진한 곳(진행선에 붙은 자리)의 불투명도. 맥의 0.30 이다.</summary>
+    private const double GlowOpacity = 0.30;
+
+    /// <summary>
+    /// 후광을 몇 겹으로 나눠 깔지.
+    ///
+    /// **한 겹으로는 후광이 아니라 테두리로 보인다.** 흐림이 아니라 선이라 가장자리가
+    /// 딱 떨어지는데, 배율을 키우면 그 띠가 같이 두꺼워져서 굵은 테두리를 두른 것처럼
+    /// 읽힌다. 겹을 나누면 안쪽으로 갈수록 진해져서 번지는 것에 가까워진다.
+    /// 셋이면 계단이 눈에 안 띄면서 그리는 값도 링당 세 번뿐이다.
+    /// </summary>
+    private const int GlowLayers = 3;
+
+    /// <summary>
+    /// 한 겹의 불투명도.
+    ///
+    /// 겹쳐 칠하면 알파가 더해지는 것이 아니라 **곱으로 쌓인다.** 다 겹친 안쪽이
+    /// <see cref="GlowOpacity"/> 가 되도록 거꾸로 푼 값이다 — <c>1-(1-a)^n = 0.30</c>.
+    /// 겹 수를 바꿔도 가장 진한 곳은 맥과 같게 남는다.
+    /// </summary>
+    private static readonly double GlowLayerOpacity =
+        1 - Math.Pow(1 - GlowOpacity, 1.0 / GlowLayers);
+
+    /// <param name="scale">
+    /// HUD 배율. **후광이 번지는 반경이 이 값을 따라 커진다** — 맥이 <c>s(1.5)</c> 로
+    /// 배율을 곱해 쓰는 자리다. 고정 폭으로 두면 배율을 키웠을 때 번짐만 제자리라
+    /// 후광이 아니라 가늘고 딱딱한 테두리로 보인다.
+    ///
+    /// **두께에서 끌어내지 않고 따로 받는다.** 두께의 기준값이 카드(6·5)와 펫에서
+    /// 다르므로 나눠서 되돌리면 펫에서 틀린 배율이 나온다.
+    /// </param>
     /// <param name="spentColor">
     /// 주간을 다 썼을 때 두 링에 함께 칠할 색. 안 넘기면 각자 제 사용률 색으로 그린다.
     ///
@@ -42,7 +79,8 @@ public static class RingRenderer
         double? weeklyPercent,
         Color trackColor,
         bool grayscale,
-        Color? spentColor = null)
+        Color? spentColor = null,
+        double scale = 1)
     {
         // 선이 지름 밖으로 삐져나가지 않게 두께의 절반만큼 안으로 넣는다.
         var outerRadius = (outerDiameter - outerThickness) / 2;
@@ -50,11 +88,11 @@ public static class RingRenderer
         var innerRadius = (innerDiameter - innerThickness) / 2;
 
         DrawOne(context, center, outerRadius, outerThickness, sessionPercent, trackColor, grayscale,
-            spentColor);
+            spentColor, scale);
         if (innerRadius > innerThickness)
         {
             DrawOne(context, center, innerRadius, innerThickness, weeklyPercent, trackColor, grayscale,
-                spentColor);
+                spentColor, scale);
         }
     }
 
@@ -66,7 +104,8 @@ public static class RingRenderer
         double? percent,
         Color trackColor,
         bool grayscale,
-        Color? spentColor = null)
+        Color? spentColor,
+        double scale)
     {
         context.DrawEllipse(null, Paint.Pen(trackColor, thickness, round: true), center, radius, radius);
 
@@ -81,11 +120,36 @@ public static class RingRenderer
         var fraction = Math.Max(MinimumFraction, Math.Clamp(value, 0, 100) / 100.0);
         var arc = ArcGeometry(center, radius, fraction);
 
-        // 흐림 효과를 쓸 수 없으니, 더 두껍고 옅은 선을 밑에 깔아 번짐을 흉내 낸다.
-        // 링이 배경과 같은 밝기일 때 가장자리가 묻히는 것을 막아 준다.
-        var glow = Color.FromArgb(0x4D, color.R, color.G, color.B);
-        context.DrawGeometry(null, Paint.Pen(glow, thickness + 2, round: true), arc);
+        DrawGlow(context, arc, color, thickness, scale);
         context.DrawGeometry(null, Paint.Pen(color, thickness, round: true), arc);
+    }
+
+    /// <summary>
+    /// 진행선 둘레 후광.
+    ///
+    /// 링이 배경과 같은 밝기일 때 가장자리가 묻히는 것을 막아 준다. 맥은 흐림
+    /// (<c>shadow</c>)으로 번지게 하지만 <see cref="DrawingContext"/> 에는 흐림이 없어서,
+    /// **더 두껍고 옅은 선을 여러 겹 깔아** 흉내 낸다.
+    ///
+    /// **바깥 겹부터 깐다.** 안쪽 겹이 그 위에 겹쳐 칠해지면서 진행선에 붙은 자리가
+    /// 저절로 가장 진해진다 — 겹마다 알파를 따로 계산하지 않아도 번지는 모양이 나온다.
+    /// </summary>
+    private static void DrawGlow(
+        DrawingContext context, Geometry arc, Color color, double thickness, double scale)
+    {
+        // 번지는 반경이 배율을 따라간다. 배율이 0 이하로 들어오면 그릴 것이 없다.
+        var spread = GlowRadius * scale;
+        if (spread <= 0) return;
+
+        var glow = Color.FromArgb(
+            (byte)Math.Round(GlowLayerOpacity * 255), color.R, color.G, color.B);
+
+        for (var layer = GlowLayers; layer >= 1; layer--)
+        {
+            // 선은 두께의 절반씩 양옆으로 자라므로, 밖으로 reach 만큼 나가려면 두 배다.
+            var reach = spread * layer / GlowLayers;
+            context.DrawGeometry(null, Paint.Pen(glow, thickness + reach * 2, round: true), arc);
+        }
     }
 
     /// <summary>12시에서 시계 방향으로 <paramref name="fraction"/> 만큼.</summary>

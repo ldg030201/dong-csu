@@ -694,7 +694,10 @@ public sealed class HudView : FrameworkElement
                 // 주간을 다 썼으면 **두 링 다** 색을 뺀다. 세션은 쓸 수 없어서고,
                 // 주간은 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는
                 // 죽었는데 링은 살아 있어서 아직 뭔가 되는 것처럼 읽힌다.
-                spentColor: ShowsSpent ? palette.RingSpent : null);
+                spentColor: ShowsSpent ? palette.RingSpent : null,
+                // **배율을 넘겨야 후광이 따라 커진다.** 안 넘기면 기본값 1 로 떨어져서
+                // 크게 볼수록 후광이 상대적으로 얇아진다 — 맥은 반경이 1.5×배율이다.
+                scale: s);
             if (ringOpacity < 1) context.Pop();
         }
 

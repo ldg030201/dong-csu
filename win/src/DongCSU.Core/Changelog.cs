@@ -191,6 +191,7 @@ public static class Changelog
                     Notes =
                     [
                         ChangelogNote.Improve("작게 그릴 때 뭉개지던 것을 개선"),
+                        ChangelogNote.Improve("사용량 링 진행선 둘레의 번짐이 크기를 따라가도록 개선"),
                         ChangelogNote.Change("새로 그린 그림으로 교체 (옆모습이 통통해지고 눈·표정이 또렷해짐)"),
                         ChangelogNote.Change("캐릭터 애니메이션을 끄면 흔들어도 어지러워하지 않도록 변경"),
                         ChangelogNote.Fix("그림이 가로로 눌리고 맥보다 작게 그려지던 문제 수정 (들고 있을 때 특히 길쭉했음)"),
@@ -205,6 +206,10 @@ public static class Changelog
                     [
                         ChangelogNote.Improve("창을 닫았다 열어도 보던 탭과 창 자리가 그대로이도록 개선"),
                         ChangelogNote.Improve("확인 창의 버튼에 무엇이 일어나는지 적도록 개선"),
+                        ChangelogNote.Improve("맥판과 어긋나 있던 문구·색·여백을 맞춤"),
+                        ChangelogNote.Improve("밝은 테마에서 아이콘 미리보기를 어두운 판 위에 그리도록 개선 (HUD 에서 보이는 대로)"),
+                        ChangelogNote.Fix("변경 내역을 내리면 업데이트 버튼과 지금 버전이 밀려 나가던 문제 수정"),
+                        ChangelogNote.Fix("창을 좁히면 펫·계정 탭의 오른쪽이 잘려 나가던 문제 수정"),
                         ChangelogNote.Fix("설정을 잠그는 조건이 틀렸던 문제 수정 (HUD 를 꺼 두면 크기·불투명도를 못 고르고, 펫 모드가 아닌데 펫 링은 고를 수 있었음)"),
                         ChangelogNote.Fix("모든 설정 초기화가 일부 설정을 되돌리지 않던 문제 수정"),
                     ],

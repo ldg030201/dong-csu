@@ -1,6 +1,8 @@
+using System.Globalization;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
@@ -76,16 +78,27 @@ public sealed class SettingsWindow : Window
     /// <summary>
     /// 탭 목록. **진단 통로(<c>--probe-layout</c>)가 그대로 돌린다** — 거기에 손으로 또
     /// 적으면 탭을 늘렸을 때 새 탭만 조용히 안 재진다.
+    ///
+    /// **키를 바꾸지 마라.** 변경 내역이 <c>tab: "pet"</c> 으로 탭을 가리키고
+    /// (<c>ChangelogGroup.Tab</c>), 저장된 설정 탭도 이 값으로 남아 있다. 제목은
+    /// 사이드바와 본문 제목이 같이 쓴다(<see cref="TabTitle"/>).
     /// </summary>
     internal static readonly (string Key, string Title)[] TabList =
     [
         ("status", "상태"),
         ("display", "표시"),
         ("icon", "아이콘"),
-        ("pet", "펫"),
+        ("pet", "펫 모드"),
         ("account", "계정"),
         ("version", "버전"),
     ];
+
+    /// <summary>
+    /// 탭 내용 둘레 여백. **한 곳에서만 적는다** — 변경 내역 목록에 줄 높이를 여기서 빼기
+    /// 때문에(<see cref="ChangelogHeight"/>), 두 곳에 적으면 버전 탭이 뷰포트보다 딱
+    /// 이만큼 길어진다.
+    /// </summary>
+    private static readonly Thickness BodyPadding = new(24, 22, 24, 18);
 
     private SettingsPalette Palette => SettingsPalette.For(IsDarkTheme());
 
@@ -187,7 +200,7 @@ public sealed class SettingsWindow : Window
         right.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         right.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-        body.Margin = new Thickness(24, 22, 24, 18);
+        body.Margin = BodyPadding;
         var (scrollHost, scroll) = Ui.Scroller(palette, body);
         scroller = scroll;
         Grid.SetRow(scrollHost, 0);
@@ -226,28 +239,35 @@ public sealed class SettingsWindow : Window
 
             // 아이콘 + 이름. **변경 내역 묶음이 같은 아이콘을 쓴다** — 어느 메뉴 이야기인지
             // 여기와 눈으로 맞춰 보라고 붙인 것이라, 한쪽만 바꾸면 뜻이 없어진다.
-            var row = new StackPanel { Orientation = Orientation.Horizontal };
-            row.Children.Add(TabIcon.Make(TabList[i].Key, 13, palette.Brush(palette.Secondary)));
-            row.Children.Add(new TextBlock
+            //
+            // **`StackPanel` 이 아니라 `DockPanel` 이다.** 새 버전 표시가 줄 오른쪽 끝에
+            // 붙어야 하는데, 가로 `StackPanel` 은 자식을 왼쪽부터 붙여 놓기만 한다.
+            var row = new DockPanel { LastChildFill = false };
+            var icon = TabIcon.Make(TabList[i].Key, 13, palette.Brush(palette.Secondary));
+            DockPanel.SetDock(icon, Dock.Left);
+            row.Children.Add(icon);
+
+            var label = new TextBlock
             {
                 Text = TabList[i].Title,
                 FontSize = 13,
                 Margin = new Thickness(8, 0, 0, 0),
                 VerticalAlignment = VerticalAlignment.Center,
-            });
+            };
+            DockPanel.SetDock(label, Dock.Left);
+            row.Children.Add(label);
 
             // **새 버전이 있을 때만.** 설정 창을 열어도 어느 탭을 봐야 하는지 알 방법이
             // 없었다 — HUD 딱지는 창을 열면 사라진다.
+            //
+            // 점이 아니라 **버전 탭과 같은 내려받기 화살표**다(맥도 그렇다). 점은 무슨
+            // 뜻인지 알 수 없지만 화살표는 받을 것이 있다는 말이라, 아래 아이콘과 같은
+            // 그림이 오른쪽에 한 번 더 뜨는 것이 뜻이 통한다.
             if (TabList[i].Key == "version" && updates.HasUpdate)
             {
-                row.Children.Add(new System.Windows.Shapes.Ellipse
-                {
-                    Width = 7,
-                    Height = 7,
-                    Fill = palette.Brush(palette.Accent),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Margin = new Thickness(6, 1, 0, 0),
-                });
+                var badge = TabIcon.Make("version", 12, palette.Brush(palette.Accent));
+                DockPanel.SetDock(badge, Dock.Right);
+                row.Children.Add(badge);
             }
 
             var item = new Border
@@ -280,11 +300,13 @@ public sealed class SettingsWindow : Window
             var chosen = i == Selected;
             navItems[i].Background = palette.Brush(chosen ? palette.AccentSoft : Colors.Transparent);
 
-            var row = (StackPanel)navItems[i].Child;
+            var row = (System.Windows.Controls.Panel)navItems[i].Child;
             var brush = palette.Brush(chosen ? palette.Accent : palette.Secondary);
             // 아이콘도 같이 물든다. 글자만 바꾸면 고른 줄에서 아이콘만 흐릿하게 남는다.
             ((TextBlock)row.Children[0]).Foreground = brush;
 
+            // 뒤에 새 버전 표시가 붙어 있을 수 있다. **거기는 손대지 않는다** — 고른 줄에서도
+            // 강조색으로 남아야 무엇을 알리는 표시인지 그대로 읽힌다.
             var text = (TextBlock)row.Children[1];
             text.Foreground = brush;
             text.FontWeight = chosen ? FontWeights.SemiBold : FontWeights.Normal;
@@ -308,7 +330,9 @@ public sealed class SettingsWindow : Window
         Grid.SetColumn(footerVersion, 0);
         grid.Children.Add(footerVersion);
 
-        var quit = Ui.Button(palette, $"{AppInfo.Name} 종료", ConfirmQuit);
+        // **앱 이름을 붙이지 않는다.** 이 창이 그 앱의 설정 창이라 어느 앱을 끄는지는
+        // 이미 정해져 있고, 무엇이 사라지는지는 눌렀을 때 뜨는 확인 창이 말한다. 맥과 같다.
+        var quit = Ui.Button(palette, "종료", ConfirmQuit);
         Grid.SetColumn(quit, 1);
         grid.Children.Add(quit);
 
@@ -376,12 +400,18 @@ public sealed class SettingsWindow : Window
 
     private static StackPanel Stack() => new();
 
+    /// <summary>
+    /// 탭 맨 위 제목. **사이드바와 같은 곳(<see cref="TabList"/>)에서 나온다** —
+    /// 두 곳에 적어 두면 탭 이름을 바꿨을 때 사이드바만 바뀌고 본문은 옛 이름으로 남는다.
+    /// </summary>
+    private TextBlock TabTitle(SettingsPalette palette) => Ui.Title(palette, TabList[Selected].Title);
+
     // ── 상태 ────────────────────────────────────────────────────────
 
     private UIElement StatusTab(SettingsPalette palette)
     {
         var panel = Stack();
-        panel.Children.Add(Ui.Title(palette, "상태"));
+        panel.Children.Add(TabTitle(palette));
 
         var now = DateTimeOffset.Now;
         var header = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
@@ -412,7 +442,8 @@ public sealed class SettingsWindow : Window
             Ui.Divider(palette),
             InfoRow(palette, "다음 조회", RemainingTime.CountdownText(store.NextPollAt, now)),
             Ui.Divider(palette),
-            InfoRow(palette, "조회 주기", PollTitle(settings.PollIntervalSeconds))));
+            InfoRow(palette, "조회 주기",
+                PollTitle(PollChoices[PollIndex(settings.PollIntervalSeconds)]))));
 
         if (store.ErrorText is { } error) panel.Children.Add(Ui.Hint(palette, $"마지막 조회 실패: {error}"));
 
@@ -466,22 +497,52 @@ public sealed class SettingsWindow : Window
             Foreground = palette.Brush(palette.Secondary),
         });
 
-    private static string PollTitle(int seconds) => seconds switch
-    {
-        60 => "1분",
-        180 => "3분",
-        300 => "5분",
-        1800 => "30분",
-        _ => "10분",
-    };
+    /// <summary>
+    /// 고를 수 있는 조회 주기. **초와 문구가 한 곳에서 나온다** — 예전에는 분절 컨트롤에
+    /// 문구를 따로 적어 둬서, 하나만 고치면 고른 값과 보이는 글이 어긋났다.
+    /// 맥은 <c>PollInterval</c> 열거값이 제목을 들고 있다.
+    ///
+    /// 너무 조이면 429가 나므로 아무 초나 넣지 못하게 정해진 값 중에서 고르게 한다.
+    /// </summary>
+    private static readonly int[] PollChoices = [60, 180, 300, 600, 1800];
 
+    /// <summary>
+    /// 분절 컨트롤에 늘어놓을 문구. <b>글로 읽는 자리보다 짧다.</b>
+    ///
+    /// 맥은 여기에 펼침 메뉴를 써서 한 번에 하나만 보이므로 "10분마다" 가 그대로 들어간다.
+    /// 우리는 분절 컨트롤이라 <b>다섯 칸이 한 줄에 늘어선다</b> — "마다" 를 다섯 번 되풀이하면
+    /// 최소 폭(480)에서 96pt 가 잘려 나가고, 잘리지 않더라도 줄 이름이 이미 "조회 주기" 라
+    /// 칸마다 또 붙일 말이 아니다. <c>--probe-layout</c> 이 이 잘림을 잡았다.
+    /// </summary>
+    private static string[] PollLabels => [.. PollChoices.Select(PollLabel)];
+
+    private static string PollLabel(int seconds) =>
+        seconds < 3600 ? $"{seconds / 60}분" : $"{seconds / 3600}시간";
+
+    /// <summary>
+    /// 글로 읽는 자리(상태 탭의 "조회 주기" 값). <b>맥의 <c>PollInterval.title</c> 과 같다.</b>
+    ///
+    /// 여기는 값 하나를 문장처럼 읽는 자리라 "10분" 만으로는 무엇이 10분인지 안 잡힌다.
+    /// </summary>
+    private static string PollTitle(int seconds) =>
+        seconds < 3600 ? $"{seconds / 60}분마다" : $"{seconds / 3600}시간마다";
+
+    /// <summary>
+    /// 지금 주기가 목록에서 몇 번째인지. **모르는 값이면 기본값(10분) 자리로 떨어뜨린다** —
+    /// 옛 설정 파일이나 손으로 고친 값이 들어오면 <c>IndexOf</c> 가 -1 을 돌려준다.
+    /// </summary>
+    private static int PollIndex(int seconds)
+    {
+        var found = Array.IndexOf(PollChoices, seconds);
+        return found >= 0 ? found : Array.IndexOf(PollChoices, 600);
+    }
 
     // ── 표시 ────────────────────────────────────────────────────────
 
     private UIElement DisplayTab(SettingsPalette palette)
     {
         var panel = Stack();
-        panel.Children.Add(Ui.Title(palette, "표시"));
+        panel.Children.Add(TabTitle(palette));
 
         var visible = settings.IsHudVisible;
         // 펫에 들어가 있으면 복귀 지점이 기준이다.
@@ -548,8 +609,8 @@ public sealed class SettingsWindow : Window
         panel.Children.Add(Ui.Section(palette, "조회"));
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "조회 주기", Ui.Segmented(palette,
-                ["1분", "3분", "5분", "10분", "30분"],
-                Math.Max(0, Array.IndexOf(PollChoices, settings.PollIntervalSeconds)),
+                PollLabels,
+                PollIndex(settings.PollIntervalSeconds),
                 index => { settings.PollIntervalSeconds = PollChoices[index]; ApplyAndRedraw(); }),
                 hint: "너무 조이면 서버가 요청을 제한한다."),
             Ui.Divider(palette),
@@ -575,8 +636,6 @@ public sealed class SettingsWindow : Window
 
         return panel;
     }
-
-    private static readonly int[] PollChoices = [60, 180, 300, 600, 1800];
 
     /// <summary>
     /// 설정 창의 종료 버튼은 **실수로 누르기 쉬운 자리라** 한 번 확인한다. 종료하면
@@ -628,7 +687,7 @@ public sealed class SettingsWindow : Window
     private UIElement IconTab(SettingsPalette palette)
     {
         var panel = Stack();
-        panel.Children.Add(Ui.Title(palette, "아이콘"));
+        panel.Children.Add(TabTitle(palette));
         panel.Children.Add(Ui.Hint(palette, "HUD 링 가운데에 그릴 그림이다."));
 
         foreach (var group in Enum.GetValues<IconStyleGroup>())
@@ -681,13 +740,18 @@ public sealed class SettingsWindow : Window
         var preview = new IconPreview
         {
             IconStyle = style,
-            IsDark = palette.IsDark,
+            // **테마가 아니라 판을 따른다.** 이 값은 Clawd 눈의 먹색 알파를 고르는 데만
+            // 쓰이는데, `IconPreview` 가 어느 테마에서든 어두운 판을 깔고 그 위에 그리므로
+            // 창이 밝아도 눈은 어두운 쪽이 맞다.
+            IsDark = true,
             Width = 44,
             Height = 44,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
 
         var stack = new StackPanel();
+        // 어두운 판은 `IconPreview` 가 제 안에서 깐다. **여기서 또 두르지 않는다** —
+        // 두 겹이 되면 판 안에 판이 생겨 모서리가 두 번 깎인다.
         stack.Children.Add(preview);
         stack.Children.Add(new TextBlock
         {
@@ -734,7 +798,7 @@ public sealed class SettingsWindow : Window
     private UIElement PetTab(SettingsPalette palette)
     {
         var panel = Stack();
-        panel.Children.Add(Ui.Title(palette, "펫"));
+        panel.Children.Add(TabTitle(palette));
 
         var visible = settings.IsHudVisible;
         var isPet = settings.Mode == HudMode.Pet;
@@ -747,10 +811,11 @@ public sealed class SettingsWindow : Window
             // 펫 뒤에만 두르는 링이라 펫 모드가 아니면 고를 것이 없다. 열어 두면 눌러도
             // 화면이 그대로라 고장으로 보인다.
             Ui.Row(palette, "사용량 링", Ui.Segmented(palette,
-                [.. Enum.GetValues<PetRingDisplay>().Select(d => d.Title())],
+                RingTitles,
                 (int)settings.PetRingDisplay,
                 index => { settings.PetRingDisplay = (PetRingDisplay)index; Apply(); }),
-                hint: "펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간.",
+                hint: "펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간. "
+                    + "\"올리면\"은 마우스를 올려둔 동안에만 나타난다.",
                 enabled: visible && isPet)));
 
         // 펫 모드에서만 도는 것들이라 제목에 적어 둔다. 안 그러면 왜 잠겼는지 알 수 없다.
@@ -778,12 +843,33 @@ public sealed class SettingsWindow : Window
         return panel;
     }
 
+    /// <summary>
+    /// 사용량 링 분절 컨트롤의 문구. **<c>PetRingDisplay.Title()</c> 을 그대로 쓰지 않는다.**
+    ///
+    /// 거기 "마우스를 올리면" 이 88pt 라 세 칸이 290pt 가 되는데, 최소 크기(480)에서 이
+    /// 카드가 쓸 수 있는 가로는 그보다 좁다 — 가로 스크롤이 없어서 오른쪽 칸이 막대도
+    /// 없이 잘려 나갔다(<c>--probe-layout</c> 이 18pt 로 잡았다). 맥은 같은 자리에 펼침
+    /// 메뉴를 써서 폭이 안 걸린다.
+    ///
+    /// 짧은 이름만 칸에 넣고 <b>무슨 뜻인지는 아래 설명 줄이 받는다.</b> 값마다 하나씩
+    /// 뽑으므로 열거값을 늘려도 칸 수는 저절로 맞는다.
+    /// </summary>
+    private static string[] RingTitles =>
+        [.. Enum.GetValues<PetRingDisplay>().Select(ShortRingTitle)];
+
+    private static string ShortRingTitle(PetRingDisplay display) => display switch
+    {
+        PetRingDisplay.Always => "항상",
+        PetRingDisplay.Never => "안 함",
+        _ => "올리면",
+    };
+
     // ── 계정 ────────────────────────────────────────────────────────
 
     private UIElement AccountTab(SettingsPalette palette)
     {
         var panel = Stack();
-        panel.Children.Add(Ui.Title(palette, "계정"));
+        panel.Children.Add(TabTitle(palette));
 
         // 자격 증명을 어디서 찾았고 왜 못 읽었는지 그대로 보여준다.
         //
@@ -838,6 +924,11 @@ public sealed class SettingsWindow : Window
                 Text = attempt.Path,
                 FontSize = 11.5,
                 TextWrapping = TextWrapping.Wrap,
+                // **경로는 접히지 않는다.** 띄어쓰기가 없어서 줄바꿈이 걸릴 자리가 없고,
+                // 가로 스크롤도 없어서 긴 경로(WSL 자리는 더 길다)는 오른쪽이 소리 없이
+                // 사라진다. 말줄임으로 끊고 전체는 마우스를 올리면 보인다.
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                ToolTip = attempt.Path,
                 Foreground = palette.Brush(attempt.Found ? palette.Primary : palette.Secondary),
             });
             row.Children.Add(new TextBlock
@@ -893,9 +984,30 @@ public sealed class SettingsWindow : Window
             ShowTab();
         }, Ui.ButtonKind.Accent));
 
-        panel.Children.Add(Ui.ButtonRow([.. buttons]));
+        panel.Children.Add(WrappingButtonRow([.. buttons]));
 
         return panel;
+    }
+
+    /// <summary>
+    /// 접히는 단추 줄. **<c>Ui.ButtonRow</c> 대신 여기서만 쓴다.**
+    ///
+    /// 계정 탭은 단추가 셋에서 넷(재로그인이 붙는다)이라 최소 크기(480)에서 한 줄에 못
+    /// 들어간다. 가로 <c>StackPanel</c> 은 그래도 한 줄로 늘어놓고 넘긴 만큼은 잘려 나가서
+    /// 오른쪽 단추가 막대도 없이 사라졌다(<c>--probe-layout</c> 이 39pt 로 잡았다).
+    /// <c>WrapPanel</c> 은 자리가 모자라면 아랫줄로 넘긴다.
+    ///
+    /// 아래 여백 8 은 두 줄이 됐을 때 줄끼리 붙지 않게 하는 것이다.
+    /// </summary>
+    private static UIElement WrappingButtonRow(params UIElement[] buttons)
+    {
+        var row = new WrapPanel { Margin = new Thickness(0, 12, 0, 0) };
+        foreach (var button in buttons)
+        {
+            button.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 8, 8));
+            row.Children.Add(button);
+        }
+        return row;
     }
 
     /// <summary>
@@ -946,10 +1058,17 @@ public sealed class SettingsWindow : Window
 
     // ── 버전 ────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// 버전 탭. **머리는 위에 붙어 있고 변경 내역만 제 안에서 넘어간다.**
+    ///
+    /// 한 덩어리로 넘기면 변경 내역을 읽으려고 내렸을 때 지금 버전과 "업데이트 확인"
+    /// 버튼이 화면 밖으로 밀려 나간다 — 받을 것이 있는지 보러 온 탭에서 정작 그게
+    /// 안 보인다. 맥이 <c>tabBodyHeight</c> 로 하는 것과 같은 자리다.
+    /// </summary>
     private UIElement VersionTab(SettingsPalette palette)
     {
         var panel = Stack();
-        panel.Children.Add(Ui.Title(palette, "버전"));
+        panel.Children.Add(TabTitle(palette));
 
         var big = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 2) };
         big.Children.Add(new TextBlock
@@ -994,8 +1113,10 @@ public sealed class SettingsWindow : Window
         // 무엇을 눌러야 하는지 정한다.
         if (updates.HasUpdate && updates.IsInstalled && !updates.IsBusy)
         {
+            // **번호를 박아 넣지 않는다.** 바로 윗줄이 이미 "새 버전 2.3.1" 이라고
+            // 말하고 있어서, 버튼에 또 적으면 같은 번호가 두 번 나온다. 맥과 같다.
             buttons.Insert(0, Ui.Button(palette,
-                $"{updates.LatestVersion} 로 업데이트",
+                "업데이트",
                 async () =>
                 {
                     ShowTab();
@@ -1025,16 +1146,86 @@ public sealed class SettingsWindow : Window
                 hint: AppInfo.IsTestBuild ? "테스트판은 새 버전을 확인하지 않습니다" : null,
                 enabled: !AppInfo.IsTestBuild)));
 
+        // 목록의 이름표라 목록과 같이 넘어가면 안 된다. 여기까지가 붙어 있는 머리다.
         panel.Children.Add(Ui.Section(palette, "변경 내역"));
 
         // 원격 것으로 갈아치우지 않고 **합친다** — 방금 올린 버전을 쓰는 앱은 자기보다
         // 뒤처진 목록을 받을 수 있고, 그러면 자기 버전 항목이 화면에서 사라진다.
+        var list = Stack();
+        // 오른쪽은 이 목록의 스크롤 막대 자리다. 안 비우면 버전 카드가 막대에 깔린다.
+        list.Margin = new Thickness(0, 0, 12, 0);
         foreach (var entry in Changelog.Merge(updates.RemoteEntries))
         {
-            panel.Children.Add(ChangelogEntryView(palette, entry));
+            list.Children.Add(ChangelogEntryView(palette, entry));
         }
 
+        var (listHost, listScroll) = Ui.Scroller(palette, list);
+
+        // 읽던 자리를 지킨다. 조회가 들어올 때마다 이 탭이 다시 그려지는데, 그때마다 맨
+        // 위로 튀면 긴 목록을 읽을 수가 없다 — 바깥 스크롤에서 하던 것과 같은 처리다.
+        // **값을 먼저 챙겨 둔다** — 새 스크롤이 처음 자리를 잡으면서 0 으로 덮어쓴다.
+        var readAt = changelogOffset;
+        listScroll.ScrollChanged += (_, _) => changelogOffset = listScroll.VerticalOffset;
+        if (readAt > 0)
+        {
+            Dispatcher.BeginInvoke(
+                new Action(() => listScroll.ScrollToVerticalOffset(readAt)),
+                DispatcherPriority.Loaded);
+        }
+
+        // **목록의 높이를 못 박는다.** 바깥 스크롤은 세로 높이를 무한히 제안해서, 안
+        // 막으면 목록이 제 길이대로 늘어나고 머리가 그만큼 위로 밀려난다 — 고치기 전이
+        // 정확히 그 모습이었다. 맥이 `tabBodyHeight` 로 하는 것과 같은 자리다.
+        //
+        // **높이를 못 박는 자리로 탭 전체가 아니라 목록을 고른 이유가 있다.** 탭 전체를
+        // 못 박으면 그보다 머리가 길어졌을 때(업데이트를 받는 중이면 카드가 하나 더 붙는다)
+        // 넘친 부분이 바깥 스크롤에도 안 잡혀 영영 못 보게 된다. 목록만 막아 두면 넘치는
+        // 만큼은 늘 바깥 스크롤이 받는다 — 좁을 때 밀려나기는 해도 사라지지는 않는다.
+        if (scroller is { } view)
+        {
+            listHost.SetBinding(FrameworkElement.MaxHeightProperty, new System.Windows.Data.Binding(nameof(ScrollViewer.ViewportHeight))
+            {
+                Source = view,
+                Converter = ChangelogHeight.Instance,
+            });
+        }
+        panel.Children.Add(listHost);
+
         return panel;
+    }
+
+    /// <summary>변경 내역 목록에서 읽던 자리. 탭을 다시 그려도 여기로 되돌린다.</summary>
+    private double changelogOffset;
+
+    /// <summary>
+    /// 바깥 스크롤의 뷰포트 높이 → 변경 내역 목록에 줄 높이.
+    /// </summary>
+    private sealed class ChangelogHeight : IValueConverter
+    {
+        public static readonly ChangelogHeight Instance = new();
+
+        /// <summary>
+        /// 목록 위에 있는 것들(제목·지금 버전·버튼 줄·확인 카드)이 쓸 자리.
+        ///
+        /// **재지 않고 어림한다.** 실제 머리가 이보다 길면 그만큼 탭이 뷰포트를 넘고,
+        /// 넘친 만큼은 바깥 스크롤이 받는다 — 틀려도 무엇이 사라지지는 않는다.
+        /// </summary>
+        private const double HeadAllowance = 300;
+
+        /// <summary>아주 좁은 창에서도 목록에 이만큼은 준다. 더 얇으면 한 줄도 안 보인다.</summary>
+        private const double MinHeight = 120;
+
+        public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+        {
+            // 처음 한 판은 뷰포트가 아직 0 이다. 배치가 끝나 값이 들어오면 이 묶음이
+            // 다시 걸려 제 높이로 앉는다.
+            var viewport = value is double height ? height : 0;
+            var room = viewport - BodyPadding.Top - BodyPadding.Bottom - HeadAllowance;
+            return Math.Max(MinHeight, room);
+        }
+
+        public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+            => throw new NotSupportedException();
     }
 
     /// <summary>
@@ -1192,19 +1383,37 @@ public sealed class SettingsWindow : Window
     // 아이콘 옆으로 비끼고, 딸린 줄이 제목과 다른 자리에서 시작한다.
 
     private const double RuleWidth = 2;
-    /// <summary>세로줄을 아이콘 한가운데로 내리는 왼쪽 여백.</summary>
+    /// <summary>
+    /// 세로줄을 아이콘 한가운데로 내리는 왼쪽 여백.
+    ///
+    /// **맥은 6.5 인데 여기는 7 이다.** 맥의 SF Symbol 자리가 15 이고 우리 Segoe 글리프
+    /// 자리는 16 이라, 숫자를 맞추면 세로줄이 아이콘 한가운데에서 반 픽셀 비낀다.
+    /// 맞출 것은 값이 아니라 <b>아이콘 한가운데</b>라는 산식이다.
+    /// </summary>
     private const double RuleInset = (TabIcon.Width - RuleWidth) / 2;
-    /// <summary>제목 글자가 시작하는 자리. 딸린 줄도 여기에 맞춘다.</summary>
-    private const double TextInset = TabIcon.Width + 6;
+
+    /// <summary>
+    /// 아이콘과 제목 사이. **맥과 같은 들여쓰기(20)가 나오게 잡은 값이다** —
+    /// 맥은 아이콘 15 + 사이 5, 우리는 아이콘 16 + 사이 4.
+    /// </summary>
+    private const double IconGap = 4;
+
+    /// <summary>제목 글자가 시작하는 자리. 딸린 줄도 여기에 맞춘다. 맥과 같은 20 이다.</summary>
+    private const double TextInset = TabIcon.Width + IconGap;
 
     /// <summary>
     /// 갈래 딱지 폭. **가장 넓은 갈래 이름에서 뽑는다.**
     ///
     /// 눈대중으로 잡으면 좁을 때는 글자가 잘리고 넓을 때는 뒤따르는 글이 멀찍이 떨어져
     /// 보인다. 갈래를 하나 더 만들어도 여기가 알아서 따라온다.
+    ///
+    /// **재는 글꼴은 <see cref="Ui.Pill"/> 이 실제로 그리는 글꼴이어야 한다.** 한동안
+    /// 10pt Medium 으로 재고 11pt SemiBold 로 그렸는데, 갈래 이름이 전부 두 글자라
+    /// 여백에 묻혀 안 드러났을 뿐이다 — 세 글자짜리 갈래를 만드는 날 잘렸다.
+    /// 뒤에 더하는 18 은 알약 좌우 여백(8+8)에 2pt 여유다.
     /// </summary>
     private static readonly double BadgeWidth = Enum.GetValues<ChangeKind>()
-        .Max(kind => Ui.TextWidth(kind.Title(), 10, FontWeights.Medium)) + 18;
+        .Max(kind => Ui.TextWidth(kind.Title(), Ui.PillFontSize, Ui.PillFontWeight)) + 18;
 
     /// <summary>
     /// 기능 묶음 하나. 대분류를 달고, 딸린 줄들을 세로줄로 묶어 준다.
@@ -1290,8 +1499,13 @@ public sealed class SettingsWindow : Window
     {
         ChangeKind.New => palette.Good,
         ChangeKind.Improve => palette.Accent,
-        ChangeKind.Change => palette.Test,
-        ChangeKind.Fix => palette.Warning,
+        // **`Test` 를 쓰지 않는다.** 그 보라는 '테스트 빌드' 딱지의 색이라, 한 화면에
+        // 둘이 같이 뜨면 뜻이 겹쳐서 어느 쪽이 무슨 말인지 흐려진다.
+        ChangeKind.Change => palette.Changed,
+        // **`Warning` 을 쓰지 않는다.** 그 호박색은 재로그인 필요 · 오래된 값 · 만료 ·
+        // 베타처럼 **지금 문제가 있다**는 자리에 쓴다. 갈래의 '오류'는 반대로 이미
+        // 고쳐진 것이라, 맥과 같은 주황으로 갈라 둔다.
+        ChangeKind.Fix => palette.Fixed,
         _ => palette.Faint,
     };
 
