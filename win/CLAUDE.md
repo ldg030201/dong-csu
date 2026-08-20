@@ -162,6 +162,27 @@ DongCSU.exe --render-menubar out.png 32 6   # 트레이 아이콘. 기분마다 
 > (`Diagnostics.AttachToConsole`). 그 처리를 빼면 PowerShell 에서 실행해도 아무것도
 > 안 보인다 — 1.1.0 에서 실제로 그랬다.
 
+### 스크립트에서 부를 때 걸리는 것 둘
+
+`WinExe` 라서 생기는 함정이고 **둘 다 실제로 CI 를 빨갛게 만들었다.**
+
+**하나 — `& $exe` 로 부르면 종료 코드를 못 받는다.** PowerShell 은 창 프로그램이
+끝나기를 기다리지 않아서 `$LASTEXITCODE` 가 아예 안 채워진다(`$null`). `$null -ne 0`
+이 참이라 **통과했는데도 실패로 떨어진다.** `Start-Process -Wait -PassThru` 로 부르고
+`.ExitCode` 를 봐라.
+
+```powershell
+$run = Start-Process -FilePath $exe -ArgumentList '--probe-mascot' `
+  -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log
+Get-Content $log -Encoding UTF8
+if ($run.ExitCode -ne 0) { exit 1 }
+```
+
+**둘 — 출력을 파이프로 받으면 사라질 수 있었다.** 붙을 부모 콘솔이 없으면
+`AllocConsole()` 이 새 콘솔을 만들고 **그것이 표준 핸들을 덮어써서**, 찍은 것이 아무도
+안 보는 콘솔로 간다. 지금은 `Console.IsOutputRedirected` 면 아예 안 붙고 UTF-8 로
+못 박는다 — 안 그러면 코드페이지 949 로 나가서 한글이 깨진다.
+
 ## 부엉이
 
 **여기서 부엉이를 고치지 않는다.** 그림의 원본은 맥 소스이고 `shared/owl.json` 으로

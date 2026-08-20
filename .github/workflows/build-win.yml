@@ -67,9 +67,16 @@ jobs:
       - name: 시트가 칸 표와 맞는지
         shell: pwsh
         run: |
+          # **`& $exe` 로 부르지 마라.** 이 앱은 `WinExe`(창 프로그램)라 PowerShell 이
+          # 끝나기를 기다리지 않고, 그러면 `$LASTEXITCODE` 가 아예 안 채워진다(`$null`).
+          # `$null -ne 0` 이 참이라 **늘 실패로 떨어진다** — 실제로 "통과" 를 찍고도
+          # 빨개졌다. 앞으로 앱을 부르는 검사를 더할 때도 이 방식을 그대로 써라.
           $exe = "src/DongCSU.App/bin/Release/net10.0-windows/win-x64/DongCSU.exe"
-          & $exe --probe-mascot
-          if ($LASTEXITCODE -ne 0) {
+          $log = Join-Path $env:RUNNER_TEMP "probe-mascot.txt"
+          $run = Start-Process -FilePath $exe -ArgumentList '--probe-mascot' `
+            -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log
+          Get-Content $log -Encoding UTF8
+          if ($run.ExitCode -ne 0) {
             Write-Error "시트와 MascotSheet 의 칸 표가 어긋난다 — 맥 MascotSprite.swift 를 다시 봐라"
             exit 1
           }
