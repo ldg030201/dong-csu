@@ -315,6 +315,83 @@ public class PetMotionTests
         Assert.Null(pet.Gait);
     }
 
+    // ── 탈진 · 어지러움 ────────────────────────────────────────────
+
+    /// <summary>탈진하면 제 발로 산책 나갈 기운이 없다. 깨울 이유도 없다.</summary>
+    [Fact]
+    public void 탈진하면_걷기_시작하지_않는다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(7)) { IsDrained = true };
+
+        pet.Tick(Desk());
+        clock.Advance(TimeSpan.FromSeconds(4));
+        var tick = pet.Tick(Desk());
+
+        Assert.Null(tick.Gait);
+        Assert.Null(tick.NextWakeup);
+    }
+
+    /// <summary>
+    /// **지친 것이지 멎은 것이 아니다.** 안 비키면 화면을 가린 채로 굳는다 —
+    /// 주간 소진(아예 멈춘다)과 갈리는 자리가 여기다.
+    /// </summary>
+    [Fact]
+    public void 탈진해도_커서는_피한다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(7)) { IsDrained = true };
+        var stage = Desk();
+        stage.Cursor = new PetPoint(900, 580);
+
+        Assert.True(pet.RequestDodge(stage));
+
+        var moved = pet.Tick(stage);
+        Assert.NotNull(moved.MoveTo);
+        Assert.True(moved.MoveTo!.Value.X > stage.Window.X, "탈진해도 커서 반대쪽으로 가야 한다");
+    }
+
+    /// <summary>어지러운 동안에는 전부 멈춘다. 비틀거리는 정지 그림이 옆으로 미끄러지면 안 된다.</summary>
+    [Fact]
+    public void 어지러운_동안에는_걷지도_비키지도_않는다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(7)) { IsDizzy = true };
+        var stage = Desk();
+
+        pet.Tick(stage);
+        clock.Advance(TimeSpan.FromSeconds(4));
+        var tick = pet.Tick(stage);
+
+        Assert.Null(tick.Gait);
+        Assert.Null(tick.NextWakeup);
+
+        stage.Cursor = new PetPoint(900, 580);
+        Assert.False(pet.RequestDodge(stage));
+    }
+
+    /// <summary>2.4초가 지나 어지러움이 풀리면 다시 걸어야 한다. 안 그러면 흔든 뒤로 영영 안 움직인다.</summary>
+    [Fact]
+    public void 어지러움이_풀리면_다시_걷는다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(7));
+
+        pet.Tick(Desk());
+        clock.Advance(TimeSpan.FromSeconds(4));
+        Assert.Equal(PetGait.Walk, pet.Tick(Desk()).Gait);
+
+        // 걷던 중에 흔들렸다 → 그 자리에 선다.
+        pet.IsDizzy = true;
+        Assert.Null(pet.Tick(Desk()).Gait);
+
+        pet.IsDizzy = false;
+        // 쉬는 시간(최대 11초)을 넉넉히 넘긴다.
+        clock.Advance(TimeSpan.FromSeconds(12));
+
+        Assert.Equal(PetGait.Walk, pet.Tick(Desk()).Gait);
+    }
+
     // ── 바라보는 쪽 ────────────────────────────────────────────────
 
     /// <summary>커서에게서 물러나는 쪽을 보고 걷는다. 시트의 옆모습이 이걸로 뒤집힌다.</summary>

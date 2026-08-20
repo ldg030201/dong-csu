@@ -20,6 +20,13 @@ public static partial class Diagnostics
         exitCode = 0;
         if (args.Length == 0) return false;
 
+        // **Velopack 인자는 콘솔에 붙기 전에 흘려보낸다.** 설치·업데이트 훅은 조용히
+        // 돌아야 하는데, `AttachToConsole()` 이 먼저 불리면 붙을 부모 콘솔이 없어
+        // `AllocConsole()` 이 검은 창을 하나 띄운다 — 조용한 설치 중에 창이 번쩍인다.
+        //
+        // **`args[0]` 만 보지 않는다.** Velopack 이 인자 순서를 바꿔도 설치가 안 깨져야 한다.
+        if (args.Any(IsVelopackArgument)) return false;
+
         AttachToConsole();
 
         switch (args[0])
@@ -35,6 +42,12 @@ public static partial class Diagnostics
 
             case "--render-owl":
                 exitCode = Rendering.RenderProbe.Owl(args);
+                return true;
+
+            // 트레이 아이콘을 기분마다 한 줄, 프레임마다 한 칸으로 늘어놓는다.
+            // 한 칸이 1px까지 작아지는 자리라 눈으로 확인할 통로가 필요하다.
+            case "--render-menubar":
+                exitCode = Rendering.RenderProbe.Menubar(args);
                 return true;
 
             case "--version":
@@ -84,6 +97,12 @@ public static partial class Diagnostics
                 PrintOwl(args.ElementAtOrDefault(1) ?? "idle");
                 return true;
 
+            // 설정 창을 화면 밖에서 만들어 탭마다 얼마나 차지하는지 잰다. 가로로
+            // 잘리는 탭이 있으면 0 이 아닌 값으로 끝난다 — CI 가 이걸 본다.
+            case "--probe-layout":
+                exitCode = Settings.ProbeLayout.Run(args);
+                return true;
+
             case "--log":
                 // 로그 파일을 그대로 찍는다. 사용자가 파일을 찾아 헤매지 않게.
                 Console.WriteLine(AppLog.DefaultPath);
@@ -92,9 +111,74 @@ public static partial class Diagnostics
                     : "(아직 기록이 없다)");
                 return true;
 
+            case "--help":
+            case "-h":
+            case "-?":
+                PrintUsage();
+                return true;
+
             default:
+                // **모르는 플래그에 창을 띄우지 않는다.** 여기서 false 를 돌려주면
+                // `Program.Main` 이 그대로 내려가 창이 하나 더 뜨고, 무슨 일이 난 건지
+                // 알 수 없다. CI 는 프로세스가 안 끝나 매달린다.
+                //
+                // **`--` 로 시작하지 않는 인자는 지금처럼 흘려보낸다** — 나중에 파일
+                // 연결이나 프로토콜 실행으로 들어올 수 있는데, 그것까지 막으면 앱이
+                // 조용히 안 뜬다.
+                if (args[0].StartsWith("--", StringComparison.Ordinal))
+                {
+                    PrintUsage();
+                    exitCode = 2;
+                    return true;
+                }
                 return false;
         }
+    }
+
+    /// <summary>
+    /// Velopack 이 설치·업데이트 때 넘기는 인자인지.
+    ///
+    /// **여기를 좁게 잡으면 설치와 자체 업데이트가 통째로 깨진다.** 훅이 exit 2 로 죽으면
+    /// 바로가기가 안 만들어지고, 업데이트 훅이 죽으면 갈아 끼운 뒤 앱이 안 뜬다.
+    ///
+    /// 앱이 실제로 받는 훅은 <c>--veloapp-install</c> · <c>--veloapp-updated</c> ·
+    /// <c>--veloapp-obsolete</c> · <c>--veloapp-uninstall</c> 과 옛 이름 <c>--squirrel-*</c>
+    /// 넷뿐이고(각각 뒤에 버전 문자열이 하나 붙는다), 첫 실행·재시작 신호는 인자가 아니라
+    /// 환경변수 <c>VELOPACK_FIRSTRUN</c> · <c>VELOPACK_RESTART</c> 로 온다. 그래서 이
+    /// 두 접두어만 열어 주면 설치 경로가 온전하다 — 이름을 하나씩 적으면 Velopack 이
+    /// 훅을 하나 늘렸을 때 조용히 막힌다.
+    /// </summary>
+    private static bool IsVelopackArgument(string arg) =>
+        arg.StartsWith("--veloapp-", StringComparison.OrdinalIgnoreCase)
+        || arg.StartsWith("--squirrel-", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// 통로 목록을 찍는다. 모르는 <c>--</c> 인자와 <c>--help</c> 가 여기로 온다.
+    ///
+    /// **새 통로를 더하면 이 목록에도 한 줄 더한다.** 여기 없는 통로는 있어도 아무도
+    /// 못 찾는다 — 창이 없는 앱이라 메뉴로도 안 보인다.
+    ///
+    /// `Console.Error` 가 아니라 `Console.WriteLine` 으로 찍는다. 사용법은 오류 내용이
+    /// 아니라 **물어본 것에 대한 답**이라, 파이프로 넘길 때 같이 따라와야 한다.
+    /// </summary>
+    private static void PrintUsage()
+    {
+        Console.WriteLine($"사용법: {AppInfo.Name}.exe <통로>");
+        Console.WriteLine();
+        Console.WriteLine("  --version");
+        Console.WriteLine("  --where");
+        Console.WriteLine("  --probe");
+        Console.WriteLine("  --probe-owl [기분]");
+        Console.WriteLine("  --probe-layout");
+        Console.WriteLine("  --log");
+        Console.WriteLine("  --render <out.png> [세션%] [주간%] [보기] [아이콘] [배율] [테마]");
+        Console.WriteLine("  --render-settings <out.png> [탭] [너비x높이] [dark|light]");
+        Console.WriteLine("  --render-owl <out.png> [칸 크기]");
+        Console.WriteLine("  --render-menubar <out.png> [아이콘 크기] [확대] [기분] [test]");
+        Console.WriteLine("  --help");
+        Console.WriteLine();
+        Console.WriteLine("--dump-changelog · --dump-owl 은 도구 프로젝트에서 뽑는다:");
+        Console.WriteLine("  dotnet run --project tools/DongCSU.Tools -- --dump-changelog <파일>");
     }
 
     /// <summary>

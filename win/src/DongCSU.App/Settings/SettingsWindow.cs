@@ -49,9 +49,35 @@ public sealed class SettingsWindow : Window
     private readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(1) };
 
     private readonly List<Border> navItems = [];
-    private int selected;
 
-    private static readonly (string Key, string Title)[] TabList =
+    /// <summary>
+    /// 지금 열린 탭. **값은 창이 아니라 설정 객체가 들고 있다** — 창은 닫을 때마다
+    /// 버려져서, 여기 두면 닫았다 열 때마다 상태 탭으로 튄다.
+    ///
+    /// 모르는 탭 키(옛 값·오타)에서 <c>FindIndex</c> 가 -1 을 돌려주므로 <c>Math.Max</c> 로
+    /// 상태 탭까지만 떨어뜨린다. 안 막으면 <c>TabList[-1]</c> 로 터진다.
+    /// </summary>
+    private int Selected
+    {
+        get => Math.Max(0, Array.FindIndex(TabList, t => t.Key == settings.SettingsTab));
+        set => settings.SettingsTab = TabList[Math.Clamp(value, 0, TabList.Length - 1)].Key;
+    }
+
+    /// <summary>
+    /// 닫을 때 기억해 둔 자리와 크기. **정적이다** — 창을 닫으면 <c>Program</c> 이 객체를
+    /// 버리므로 창 안에 두면 같이 사라진다.
+    ///
+    /// **설정 파일에는 안 적는다.** 앱을 껐다 켜면 다시 가운데에서 여는 것이 맞다 —
+    /// 맥도 컨트롤러가 <c>lastFrame</c> 을 들고 있을 뿐 UserDefaults 에 남기지 않는다.
+    /// </summary>
+    private static Rect? lastBounds;
+    private static bool lastMaximized;
+
+    /// <summary>
+    /// 탭 목록. **진단 통로(<c>--probe-layout</c>)가 그대로 돌린다** — 거기에 손으로 또
+    /// 적으면 탭을 늘렸을 때 새 탭만 조용히 안 재진다.
+    /// </summary>
+    internal static readonly (string Key, string Title)[] TabList =
     [
         ("status", "상태"),
         ("display", "표시"),
@@ -86,11 +112,25 @@ public sealed class SettingsWindow : Window
         MinWidth = 480;
         MinHeight = 380;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
+
+        // 닫기 전에 옮겨 두고 키워 둔 자리로 다시 연다. **모니터를 뺐으면 되돌리지
+        // 않는다** — HUD 와 달리 설정 창에는 "위치 초기화" 가 없어서, 화면 밖에 뜨면
+        // 다시 볼 방법이 없다. 그때는 예전처럼 가운데에서 연다.
+        if (lastBounds is { } bounds && IsOnAnyScreen(bounds))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Left = bounds.Left;
+            Top = bounds.Top;
+            Width = bounds.Width;
+            Height = bounds.Height;
+            if (lastMaximized) WindowState = WindowState.Maximized;
+        }
+
         ResizeMode = ResizeMode.CanResize;   // 최대화·전체화면·가장자리 드래그가 다 열린다
         ShowInTaskbar = true;
         Content = root;
 
-        tick.Tick += (_, _) => { if (TabList[selected].Key == "status") ShowTab(); };
+        tick.Tick += (_, _) => { if (TabList[Selected].Key == "status") ShowTab(); };
 
         Rebuild();
     }
@@ -123,7 +163,7 @@ public sealed class SettingsWindow : Window
         var index = Array.FindIndex(TabList, t => t.Key == key);
         if (index < 0) return;
 
-        selected = index;
+        Selected = index;
         Rebuild();
     }
 
@@ -218,7 +258,7 @@ public sealed class SettingsWindow : Window
                 Cursor = Cursors.Hand,
                 Child = row,
             };
-            item.MouseLeftButtonUp += (_, _) => { selected = index; PaintNav(palette); ShowTab(); SyncTicker(); };
+            item.MouseLeftButtonUp += (_, _) => { Selected = index; PaintNav(palette); ShowTab(); SyncTicker(); };
             navItems.Add(item);
             nav.Children.Add(item);
         }
@@ -237,7 +277,7 @@ public sealed class SettingsWindow : Window
     {
         for (var i = 0; i < navItems.Count; i++)
         {
-            var chosen = i == selected;
+            var chosen = i == Selected;
             navItems[i].Background = palette.Brush(chosen ? palette.AccentSoft : Colors.Transparent);
 
             var row = (StackPanel)navItems[i].Child;
@@ -282,7 +322,7 @@ public sealed class SettingsWindow : Window
 
     private void SyncTicker()
     {
-        var needed = TabList[selected].Key == "status";
+        var needed = TabList[Selected].Key == "status";
         if (needed && !tick.IsEnabled) tick.Start();
         else if (!needed && tick.IsEnabled) tick.Stop();
     }
@@ -293,7 +333,7 @@ public sealed class SettingsWindow : Window
         // 내용을 갈아 끼우면 스크롤이 맨 위로 간다. 읽던 자리를 도로 맞춰 준다.
         var offset = scroller?.VerticalOffset ?? 0;
 
-        body.Content = TabList[selected].Key switch
+        body.Content = TabList[Selected].Key switch
         {
             "display" => DisplayTab(palette),
             "icon" => IconTab(palette),
@@ -314,6 +354,12 @@ public sealed class SettingsWindow : Window
 
     /// <summary>탭 내용을 감싼 스크롤. 내용을 갈아 끼운 뒤 읽던 자리를 맞추는 데 쓴다.</summary>
     private ScrollViewer? scroller;
+
+    /// <summary>
+    /// 진단 통로(<c>--probe-layout</c>)가 안의 내용 크기를 잰다. 화면 코드는 이걸 쓰지
+    /// 않는다 — 창을 안 띄우고 탭이 가로로 잘리는지 알아내는 유일한 길이라 열어 둔다.
+    /// </summary>
+    public ScrollViewer? ContentScroller => scroller;
 
     private void Apply()
     {
@@ -470,10 +516,12 @@ public sealed class SettingsWindow : Window
                 (int)settings.Theme,
                 index => { settings.Theme = (HudTheme)index; Apply(); Rebuild(); })),
             Ui.Divider(palette),
+            // **HUD 를 꺼 뒀어도 열어 둔다.** 켜기 전에 미리 골라 두는 값이라, 잠가 두면
+            // "켜고, 고르고, 다시 끄기" 를 시키게 된다. 맥도 여기는 안 잠근다.
             Ui.Row(palette, "크기", Ui.Segmented(palette,
                 [.. Enum.GetValues<HudScale>().Select(s => s.Title())],
                 (int)settings.Scale,
-                index => { settings.Scale = (HudScale)index; Apply(); }), enabled: visible),
+                index => { settings.Scale = (HudScale)index; Apply(); })),
             Ui.Divider(palette),
             Ui.Row(palette, "배경 불투명도",
                 Ui.Slider(palette, settings.BackdropOpacity, AppSettings.MinBackdropOpacity, 1.0, value =>
@@ -482,7 +530,7 @@ public sealed class SettingsWindow : Window
                     settings.BackdropOpacity = value;
                     Apply();
                 }),
-                hint: "너무 투명하면 글자가 안 읽혀 아래를 막아 뒀다.", enabled: visible)));
+                hint: "너무 투명하면 글자가 안 읽혀 아래를 막아 뒀다.")));
 
         panel.Children.Add(Ui.Section(palette, "곁들이"));
         panel.Children.Add(Ui.Card(palette,
@@ -531,12 +579,6 @@ public sealed class SettingsWindow : Window
     private static readonly int[] PollChoices = [60, 180, 300, 600, 1800];
 
     /// <summary>
-    /// 설정을 통째로 되돌린다.
-    ///
-    /// **되돌릴 수 없으니 한 번 묻는다.** 자동 시작도 함께 끈다 — 설정 파일에는 없지만
-    /// 사용자가 보기에 그것도 이 앱의 설정이다.
-    /// </summary>
-    /// <summary>
     /// 설정 창의 종료 버튼은 **실수로 누르기 쉬운 자리라** 한 번 확인한다. 종료하면
     /// 트레이 아이콘까지 사라져서 다시 켤 곳을 찾아야 한다.
     ///
@@ -544,50 +586,34 @@ public sealed class SettingsWindow : Window
     /// </summary>
     private void ConfirmQuit()
     {
-        var answer = MessageBox.Show(
-            this,
-            "종료하면 사용량 표시와 트레이 아이콘이 모두 사라집니다.",
+        if (ConfirmDialog.Ask(this, Palette,
             $"{AppInfo.Name}를 종료할까요?",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning,
-            // **파란 버튼이 곧 할 일이다.** 안 걸어 두면 취소가 파랗게 잡혀서,
-            // 정작 하려던 것이 흰 버튼이 된다.
-            MessageBoxResult.OK);
-        if (answer == MessageBoxResult.OK) Application.Current.Shutdown();
+            "종료하면 사용량 표시와 트레이 아이콘이 모두 사라집니다.",
+            "종료"))
+        {
+            Application.Current.Shutdown();
+        }
     }
 
+    /// <summary>
+    /// 설정을 통째로 되돌린다.
+    ///
+    /// **되돌릴 수 없으니 한 번 묻는다.** 자동 시작도 함께 끈다 — 설정 파일에는 없지만
+    /// 사용자가 보기에 그것도 이 앱의 설정이다.
+    /// </summary>
     private void ResetEverything()
     {
-        var answer = MessageBox.Show(
-            this,
-            "되돌릴 수 없습니다. 로그인할 때 자동 시작도 함께 꺼집니다.",
+        if (!ConfirmDialog.Ask(this, Palette,
             "모든 설정을 초기화할까요?",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning,
-            // 파란 버튼이 곧 할 일이다. 위 종료 확인과 같은 이유다.
-            MessageBoxResult.OK);
-        if (answer != MessageBoxResult.OK) return;
+            "되돌릴 수 없습니다. 로그인할 때 자동 시작도 함께 꺼집니다.",
+            "초기화")) return;
 
-        var fresh = new AppSettings();
-        settings.Mode = fresh.Mode;
-        settings.Theme = fresh.Theme;
-        settings.Scale = fresh.Scale;
-        settings.ExpandSide = fresh.ExpandSide;
-        settings.IconStyle = fresh.IconStyle;
-        settings.PollIntervalSeconds = fresh.PollIntervalSeconds;
-        settings.IsHudVisible = fresh.IsHudVisible;
-        settings.ShowsVersionBadge = fresh.ShowsVersionBadge;
-        settings.ChecksForUpdates = fresh.ChecksForUpdates;
-        settings.ShowsProcessStats = fresh.ShowsProcessStats;
-        settings.AnimatesMascot = fresh.AnimatesMascot;
-        settings.BackdropOpacity = fresh.BackdropOpacity;
-        settings.ModeBeforePet = fresh.ModeBeforePet;
-        settings.PetRingDisplay = fresh.PetRingDisplay;
-        settings.PetWanders = fresh.PetWanders;
-        settings.PetDodgesCursor = fresh.PetDodgesCursor;
-        settings.WindowLeft = null;
-        settings.WindowTop = null;
+        // **되돌릴 목록을 여기서 적지 않는다.** 손으로 옮겨 적던 시절에 실제로
+        // `PetHidesRingWhileHeld` 한 줄이 빠져 있었다 — 설정을 하나 더할 때마다 같은
+        // 누락이 난다. 무엇이 설정인지는 `AppSettings` 가 안다.
+        settings.ResetToDefaults();
 
+        // 자동 시작만은 여기서 끈다. 레지스트리에 있어 설정 파일 밖이다.
         StartupService.SetEnabled(false);
         AppLog.Write("설정을 모두 초기화했다");
 
@@ -718,12 +744,14 @@ public sealed class SettingsWindow : Window
                 hint: "배경과 숫자를 걷어내고 마스코트만 띄운다. HUD의 마스코트를 더블클릭해도 들어간다.",
                 enabled: visible),
             Ui.Divider(palette),
+            // 펫 뒤에만 두르는 링이라 펫 모드가 아니면 고를 것이 없다. 열어 두면 눌러도
+            // 화면이 그대로라 고장으로 보인다.
             Ui.Row(palette, "사용량 링", Ui.Segmented(palette,
                 [.. Enum.GetValues<PetRingDisplay>().Select(d => d.Title())],
                 (int)settings.PetRingDisplay,
                 index => { settings.PetRingDisplay = (PetRingDisplay)index; Apply(); }),
                 hint: "펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간.",
-                enabled: visible)));
+                enabled: visible && isPet)));
 
         // 펫 모드에서만 도는 것들이라 제목에 적어 둔다. 안 그러면 왜 잠겼는지 알 수 없다.
         panel.Children.Add(Ui.Section(palette, "스스로 움직이기 (펫 모드에서만)"));
@@ -983,6 +1011,13 @@ public sealed class SettingsWindow : Window
 
         if (updates.LastError is { } updateError) panel.Children.Add(Ui.Hint(palette, updateError));
 
+        // **확인 실패와 내려받기 실패는 다른 물건이다.** 회사 프록시·비행기 모드에서는
+        // 확인 자체가 안 되는데, 그걸 안 적으면 눌러도 아무 반응이 없어 보인다.
+        if (updates.CheckError is { } checkError)
+        {
+            panel.Children.Add(Ui.Hint(palette, checkError, palette.Warning));
+        }
+
         panel.Children.Add(Ui.Section(palette, "확인"));
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "하루에 한 번 새 버전 확인", Ui.Toggle(palette, settings.ChecksForUpdates,
@@ -1061,15 +1096,14 @@ public sealed class SettingsWindow : Window
 
     private void ConfirmForceQuit()
     {
-        var answer = MessageBox.Show(
-            this,
+        if (ConfirmDialog.Ask(this, Palette,
+            "강제로 종료할까요?",
             "갈아끼우는 도중이라 앱이 반쯤 바뀐 채로 남을 수 있습니다. "
             + "그때는 설치본을 다시 받아 깔면 됩니다.",
-            "강제로 종료할까요?",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning,
-            MessageBoxResult.OK);
-        if (answer == MessageBoxResult.OK) UpdateService.ForceQuit();
+            "강제 종료"))
+        {
+            UpdateService.ForceQuit();
+        }
     }
 
     private string StatusLine()
@@ -1078,6 +1112,10 @@ public sealed class SettingsWindow : Window
         // 맥은 brew 로 깔려서 이 경우가 없다. 윈도우는 폴더에 놓인 exe 로도 돌 수 있다.
         if (!updates.IsInstalled) return "설치본이 아니라 자동 업데이트를 쓸 수 없습니다";
         if (updates.HasUpdate) return $"새 버전 {updates.LatestVersion}";
+        // **`LastChecked` 보다 먼저 본다.** 실패해도 확인 시각은 찍히므로, 이 줄이 없으면
+        // 못 물어본 확인이 "최신 버전입니다" 로 읽힌다. 자세한 사유는 아래 힌트 줄에
+        // 있다 — 이 줄은 `TextWrapping` 이 없어서 긴 글이 잘린다.
+        if (updates.CheckError is not null) return "새 버전을 확인하지 못했습니다";
         if (updates.LastChecked is not null) return "최신 버전입니다";
         return "아직 확인하지 않았습니다";
     }
@@ -1296,10 +1334,47 @@ public sealed class SettingsWindow : Window
         Focus();
     }
 
+    /// <summary>
+    /// 닫히기 직전에 자리와 크기를 챙긴다.
+    ///
+    /// **<c>Left</c>·<c>Top</c>·<c>ActualWidth</c> 가 아니라 <c>RestoreBounds</c> 여야 한다.**
+    /// 최대화한 채로 닫으면 앞의 값들은 화면 전체라, 다음에 열어 최대화를 풀었을 때
+    /// 창이 화면만 해진다. <c>RestoreBounds</c> 는 최대화하기 전의 자리를 들고 있다.
+    /// </summary>
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        lastMaximized = WindowState == WindowState.Maximized;
+
+        var bounds = RestoreBounds;
+        // 한 번도 안 뜬 창은 비어 있다. 그걸 기억하면 다음에 0×0 으로 뜬다.
+        if (bounds.Width > 0 && bounds.Height > 0) lastBounds = bounds;
+
+        base.OnClosing(e);
+    }
+
     protected override void OnClosed(EventArgs e)
     {
         tick.Stop();
         base.OnClosed(e);
+    }
+
+    /// <summary>
+    /// 기억해 둔 자리가 아직 화면 안인지.
+    ///
+    /// **<c>Forms.Screen</c> 을 쓰면 안 된다.** 그쪽은 물리 픽셀이고 <c>Window.Left</c> 는
+    /// DIP 라, 배율이 100%가 아닌 화면에서 값이 어긋난다. <c>SystemParameters</c> 쪽은
+    /// DIP 라 그대로 견줄 수 있다. 같은 판단이 <c>Hud/HudWindow.cs</c> 에도 있다.
+    /// </summary>
+    private static bool IsOnAnyScreen(Rect bounds)
+    {
+        var all = new Rect(
+            SystemParameters.VirtualScreenLeft,
+            SystemParameters.VirtualScreenTop,
+            SystemParameters.VirtualScreenWidth,
+            SystemParameters.VirtualScreenHeight);
+
+        // 조금이라도 걸쳐 있으면 잡아서 옮길 수 있다.
+        return all.IntersectsWith(bounds);
     }
 }
 

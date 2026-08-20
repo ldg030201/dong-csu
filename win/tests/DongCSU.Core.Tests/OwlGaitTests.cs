@@ -77,6 +77,40 @@ public class OwlGaitTests
         Assert.Equal(walk.Frames[0].Grid, animator.CurrentGrid);
     }
 
+    /// <summary>
+    /// **멈출 때도 처음 프레임부터.** 걷는 동안 <c>frameIndex</c> 는 다리 네 칸 주기라
+    /// 0~3 을 도는데, 그 값을 그대로 두고 서면 기분 프레임의 중간 — 눈을 감은 칸 —
+    /// 에서 다시 선다. 지침은 두 칸뿐이라 0.9초짜리 감은 칸에 걸려 질끈 감았다 뜬다.
+    /// </summary>
+    [Fact]
+    public void 걸음을_멈추면_처음_프레임부터()
+    {
+        var animator = Animator();
+        animator.SetMood(OwlMood.Tired);
+        animator.SetGait(PetGait.Walk);
+        animator.Advance();   // 걷는 주기에서 frameIndex 가 1이 된다
+
+        animator.SetGait(null);
+
+        // tired 0번은 실눈(3.6초), 1번은 감음(0.9초)이다.
+        Assert.Equal(OwlEyes.Half, animator.CurrentFrame.Pose.Eyes);
+        Assert.True(animator.CurrentDelay() >= TimeSpan.FromSeconds(3.6));
+    }
+
+    /// <summary>평소 기분도 마찬가지다 — idle 2번이 눈을 감은 칸이다.</summary>
+    [Fact]
+    public void 평소_기분도_멈추면_눈을_뜬_칸에서_선다()
+    {
+        var animator = Animator();
+        animator.SetGait(PetGait.Walk);
+        animator.Advance();
+        animator.Advance();   // frameIndex 2 — idle 이라면 눈을 감은 칸이다
+
+        animator.SetGait(null);
+
+        Assert.Equal(OwlEyes.Open, animator.CurrentFrame.Pose.Eyes);
+    }
+
     [Fact]
     public void 같은_걸음을_다시_넣으면_아무_일도_없다()
     {

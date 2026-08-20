@@ -107,15 +107,78 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
         {
             if (wanders == value) return;
             wanders = value;
-            // 배회를 끄면 **걷던 것도 그 자리에 멈춘다.** 목적지까지 마저 가면
-            // 방금 끈 설정이 안 먹은 것처럼 보인다.
-            if (!wanders && state == State.Walking) Halt();
+            HaltIfCannotWander();
         }
     }
 
     private bool wanders = true;
 
+    /// <summary>
+    /// 탈진했는지(세션 90%).
+    ///
+    /// **배회만 끊는다.** 지쳐서 제 발로 산책 나갈 기운은 없어도, 커서가 밀고 들어오면
+    /// 비켜야 한다 — 안 비키면 지친 게 아니라 멎은 것으로 보이고 화면도 가린다.
+    /// 그래서 <see cref="RequestDodge"/> 에는 이 값이 들어가지 않는다.
+    ///
+    /// 넣어 주는 쪽은 **기분을 그대로 쓴다**(<c>Program.SyncMotion</c>). 거기서 사용률을
+    /// 다시 견주면 마스코트는 주저앉았는데 산책은 계속 나가는 어긋남이 생긴다.
+    /// </summary>
+    public bool IsDrained
+    {
+        get => isDrained;
+        set
+        {
+            if (isDrained == value) return;
+            isDrained = value;
+            HaltIfCannotWander();
+        }
+    }
+
+    private bool isDrained;
+
+    /// <summary>
+    /// 흔들려서 눈이 풀렸는지.
+    ///
+    /// **탈진과 달리 전부 멈춘다.** 비틀거리면서 산책을 나가면 어지러운 것이 아니라
+    /// 그냥 걷는 것으로 보인다 — 자리에 서서 비틀거려야 흔들린 결과로 읽힌다.
+    /// 2.4초짜리라(<c>PetShake.DizzyDuration</c>) 그동안 안 비켜도 화면을 오래 가리지 않는다.
+    ///
+    /// **커서 피하기까지 여기서 끊는다.** 맥은 이걸 부르는 쪽에서 걸렀다 — 거기서는
+    /// 회피를 그냥 막으면 예약이 사라져서, 어지러움이 풀린 뒤 커서가 그대로 있어도
+    /// 영영 안 비킨다. 윈도우는 여기서 막아도 안전하다: 커서를 지켜보는
+    /// <c>Program.OnDodgeTick</c> 이 <see cref="RequestDodge"/> 의 성패와 무관하게
+    /// 언제나 <c>hover.Restart</c> 로 다시 세기 시작하므로, 풀린 뒤 커서가 그 자리면
+    /// 0.5초 뒤에 다시 시도한다. **이걸 부르는 쪽으로 옮기지 마라** — 그 예약이 여기
+    /// 가드를 대신하고 있다.
+    /// </summary>
+    public bool IsDizzy
+    {
+        get => isDizzy;
+        set
+        {
+            if (isDizzy == value) return;
+            isDizzy = value;
+            HaltIfCannotWander();
+        }
+    }
+
+    private bool isDizzy;
+
     public bool DodgesCursor { get; set; } = true;
+
+    /// <summary>지금 혼자 걸어다녀도 되는지. 배회를 끊는 세 가지가 한 식에 모여 있다.</summary>
+    private bool CanWander => wanders && !IsDrained && !IsDizzy;
+
+    /// <summary>
+    /// 배회를 끊는 스위치가 하나라도 걸리면 **걷던 것도 그 자리에 멈춘다.**
+    /// 목적지까지 마저 가면 방금 끈 설정이 안 먹은 것처럼 보인다.
+    ///
+    /// 세 스위치가 같은 규칙을 저마다 적으면 반드시 어긋나므로 한 곳에 둔다.
+    /// </summary>
+    private void HaltIfCannotWander()
+    {
+        if (!CanWander && state == State.Walking) Halt();
+    }
 
     /// <summary>
     /// 지금 움직이던 것을 멈추고 그 자리에 선다.
@@ -159,6 +222,9 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
     public bool RequestDodge(IPetStage stage)
     {
         if (!DodgesCursor || state == State.Dodging) return false;
+        // 어지러운 동안에는 비키지도 않는다. 비틀거리는 정지 그림 그대로 옆으로
+        // 미끄러지면 흔들린 것이 아니라 그림이 깨진 것으로 보인다.
+        if (IsDizzy) return false;
         if (stage.SinceLastKey < TypingQuiet) return false;
         if (Area(stage) is not { } area) return false;
 
@@ -194,6 +260,11 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
             return new PetTick(restUntil - now, null, null, false);
         }
 
+        // **쉬는 동안 걸어나갈 이유가 없으면 아예 안 깨운다.** 깨워 봐야 시계만 보고
+        // 도로 눕는다. 위의 비키는 갈래보다 **뒤**여야 한다 — 앞에 두면 탈진했을 때
+        // 비키던 도중에 멈춰 선다.
+        if (!CanWander) return new PetTick(null, null, null, false);
+
         if (state == State.Resting && now < restUntil)
         {
             return new PetTick(Later(restUntil - now, QuietLeft(stage)), null, null, false);
@@ -206,7 +277,7 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
 
     private PetTick StartWandering(IPetStage stage, PetRect area, DateTimeOffset now)
     {
-        if (!Wanders) return new PetTick(null, null, null, false);
+        if (!CanWander) return new PetTick(null, null, null, false);
 
         // 글을 쓰는 동안에는 새로 걷기 시작하지 않는다.
         if (QuietLeft(stage) is { } wait) return new PetTick(wait, null, null, false);

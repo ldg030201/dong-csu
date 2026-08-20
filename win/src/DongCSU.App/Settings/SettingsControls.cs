@@ -13,6 +13,11 @@ namespace DongCSU.App.Settings;
 /// 짜야 해서 읽기 어려워진다. 대신 **경계선과 글자만으로 만든 얇은 부품**을 쓴다 —
 /// 고를 것이 두세 개뿐인 설정에는 분절 컨트롤이 콤보보다 낫기도 하다.
 ///
+/// **대신 키보드는 손으로 붙여야 한다.** <c>Border</c> 는 초점을 못 받아서 Tab 도
+/// Enter 도 안 먹는다 — 마우스로만 누르는 설정 창에서는 상관없지만, 확인 창처럼
+/// 키보드만으로 끝낼 수 있어야 하는 자리에서는 <see cref="Button"/> 의
+/// <c>focusable</c> 을 켜서 초점 고리와 Enter·Space 를 얹는다.
+///
 /// XAML 을 쓰지 않는 이유는 <c>CLAUDE.md</c> 에 있다.
 /// </summary>
 internal static class Ui
@@ -49,11 +54,15 @@ internal static class Ui
         VerticalAlignment = VerticalAlignment.Center,
     };
 
-    public static TextBlock Hint(SettingsPalette palette, string text) => new()
+    /// <summary>
+    /// 곁들이는 설명 한 줄. <paramref name="color"/> 를 주면 그 색으로 뜬다 —
+    /// 업데이트 확인 실패처럼 **눈에 걸려야 하는 사유**는 주황(<c>Warning</c>)으로 낸다.
+    /// </summary>
+    public static TextBlock Hint(SettingsPalette palette, string text, Color? color = null) => new()
     {
         Text = text,
         FontSize = 11.5,
-        Foreground = palette.Brush(palette.Tertiary),
+        Foreground = palette.Brush(color ?? palette.Tertiary),
         TextWrapping = TextWrapping.Wrap,
         Margin = new Thickness(2, 6, 0, 0),
         LineHeight = 17,
@@ -405,12 +414,20 @@ internal static class Ui
 
     public enum ButtonKind { Normal, Accent, Danger }
 
+    /// <summary>
+    /// 누르는 것. <paramref name="focusable"/> 을 켜면 Tab 으로 옮겨 다니고 Enter·Space
+    /// 로도 눌린다 — 확인 창처럼 마우스 없이 끝낼 수 있어야 하는 자리에서 쓴다.
+    ///
+    /// **돌려주는 것은 켜든 끄든 <c>Border</c> 다.** <see cref="ButtonRow"/> 가 여백을
+    /// 꽂고 호출부가 나중에 색을 바꾸므로, 형이 달라지면 그 자리가 다 깨진다.
+    /// </summary>
     public static Border Button(
         SettingsPalette palette,
         string text,
         Action onClick,
         ButtonKind kind = ButtonKind.Normal,
-        bool enabled = true)
+        bool enabled = true,
+        bool focusable = false)
     {
         var isAccent = kind == ButtonKind.Accent;
         var foreground = kind switch
@@ -438,6 +455,8 @@ internal static class Ui
             },
         };
 
+        // 못 누르는 단추는 초점도 받지 않는다. Tab 이 아무 일도 못 하는 자리에서
+        // 멈춰 서면 키보드로는 갇힌 것처럼 보인다.
         if (!enabled) return border;
 
         border.MouseEnter += (_, _) =>
@@ -449,7 +468,42 @@ internal static class Ui
             if (!isAccent) border.Background = palette.Brush(Colors.Transparent);
         };
         border.MouseLeftButtonUp += (_, _) => onClick();
-        return border;
+
+        return focusable ? Ringed(palette, border, onClick, isAccent) : border;
+    }
+
+    /// <summary>
+    /// 초점을 받는 테두리를 한 겹 덧씌운다. <c>Border</c> 자체는 초점을 못 받으므로
+    /// Tab 으로 오가고 Enter·Space 로 누르는 일이 전부 여기서 붙는다.
+    ///
+    /// 고리를 단추 **바깥**에 두는 이유는, 단추의 테두리 색을 초점 표시로 돌려쓰면
+    /// 초점이 왔을 때 단추의 생김새가 바뀌어 눌린 것처럼 보이기 때문이다.
+    /// </summary>
+    private static Border Ringed(SettingsPalette palette, Border button, Action onClick, bool isAccent)
+    {
+        // **파란 단추 위에서는 강조색 고리가 안 보인다.** 바탕이 같은 파랑이라 고리가
+        // 녹아 없어져서 초점이 어디 있는지 알 수 없게 된다. 그때만 글자색을 쓴다.
+        var ring = isAccent ? palette.Primary : palette.Accent;
+
+        var ringed = new Border
+        {
+            Focusable = true,
+            BorderThickness = new Thickness(1),
+            BorderBrush = palette.Brush(Colors.Transparent),
+            CornerRadius = new CornerRadius(Radius),
+            Padding = new Thickness(2),
+            Child = button,
+        };
+
+        ringed.GotKeyboardFocus += (_, _) => ringed.BorderBrush = palette.Brush(ring);
+        ringed.LostKeyboardFocus += (_, _) => ringed.BorderBrush = palette.Brush(Colors.Transparent);
+        ringed.KeyDown += (_, e) =>
+        {
+            if (e.Key is not (Key.Enter or Key.Space)) return;
+            onClick();
+            e.Handled = true;
+        };
+        return ringed;
     }
 
     /// <summary>단추 여러 개를 한 줄에.</summary>

@@ -207,6 +207,15 @@ public sealed class HudView : FrameworkElement
     /// </summary>
     public bool IsWeeklySpent { get; set; }
 
+    /// <summary>
+    /// 지금 **다 씀 표시(회색)를 낼지.** 링 둘과 색점 둘이 이걸 같이 본다 —
+    /// 같은 판단을 여러 곳에 적으면 반드시 어긋난다.
+    ///
+    /// **겹칠 때는 끊김이 이긴다.** 회색은 "지금 값이 아니다"라는 뜻이라, 그것을
+    /// 다 씀 표시로 덮으면 낡은 숫자를 지금 값으로 믿게 된다.
+    /// </summary>
+    private bool ShowsSpent => IsWeeklySpent && !IsDisconnected;
+
     /// <summary>마지막 성공값을 보여주는 중. 링과 숫자를 흐리게 한다.</summary>
     public bool IsStale { get; set; }
 
@@ -441,15 +450,14 @@ public sealed class HudView : FrameworkElement
     /// <summary>
     /// 펫에서 **커서를 피해 비켜야 할 자리.**
     ///
-    /// <see cref="HitTest"/> 를 쓰지 않는다. 두 가지 이유가 있다.
+    /// 맥의 <c>petHitRect</c> 와 같이 **링 사각형만** 본다. 창은 그 아래로 32 가 더
+    /// 있지만 그건 버튼 줄이고, 거기서 비키면 누르러 온 손에서 달아나는 꼴이다.
+    /// 링 밖으로 남는 투명한 네 귀퉁이도 마스코트에서 한참 떨어져 있어 비킬 이유가 없다.
     ///
-    /// 하나는 **넓이**다. 히트 테스트에서 마스코트로 치는 것은 링(위 128)뿐인데, 창은
-    /// 아래로 32 가 더 있고 그 대부분이 빈 자리다. 아래에서 다가오는 커서는 영영
-    /// 안 잡혀서 "안 도망간다"가 된다. 여기서는 **창 전체**를 본다.
-    ///
-    /// 다른 하나는 **좌표로 본다**는 것이다. 히트 테스트 결과(<c>Hover</c>)는 WPF 의
-    /// 마우스 이벤트로만 바뀌는데, 비켜선 뒤 커서가 그 자리에 그대로 있으면 새 이벤트가
-    /// 오지 않아 한 번 비키고 굳는다. 창이 움직여도 커서 좌표는 늘 지금 값이다.
+    /// <see cref="HitTest"/> 를 쓰지 않는 것은 **좌표로 봐야** 하기 때문이다. 히트 테스트
+    /// 결과(<c>Hover</c>)는 WPF 의 마우스 이벤트로만 바뀌는데, 비켜선 뒤 커서가 그 자리에
+    /// 그대로 있으면 새 이벤트가 오지 않아 한 번 비키고 굳는다. 창이 움직여도 커서
+    /// 좌표는 늘 지금 값이다.
     ///
     /// **누를 것 위에서는 비키지 않는다** — 누르러 온 손에서 달아나면 영영 못 누른다.
     /// </summary>
@@ -457,16 +465,14 @@ public sealed class HudView : FrameworkElement
     {
         if (Mode != HudMode.Pet) return false;
 
-        var size = DesiredHudSize;
-        if (point.X < 0 || point.Y < 0 || point.X >= size.Width || point.Y >= size.Height) return false;
+        // 링은 원이 아니라 **정사각형**으로 잡는다. 원으로 좁히면 호버해서 링이 뜬
+        // 순간 커서를 조금만 옮겨도 영역을 벗어난다 — 맥이 같은 이유로 사각형이다.
+        if (!RingRect().Contains(point)) return false;
 
-        if (HasUpdate && UpdateBadgeRect().Contains(point)) return false;
-
-        // 버튼 자리는 **보이든 안 보이든** 뺀다. 보이는지로 가르면 그 판단이 다시
-        // 호버 상태에 매이는데, 그게 늦게 따라오면 누르려는 순간 달아난다.
-        // 24×24 두 개뿐이라 빼도 아쉬울 것이 없다.
-        var buttons = ButtonRects();
-        return !buttons[1].Contains(point) && !buttons[2].Contains(point);
+        // 새 버전 표시는 펫에서 창 오른쪽 위라 이 사각형과 겹친다. 빼 두지 않으면
+        // 누르러 갈 때마다 달아나서 영영 못 누른다. 설정·새로고침 버튼은 링 아래
+        // 버튼 줄에 있어 이 사각형에 애초에 안 들어오므로 따로 뺄 것이 없다.
+        return !(HasUpdate && UpdateBadgeRect().Contains(point));
     }
 
     /// <summary>이 자리에 무엇이 있나. 창이 클릭·호버를 나눠 줄 때 쓴다.</summary>
@@ -685,9 +691,10 @@ public sealed class HudView : FrameworkElement
                 Snapshot?.SevenDay?.Utilization,
                 palette.RingTrack,
                 grayscale: IsDisconnected,
-                // 주간을 다 썼으면 세션은 쓸 수 없다. 초록으로 남겨 두면 여유가
-                // 있는 것처럼 보이므로 색을 빼서 죽은 것으로 그린다.
-                sessionSpentColor: IsWeeklySpent && !IsDisconnected ? palette.RingSpent : null);
+                // 주간을 다 썼으면 **두 링 다** 색을 뺀다. 세션은 쓸 수 없어서고,
+                // 주간은 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는
+                // 죽었는데 링은 살아 있어서 아직 뭔가 되는 것처럼 읽힌다.
+                spentColor: ShowsSpent ? palette.RingSpent : null);
             if (ringOpacity < 1) context.Pop();
         }
 
@@ -805,9 +812,12 @@ public sealed class HudView : FrameworkElement
     private void DrawMetrics(DrawingContext context, HudPalette palette, double s)
     {
         var now = DateTimeOffset.Now;
-        // 링과 같은 규칙이다. 링만 회색이고 점은 초록이면 앞뒤가 안 맞는다.
-        var session = MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s, IsWeeklySpent);
-        var weekly = MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s);
+
+        // 링과 같은 규칙이다 — 링만 회색이고 점은 초록이면 앞뒤가 안 맞는다. 그래서
+        // 링이 보는 것과 **똑같은 판단**(ShowsSpent)을 두 줄에 다 넘긴다.
+        // 끊겼을 때 다 씀 표시가 지는 까닭도 거기 적어 뒀다.
+        var session = MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s, ShowsSpent);
+        var weekly = MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s, ShowsSpent);
 
         var totalHeight = session.Height + 8 * s + weekly.Height;
         var top = (BaseExpandedHeight * s - totalHeight) / 2;
@@ -840,9 +850,13 @@ public sealed class HudView : FrameworkElement
         double Width,
         double Height);
 
+    /// <summary>
+    /// 한 블록을 잰다. <paramref name="isSpent"/> 에는 기본값을 두지 않는다 —
+    /// 한 줄만 빠뜨려도 그 줄만 사용률 색으로 남아 링과 어긋난다.
+    /// </summary>
     private Block MeasureBlock(
         string title, UsageWindow? window, DateTimeOffset now, HudPalette palette, double s,
-        bool isSpent = false)
+        bool isSpent)
     {
         var titleText = Text(title, 10 * s, Semibold, palette.Secondary);
         var percentText = Text(

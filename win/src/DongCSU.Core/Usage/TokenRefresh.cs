@@ -68,10 +68,38 @@ public sealed record RefreshedToken
     }
 }
 
+/// <summary>
+/// 갱신을 걸어 본 결과. 셋 중 하나다 — 새 토큰을 받았거나, 거절당했거나, 닿지 못했다.
+///
+/// **왜 실패를 둘로 가르나.** 부르는 쪽은 <see cref="Rejected"/> 일 때만 저장해 둔 토큰을
+/// 버려야 한다. 서버가 리프레시 토큰을 회전시킨 뒤라면 우리가 갱신해 둔 것이 **유일한
+/// 갱신 수단**인데, 잠깐 끊긴 통신까지 거절로 뭉개면 그것을 버리고 재로그인으로 떨어진다
+/// (노트북이 깨어날 때 잘 난다). null 하나로는 그 둘을 가릴 수 없다.
+/// </summary>
+public readonly record struct RefreshOutcome(RefreshedToken? Token, bool Rejected)
+{
+    /// <summary>새 토큰을 받았다.</summary>
+    public static RefreshOutcome Renewed(RefreshedToken token) => new(token, false);
+
+    /// <summary>
+    /// **서버가 그 갱신용 토큰을 거절했다.** 토큰이 죽은 것이 확실하므로 버려도 된다 —
+    /// 재로그인 말고는 길이 없다.
+    ///
+    /// 이름이 <c>Rejected</c> 가 아닌 이유는 같은 이름의 속성이 이미 있어서다.
+    /// <c>UsageApi.Attempt.Denied</c> 도 같은 자리에서 같은 이름을 골랐다.
+    /// </summary>
+    public static RefreshOutcome Denied() => new(null, true);
+
+    /// <summary>
+    /// **닿지 못해서 토큰의 생사를 모른다.** 아무것도 버리지 않고 다음에 다시 건다.
+    /// </summary>
+    public static RefreshOutcome Unreachable() => new(null, false);
+}
+
 /// <summary>refreshToken 으로 새 accessToken 을 받아 온다.</summary>
 public interface ITokenRefresher
 {
-    Task<RefreshedToken?> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default);
+    Task<RefreshOutcome> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -94,11 +122,12 @@ public sealed class OAuthTokenRefresher(HttpClient http) : ITokenRefresher
 
     private readonly TimeProvider time = TimeProvider.System;
 
-    public async Task<RefreshedToken?> RefreshAsync(
+    public async Task<RefreshOutcome> RefreshAsync(
         string refreshToken,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(refreshToken)) return null;
+        // 갱신용 토큰이 애초에 없다. 살릴 것이 없으니 거절과 같이 다룬다.
+        if (string.IsNullOrWhiteSpace(refreshToken)) return RefreshOutcome.Denied();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint)
         {
@@ -112,35 +141,48 @@ public sealed class OAuthTokenRefresher(HttpClient http) : ITokenRefresher
         }
         catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
         {
-            AppLog.Write($"토큰 갱신 실패: 통신 오류 ({error.GetType().Name})");
-            return null;
+            // 보내지도 못했다. 토큰이 죽었는지 어떤지는 서버만 안다.
+            AppLog.Write($"토큰 갱신 실패: 통신 오류 ({error.GetType().Name}) (닿지 못함)");
+            return RefreshOutcome.Unreachable();
         }
 
         using (response)
         {
             if (!response.IsSuccessStatusCode)
             {
-                // refreshToken 까지 죽었으면 400 이 온다. 그때는 재로그인 말고는 길이 없다.
-                AppLog.Write($"토큰 갱신 실패: HTTP {(int)response.StatusCode}");
-                return null;
+                // **상태 코드로 가른다.** refreshToken 까지 죽었으면 400 이 오고 그때는
+                // 재로그인 말고 길이 없다. 다만 408·429 와 5xx 는 서버가 토큰을 거절한
+                // 것이 아니라 지금 대답을 못 하는 것이다 — 거절로 뭉개면 서버가 잠깐
+                // 흔들린 것만으로 살아 있던 토큰을 버린다.
+                var status = (int)response.StatusCode;
+                var rejected = status is >= 400 and < 500 and not 408 and not 429;
+                AppLog.Write($"토큰 갱신 실패: HTTP {status} ({(rejected ? "거절" : "닿지 못함")})");
+                return rejected ? RefreshOutcome.Denied() : RefreshOutcome.Unreachable();
             }
 
             string body;
             try
             {
+                // 200 까지 받았으니 토큰은 살아 있을 가능성이 크다. 버리지 않는다.
                 body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (Exception error) when (error is HttpRequestException or OperationCanceledException)
             {
-                AppLog.Write("토큰 갱신 실패: 응답을 못 읽음");
-                return null;
+                AppLog.Write("토큰 갱신 실패: 응답을 못 읽음 (닿지 못함)");
+                return RefreshOutcome.Unreachable();
             }
 
             var token = RefreshedToken.Parse(body, time.GetUtcNow());
-            AppLog.Write(token is null
-                ? "토큰 갱신 실패: 응답 형식이 아님"
-                : $"토큰 갱신 성공 · 만료 {token.ExpiresAt?.ToString("u") ?? "없음"}");
-            return token;
+            if (token is null)
+            {
+                // 형식이 어긋난 것은 우리 잘못이거나 서버가 바뀐 것이지, 토큰이 죽었다는
+                // 뜻이 아니다. 여기서도 버리지 않는다.
+                AppLog.Write("토큰 갱신 실패: 응답 형식이 아님 (닿지 못함)");
+                return RefreshOutcome.Unreachable();
+            }
+
+            AppLog.Write($"토큰 갱신 성공 · 만료 {token.ExpiresAt?.ToString("u") ?? "없음"}");
+            return RefreshOutcome.Renewed(token);
         }
     }
 

@@ -34,22 +34,44 @@ jobs:
       - name: 버전 정하기
         id: version
         shell: bash
+        env:
+          # `${{ }}` 를 bash 본문에 그대로 펴 두면 dispatch 입력이 셸에 섞여 들어간다.
+          # 값으로만 받는다.
+          INPUT_VERSION: ${{ inputs.version }}
         run: |
-          if [ -n "${{ inputs.version }}" ]; then
-            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
           else
-            echo "value=${GITHUB_REF_NAME#win-v}" >> "$GITHUB_OUTPUT"
+            VERSION="${GITHUB_REF_NAME#win-v}"
           fi
+          # **세 자리여야 한다.** 설치본이 NuGet 패키지 형식이라 버전이 SemVer2 세
+          # 자리여야 하고, 네 번째 자리는 마지막 `vpk pack` 이 거부한다 — 자세한 건
+          # win/CLAUDE.md 의 "네 번째 자리를 쓸 수 없다".
+          # **그 자리에서 걸리면 늦다.** 태그는 이미 원격에 올라간 뒤라 되돌리기가
+          # 비싸다. 그래서 아무것도 만들기 전인 여기서 걸러 낸다.
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "버전이 세 자리가 아니다: '$VERSION'" >&2
+            echo "  윈도우는 긴급 수정도 세 번째 자리로 올린다 — 예: win-v1.2.3" >&2
+            exit 1
+          fi
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: 테스트
         run: dotnet test tests/DongCSU.Core.Tests/DongCSU.Core.Tests.csproj -c Release
 
       # 태그만 붙이고 변경 내역을 안 적으면, 사용자는 새 버전을 받았는데
       # 설정 창의 버전 탭에 아무것도 안 뜬다.
+      # **이 검사는 Changelog.cs 소스의 맨 위 항목만 본다.** 뽑아 둔
+      # docs/changelog.json 이 낡았는지는 아래 win-checks 가 대조한다 — 그래서 둘 다 있다.
       - name: 변경 내역이 이 버전을 아는지
         run: >
           dotnet run --project tools/DongCSU.Tools -c Release --
           --check-release ${{ steps.version.outputs.value }}
+
+      # 부엉이 데이터 · 변경 내역 파일 · 아이콘 대조. main 빌드(build-win)와 **같은 것**을
+      # 돌린다. **반드시 '게시' 앞이어야 한다** — `vpk pack` 이나 `gh release upload` 가
+      # 시작된 뒤에 실패하면 이미 반쯤 나간 상태가 된다.
+      - uses: ./.github/actions/win-checks
 
       - name: 게시
         run: >

@@ -88,20 +88,27 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// <summary>
     /// 걷는 자세로 바꾼다. null 이면 기분에 따른 자세로 돌아간다.
     ///
-    /// **서 있다 → 걷는다 로 바뀔 때만 처음 프레임으로 되돌린다.** 걷기 → 달리기는
-    /// 그대로 이어간다 — 다리 위치는 같고 박자만 빨라지는 것이라, 되감으면 발이 튄다.
+    /// **서다↔걷다가 바뀔 때 처음 프레임으로 되돌린다.** 걷기 → 달리기는 그대로
+    /// 이어간다 — 다리 위치는 같고 박자만 빨라지는 것이라, 되감으면 발이 튄다.
+    ///
+    /// **멈출 때도 되감는다.** 걷는 동안 <c>frameIndex</c> 는 다리 네 칸 주기라 0~3 을
+    /// 도는데, 서면 그 값이 기분 애니메이션의 칸 번호로 그대로 쓰인다. 기분 프레임의
+    /// 중간은 눈을 감은 칸이라(지침은 두 칸 중 1번이 감음, 0.9초) 되감지 않으면 멈출
+    /// 때마다 눈을 질끈 감았다 뜨는 것으로 보인다.
     /// </summary>
     public bool SetGait(DongCSU.Core.Pet.PetGait? next)
     {
         if (gait == next) return false;
 
         var wasStill = gait is null;
+        var willBeStill = next is null;
         gait = next;
-        if (wasStill)
+        if (wasStill != willBeStill)
         {
             frameIndex = 0;
             // 걷기 시작할 때는 기분이 준 눈 그대로. 첫 칸부터 깜빡이면 어색하다.
-            eyes = MoodPose.Eyes;
+            // 멈출 때는 건드리지 않는다 — `eyes` 는 걷는 동안에만 읽히는 값이다.
+            if (!willBeStill) eyes = MoodPose.Eyes;
         }
         Recompose();
         return true;

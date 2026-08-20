@@ -327,17 +327,34 @@ public sealed class FileCredentialSource(
 /// 따로 저장해 둔 토큰**이다. 갱신해 둔 것이 살아 있으면 그쪽이 이긴다 — 파일이 만료된
 /// 채로 남아 있는 것이 오히려 정상이다. 갱신해 줄 사람이 없어서 우리가 갱신한 것이다.
 ///
-/// 파일 읽기가 비싸지는 않지만 폴링마다 디스크를 두드릴 이유는 없다.
-/// 서버가 401 을 주면 <see cref="Invalidate"/> 로 버린다.
+/// **폴링마다 파일을 다시 읽지 않는다.** 윈도우 쪽에서 못 찾으면 WSL 자리까지 훑는데,
+/// 거기를 건드리는 것은 꺼져 있던 배포판을 깨우는 **실제로 비싼** 읽기다. 그래서
+/// <see cref="FileRereadInterval"/> 이 지난 뒤에만 다시 읽는다.
+/// 서버가 401 을 주면 <see cref="Invalidate"/> 로 버린다 — 그때는 바닥도 같이 치운다.
 /// </summary>
 public sealed class CredentialStore(
     ICredentialSource source,
     TimeProvider? time = null,
     RefreshedTokenStore? refreshedTokens = null)
 {
+    /// <summary>
+    /// 자격 증명 파일을 다시 읽기까지 두는 바닥.
+    ///
+    /// **파일이 만료돼 있어도 내용은 안 바뀐다** — 갱신해 줄 사람이 없어서 우리가 갱신한
+    /// 것이라, 만료됐다는 이유로 다시 읽으면 같은 것을 또 읽을 뿐이다. 조회 주기는
+    /// <see cref="AppSettings.PollInterval"/> 에서 최대 30분으로 잘리므로 **한 시간이면
+    /// 어떤 설정에서도** 파일 읽기가 실제로 줄어든다.
+    ///
+    /// 맥은 갱신까지 얹은 결과를 캐시에 담아서 사실상 토큰 수명(여덟 시간)에 한 번만
+    /// 키체인을 본다. 우리는 그보다 짧게 잡는다 — 그 사이에 **Claude Code 가 파일을
+    /// 갱신해 뒀을 수 있다.**
+    /// </summary>
+    public static readonly TimeSpan FileRereadInterval = TimeSpan.FromHours(1);
+
     private readonly TimeProvider time = time ?? TimeProvider.System;
     private readonly Lock gate = new();
     private ClaudeCredentials? cachedFile;
+    private DateTimeOffset? fileReadAt;
     private RefreshedToken? refreshed;
     private bool refreshedLoaded;
 
@@ -383,6 +400,9 @@ public sealed class CredentialStore(
         lock (gate)
         {
             cachedFile = null;
+            // 바닥까지 치운다. 401 뒤에는 곧바로 다시 읽어야 Claude Code 가 회전시켜 둔
+            // 새 refreshToken 을 늦지 않게 집는다.
+            fileReadAt = null;
             refreshed = null;
             refreshedLoaded = false;
         }
@@ -423,14 +443,24 @@ public sealed class CredentialStore(
         var now = time.GetUtcNow();
         lock (gate)
         {
-            if (cachedFile is { } value && !value.IsExpired(now) && value.IsUsableForAWhile(now))
+            // **만료 여부가 아니라 마지막으로 읽은 시각으로 판단한다.** 데스크톱 앱만
+            // 쓰는 사용자에게는 파일이 늘 만료된 채로 남아 있는 것이 정상이라, 만료를
+            // 기준으로 삼으면 조건이 항상 참이 되어 폴링마다 파일을 다시 읽는다.
+            if (cachedFile is not null && fileReadAt is { } at && now - at < FileRereadInterval)
             {
                 return cachedFile;
             }
         }
 
         var fresh = source.Read();
-        lock (gate) { cachedFile = fresh; }
+        lock (gate)
+        {
+            cachedFile = fresh;
+            // 아직 아무것도 못 읽었으면 바닥을 두지 않는다. 방금 Claude Code 로 로그인한
+            // 사람이 한 시간을 기다리게 되는데, 그 경우는 401 도 안 나서 Invalidate() 가
+            // 불릴 일조차 없다.
+            fileReadAt = fresh is null ? null : now;
+        }
         return fresh;
     }
 

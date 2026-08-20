@@ -124,4 +124,98 @@ public class FetchFloorTests
 
         Assert.Equal("default_claude_max_5x", store.Snapshot?.RateLimitTier);
     }
+
+    // ── 429 물러나기 ────────────────────────────────────────────────
+
+    private static UsageStore Backoff(TimeSpan? pollInterval = null)
+    {
+        var store = new UsageStore(
+            new UsageApi(new HttpClient(), new CredentialStore(new NoCredentials(), null, null)),
+            new FakeTime());
+        if (pollInterval is { } interval) store.PollInterval = interval;
+        return store;
+    }
+
+    private static void RateLimit(UsageStore store, TimeSpan? retryAfter = null, int times = 1)
+    {
+        for (var i = 0; i < times; i++)
+        {
+            store.Apply(UsageResult.Fail(UsageError.RateLimited(retryAfter)));
+        }
+    }
+
+    /// <summary>여기 테스트는 조회를 걸지 않는다. 자격 증명은 없어도 된다.</summary>
+    private sealed class NoCredentials : ICredentialSource
+    {
+        public ClaudeCredentials? Read() => null;
+    }
+
+    /// <summary>
+    /// **물러나는 시간은 조회 주기와 무관하다.**
+    ///
+    /// 옛 식은 밑값이 사용자가 고른 주기였다. 그래서 자주 보도록 설정한 사람만 빨리
+    /// 돌아오고, 드물게 보는 사람은 첫 429 에 곧바로 상한까지 잠들었다. 막힌 정도는
+    /// 서버 사정이라 우리 주기가 끼어들 자리가 아니다.
+    /// </summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(30)]
+    public void 첫_429_는_주기와_무관하게_60초다(int pollMinutes)
+    {
+        var store = Backoff(TimeSpan.FromMinutes(pollMinutes));
+
+        RateLimit(store);
+
+        Assert.Equal(UsageStore.RateLimitBackoffBase, store.NextPollDelay());
+    }
+
+    /// <summary>60 → 120 → 240 → 300초. 상한이 없으면 한 번 막혔을 때 영영 안 돌아온다.</summary>
+    [Fact]
+    public void 잇달아_막히면_사다리를_타고_상한에서_멈춘다()
+    {
+        var store = Backoff();
+
+        RateLimit(store);
+        Assert.Equal(TimeSpan.FromSeconds(60), store.NextPollDelay());
+
+        RateLimit(store);
+        Assert.Equal(TimeSpan.FromSeconds(120), store.NextPollDelay());
+
+        RateLimit(store);
+        Assert.Equal(TimeSpan.FromSeconds(240), store.NextPollDelay());
+
+        RateLimit(store);
+        Assert.Equal(UsageStore.MaxRateLimitBackoff, store.NextPollDelay());
+
+        RateLimit(store, times: 20);
+        Assert.Equal(UsageStore.MaxRateLimitBackoff, store.NextPollDelay());
+    }
+
+    /// <summary>서버가 알려준 시간은 **더 길 때만** 따른다. 짧으면 우리 바닥이 이긴다.</summary>
+    [Fact]
+    public void 서버가_알려준_시간은_더_길_때만_따른다()
+    {
+        var longer = Backoff();
+        RateLimit(longer, TimeSpan.FromMinutes(3));
+        Assert.Equal(TimeSpan.FromMinutes(3), longer.NextPollDelay());
+
+        var shorter = Backoff();
+        RateLimit(shorter, TimeSpan.FromSeconds(5));
+        Assert.Equal(UsageStore.RateLimitBackoffBase, shorter.NextPollDelay());
+    }
+
+    /// <summary>
+    /// <c>Retry-After</c> 가 HTTP-date 인데 이미 지난 시각이면 음수가 나온다.
+    /// 그걸 그대로 더하면 물러나기가 시작하자마자 풀린다.
+    /// </summary>
+    [Fact]
+    public void 지난_시각을_알려줘도_바닥은_지킨다()
+    {
+        var store = Backoff();
+
+        RateLimit(store, TimeSpan.FromSeconds(-30));
+
+        Assert.Equal(UsageStore.RateLimitBackoffBase, store.NextPollDelay());
+    }
 }

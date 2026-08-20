@@ -104,6 +104,18 @@ public sealed record ChangelogFeed
 }
 
 /// <summary>
+/// 원격 내역을 받아 본 결과. 성공이면 <see cref="Entries"/>, 실패면 <see cref="Failure"/> 만 찬다.
+///
+/// <see cref="Usage.UsageResult"/> 와 같은 모양이다 — 조회 실패를 다루는 자리가 이미 그렇게
+/// 생겼는데 여기만 다른 모양을 쓰면 부르는 쪽이 두 가지를 외워야 한다.
+/// </summary>
+public sealed record ChangelogFetch(IReadOnlyList<ChangelogEntry>? Entries, string? Failure)
+{
+    public static ChangelogFetch Ok(IReadOnlyList<ChangelogEntry> entries) => new(entries, null);
+    public static ChangelogFetch Failed(string reason) => new(null, reason);
+}
+
+/// <summary>
 /// 버전별 변경 내역.
 ///
 /// 설정 창의 **버전** 탭이 이걸 그대로 보여준다. 쓰는 방법은 <c>../CLAUDE.md</c> 참고 —
@@ -136,6 +148,53 @@ public static class Changelog
                         ChangelogNote.Change("다 받은 뒤에 물어보도록 변경 (\"지금 다시 띄우기\" / \"나중에\")"),
                         ChangelogNote.New("갈아끼우다 멈췄을 때 강제 종료"),
                         ChangelogNote.New("새 버전이 있으면 설정 창 버전 탭에 표시"),
+                        ChangelogNote.Change("자동 확인을 켜면 그 자리에서 한 번 확인하도록 변경"),
+                        ChangelogNote.Improve("확인이나 변경 내역 받기에 실패한 이유를 표시하도록 개선"),
+                        ChangelogNote.Fix("확인에 실패하면 확인한 적이 없는 것으로 보이던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "조회",
+                    Tab = "status",
+                    Notes =
+                    [
+                        ChangelogNote.Fix("요청 제한에 걸리면 조회 주기에 따라 최대 30분까지 멈추던 문제 수정 (1분에서 5분까지로 고정)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "펫 모드",
+                    Tab = "pet",
+                    Notes =
+                    [
+                        ChangelogNote.Change("세션 한도를 거의 다 쓰면 혼자 걸어다니지 않도록 변경"),
+                        ChangelogNote.Change("커서 피하기 판정을 마스코트 둘레로 좁힘"),
+                        ChangelogNote.Fix("어지러운 동안에도 걸어다니던 문제 수정"),
+                        ChangelogNote.Fix("마스코트나 아래 버튼을 누르고만 있어도 매달린 자세가 되던 문제 수정"),
+                        ChangelogNote.Fix("우클릭 메뉴가 떠 있는 동안에도 걸어나가던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "마스코트",
+                    Notes =
+                    [
+                        ChangelogNote.Change("캐릭터 애니메이션을 끄면 흔들어도 어지러워하지 않도록 변경"),
+                        ChangelogNote.Fix("주간 한도를 다 써도 주간 링과 주간 점은 색이 남던 문제 수정"),
+                        ChangelogNote.Fix("걸음을 멈출 때마다 눈을 감았다 뜨던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "설정 창",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("창을 닫았다 열어도 보던 탭과 창 자리가 그대로이도록 개선"),
+                        ChangelogNote.Improve("확인 창의 버튼에 무엇이 일어나는지 적도록 개선"),
+                        ChangelogNote.Fix("HUD 를 꺼 두면 크기·배경 불투명도를 미리 고를 수 없던 문제 수정"),
+                        ChangelogNote.Fix("펫 모드가 아닐 때도 펫 사용량 링을 고를 수 있던 문제 수정"),
+                        ChangelogNote.Fix("모든 설정 초기화가 일부 설정을 되돌리지 않던 문제 수정"),
                     ],
                 },
                 new ChangelogGroup
@@ -153,6 +212,9 @@ public static class Changelog
                     Notes =
                     [
                         ChangelogNote.Improve("갱신한 토큰이 사는 폴더에 낯선 권한이 있으면 지우도록 개선"),
+                        ChangelogNote.Improve("조회할 때마다 로그인 정보 파일을 다시 읽던 것을 개선 (WSL 이 10분마다 깨어나지 않음)"),
+                        ChangelogNote.Fix("잠깐 인터넷이 끊겼을 때 갱신해 둔 토큰까지 버리고 재로그인을 요구하던 문제 수정"),
+                        ChangelogNote.Fix("토큰을 갱신한 직후에도 계정 탭이 만료됐다고 표시하던 문제 수정"),
                     ],
                 },
             ],
@@ -417,6 +479,33 @@ public static class Changelog
             }
             return string.CompareOrdinal(left, right);
         }
+    }
+
+    /// <summary>
+    /// 받아 온 응답을 성공·실패로 가른다. 앞에서부터 차례로 걸러 **왜 못 받았는지**를 남긴다.
+    ///
+    /// 화면과 무관한 순수 계산이라 여기 있다 — `App` 에 두면 맥에서 테스트할 수 없다.
+    ///
+    /// **사유에 응답 본문이나 헤더를 절대 끼우지 않는다.** 이 문장은 그대로 기록 파일과
+    /// 버전 탭에 나가는데, 주소가 바뀌어 엉뚱한 응답(로그인 페이지·프록시 안내)을 받아
+    /// 왔다면 그 안에 무엇이 실려 있을지 모른다. 상태 코드와 우리가 쓴 문장만 남긴다 —
+    /// <c>win/CLAUDE.md</c>: 토큰이나 자격 증명 내용은 기록에 남기지 않는다.
+    /// </summary>
+    public static ChangelogFetch Read(int status, string body)
+    {
+        if (status != 200)
+        {
+            return ChangelogFetch.Failed($"변경 내역을 받지 못했습니다 (HTTP {status})");
+        }
+        if (Parse(body) is not { } feed)
+        {
+            return ChangelogFetch.Failed("변경 내역을 읽지 못했습니다 (형식이 다릅니다)");
+        }
+        if (feed.Entries is not { Count: > 0 })
+        {
+            return ChangelogFetch.Failed("받아온 변경 내역이 비어 있습니다");
+        }
+        return ChangelogFetch.Ok(feed.Entries);
     }
 
     public static ChangelogFeed? Parse(string json)

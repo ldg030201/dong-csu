@@ -1,6 +1,5 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
-using System.Runtime.InteropServices;
 using System.Windows.Forms;
 
 // **`Color` 는 전역에서 WPF 것으로 묶여 있다**(GlobalUsings.cs). 트레이 메뉴는 WinForms 라
@@ -20,16 +19,8 @@ namespace DongCSU.App.Tray;
 /// WPF <c>ContextMenu</c> 로 바꾸지 않는 이유는 <c>TrayIcon.ShowMenuAtCursor</c> 에 있다 —
 /// HUD 가 <c>WS_EX_NOACTIVATE</c> 라 바깥을 눌러도 안 닫힌다.
 /// </summary>
-internal static partial class TrayMenuStyle
+internal static class TrayMenuStyle
 {
-    /// <summary>모서리를 둥글게. 윈도우 11 부터 창 관리자가 직접 깎아 준다.</summary>
-    private const int WindowCornerPreference = 33;
-    private const int BorderColor = 34;
-    private const int RoundCorner = 2;
-
-    [LibraryImport("dwmapi.dll")]
-    private static partial int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
-
     public static void Apply(ContextMenuStrip menu, bool dark)
     {
         menu.Renderer = new Renderer(dark);
@@ -41,21 +32,10 @@ internal static partial class TrayMenuStyle
         menu.DropShadowEnabled = true;
 
         // **띄울 때마다 건다.** 팝업 창은 닫힐 때 핸들이 사라져서, 한 번만 걸어 두면
-        // 두 번째부터 각진 채로 뜬다.
-        menu.HandleCreated += (_, _) => Round(menu.Handle, dark);
-        if (menu.IsHandleCreated) Round(menu.Handle, dark);
-    }
-
-    private static void Round(IntPtr window, bool dark)
-    {
-        if (window == IntPtr.Zero) return;
-
-        var corner = RoundCorner;
-        DwmSetWindowAttribute(window, WindowCornerPreference, ref corner, sizeof(int));
-
-        // COLORREF 는 0x00BBGGRR 이다. 어두운 테마에서 밝은 테두리를 쓰면 떠 보인다.
-        var border = dark ? 0x003A3A42 : 0x00E0E0E4;
-        DwmSetWindowAttribute(window, BorderColor, ref border, sizeof(int));
+        // 두 번째부터 각진 채로 뜬다. 모서리를 깎는 일 자체는 확인 창과 나눠 쓰므로
+        // RoundedWindow 로 빼 두었다.
+        menu.HandleCreated += (_, _) => RoundedWindow.Round(menu.Handle, dark);
+        if (menu.IsHandleCreated) RoundedWindow.Round(menu.Handle, dark);
     }
 
     private static Gdi Ink(int r, int g, int b) => Gdi.FromArgb(r, g, b);

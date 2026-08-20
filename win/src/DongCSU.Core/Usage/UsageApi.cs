@@ -63,6 +63,10 @@ public sealed class UsageApi(
         // (1.1.0 에서 실제로 그랬다). 유효한지는 서버가 안다 — 걸어 보고 401 이면 그때 만료다.
         var looksExpired = credential.IsExpired(time.GetUtcNow());
 
+        // **스냅숏에는 실제로 통한 자격 증명을 싣는다.** 갱신에 성공하면 아래에서 갈아
+        // 끼운다 — 파일에서 읽은 것을 그대로 넘기면 만료 시각이 옛것으로 남는다.
+        var effective = credential;
+
         var attempt = await SendAsync(credential.AccessToken, cancellationToken).ConfigureAwait(false);
         if (attempt.Error is { } failure) return UsageResult.Fail(failure);
 
@@ -74,19 +78,48 @@ public sealed class UsageApi(
         {
             // **갱신에도 바닥을 깐다.** 대개는 조회 쪽 바닥에 함께 걸리지만, 갱신용
             // 토큰까지 죽으면 조회마다 갱신을 다시 시도하게 되어 갱신 쪽만 계속 나간다.
-            var renewed = credential.RefreshToken is { } refreshToken && refresher is not null
+            var outcome = credential.RefreshToken is { } refreshToken && refresher is not null
                 && CanRefreshNow()
                 ? await refresher.RefreshAsync(refreshToken, cancellationToken).ConfigureAwait(false)
-                : null;
+                // 갱신을 걸어 볼 수단이 없다. **못 닿은 것이 아니므로** 예전처럼 만료로
+                // 끝낸다 — 물러나 봐야 다음 조회에서도 똑같이 못 건다.
+                : RefreshOutcome.Denied();
 
-            if (renewed is null)
+            if (outcome.Token is not { } renewed)
             {
+                // **거절당한 것과 닿지 못한 것을 가른다.**
+                //
+                // 서버가 리프레시 토큰을 회전시킨 뒤라면 `.credentials.json` 에 남은 것은
+                // 이미 죽어 있고, 우리가 갱신해 둔 토큰이 **살아 있는 유일한 갱신 수단**이다.
+                // 통신이 잠깐 끊긴 것까지 거절로 세면 그 하나를 버리고 재로그인으로 떨어진다
+                // (노트북이 깨어나 랜이 아직 안 붙었을 때 잘 난다).
+                //
+                // 못 닿은 것은 만료가 아니므로 Network 로 돌려준다 — IsTerminal 이 false 라
+                // UsageStore.Apply 가 NeedsReauth 를 세우지 않고 다음 폴링에 다시 건다.
+                // **여기서는 아무것도 지우지 않는다.** Invalidate() 를 남겨 두면 파일 재읽기
+                // 바닥까지 매번 뚫린다.
+                if (!outcome.Rejected)
+                {
+                    return UsageResult.Fail(UsageError.Network("토큰 갱신에 닿지 못함"));
+                }
+
                 credentials.DiscardRefreshed();
                 credentials.Invalidate();
                 return UsageResult.Fail(UsageError.TokenExpired(looksExpired));
             }
 
             credentials.ApplyRefreshed(renewed);
+
+            // **여기서 갈아 끼우지 않으면 계정 탭이 방금 갱신한 토큰을 두고 한 주기(기본
+            // 10분) 동안 "만료됨" 이라고 말한다.** 스냅숏의 만료 시각은 파일이 아니라
+            // 실제로 쓴 토큰의 것이어야 한다. 새로 만들지 않고 `with` 를 쓰는 이유는
+            // 플랜·한도 등급이 갱신 응답에 안 와서 파일 쪽 값이 그대로 따라와야 해서다.
+            effective = credential with
+            {
+                AccessToken = renewed.AccessToken,
+                ExpiresAt = renewed.ExpiresAt,
+                RefreshToken = renewed.RefreshToken ?? credential.RefreshToken,
+            };
 
             attempt = await SendAsync(renewed.AccessToken, cancellationToken).ConfigureAwait(false);
             if (attempt.Error is { } retryFailure) return UsageResult.Fail(retryFailure);
@@ -101,7 +134,7 @@ public sealed class UsageApi(
             }
         }
 
-        return Parse(attempt.Body ?? "", credential, time.GetUtcNow());
+        return Parse(attempt.Body ?? "", effective, time.GetUtcNow());
     }
 
     /// <summary>한 번 걸어 본 결과. 셋 중 하나다 — 본문을 받았거나, 거절당했거나, 실패했다.</summary>

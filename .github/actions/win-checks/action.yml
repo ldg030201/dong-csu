@@ -1,0 +1,58 @@
+name: win-checks
+description: 윈도우판 대조 검사 세 가지 — 부엉이 데이터 · 변경 내역 파일 · 아이콘
+
+# **main 빌드와 태그 릴리스가 같은 것을 돌리게 하려고 한 자리로 모았다.** 예전에는
+# `build-win.yml` 에만 있었는데, 그 워크플로는 태그를 일부러 안 봐서 main 푸시와
+# `win-v*` 태그를 같이 밀면 build-win 이 빨개지는 동안 win-release 는 아무것도 모른 채
+# 릴리스를 올렸다.
+#
+# **단계마다 `shell: bash` 와 `working-directory` 를 직접 적어야 한다.** composite
+# action 은 부르는 워크플로의 `defaults.run.working-directory` 를 물려받지 않는다.
+# 빠뜨리면 저장소 뿌리에서 `tools/DongCSU.Tools` 를 찾다가 죽는데, 부르는 쪽에는
+# `working-directory: win` 이 멀쩡히 적혀 있어서 원인을 찾는 데 오래 걸린다.
+# 폴더를 입력으로 받는 것도 같은 이유다 — `uses:` 단계에는 `working-directory` 를
+# 쓸 수 없다.
+#
+# **`--no-build` 는 붙이지 않는다.** build-win 에서는 앞 단계가 이미 빌드해 둬서
+# 있어도 그만이지만, win-release 에는 `dotnet build` 단계가 없어서 그 자리에서 죽는다.
+
+inputs:
+  win-dir:
+    description: "윈도우 소스 폴더 (저장소 뿌리 기준)"
+    default: win
+
+runs:
+  using: composite
+  steps:
+    # 앱에 박아 둔 부엉이가 저장소의 것과 같은지. 다르면 맥과 다른 그림을 그린다.
+    - name: 부엉이 데이터가 저장소의 것과 같은지
+      shell: bash
+      working-directory: ${{ inputs.win-dir }}
+      run: |
+        dotnet run --project tools/DongCSU.Tools -c Release -- --dump-owl /tmp/win-owl.json
+        diff -q /tmp/win-owl.json ../shared/owl.json \
+          || { echo "앱에 박힌 owl.json 이 shared/owl.json 과 다르다 — 다시 빌드해라"; exit 1; }
+
+    # **여기서 changelog.json 을 다시 뽑아 밀지 않는다.** 태그는 이미 특정 커밋을
+    # 가리키고 있어서, 뒤늦게 뽑아 main 에 밀면 릴리스로 나간 소스와 앱이 받아보는
+    # 원격 피드가 서로 다른 커밋에서 나온다 — "무엇이 나갔는가"가 흐려진다.
+    # (README 의 버전 한 줄을 미는 것과 헷갈리지 마라. 그건 태그 뒤에 붙는 문서지
+    # 릴리스 내용물이 아니다.) 게다가 뽑아 주면 사람은 계속 잊는다. 그래서 막는다.
+    - name: 변경 내역 파일이 소스와 맞는지
+      shell: bash
+      working-directory: ${{ inputs.win-dir }}
+      run: |
+        dotnet run --project tools/DongCSU.Tools -c Release -- --dump-changelog /tmp/win-changelog.json
+        diff -q /tmp/win-changelog.json docs/changelog.json || {
+          echo "win/docs/changelog.json 이 Changelog.cs 와 다르다 — --dump-changelog 로 다시 뽑아라"
+          echo "  dotnet run --project tools/DongCSU.Tools -- --dump-changelog docs/changelog.json"
+          echo "  뽑아서 커밋하고, 태그를 다시 붙여라 (릴리스는 여기서 멈춘다)"
+          exit 1
+        }
+
+    # 아이콘 파일을 바이트로 비교하지 않는다 — PNG 압축 결과가 zlib 판마다 달라서
+    # 같은 그림인데도 어긋난다. 무엇으로 만들었는지(지문)를 본다.
+    - name: 아이콘이 부엉이 데이터와 맞는지
+      shell: bash
+      working-directory: ${{ inputs.win-dir }}
+      run: dotnet run --project tools/DongCSU.Tools -c Release -- --check-icon src/DongCSU.App/Resources/DongCSU.ico

@@ -28,7 +28,39 @@ public sealed class UpdateService(HttpClient http)
     public DateTimeOffset? LastChecked { get; private set; }
     public IReadOnlyList<ChangelogEntry> RemoteEntries { get; private set; } = [];
 
+    /// <summary>
+    /// 마지막 확인이 왜 실패했는지. 성공했거나 아직 한 번도 안 걸었으면 null.
+    ///
+    /// **<see cref="LastError"/> 와 다른 물건이다.** 이건 "새 버전이 있는지 확인이 안 됐다"
+    /// 이고 저건 "받다가·갈아끼우다 실패했다"라서, 버전 탭에 **둘이 같이 뜰 수 있다.**
+    /// 한 자리에 몰아 넣으면 서로를 덮어써서 한쪽이 화면에서 사라진다.
+    /// </summary>
+    public string? CheckError { get; private set; }
+
     public event Action? Changed;
+
+    /// <summary>
+    /// 값을 직접 꽂아 넣는다. **렌더 확인 전용** — 네트워크 없이 버전 탭을 채운다.
+    /// 맥의 <c>UpdateChecker(preview:)</c> 와 같은 자리다.
+    ///
+    /// <paramref name="installed"/> 까지 받는 이유는 <see cref="IsInstalled"/> 가 계산
+    /// 프로퍼티라 밖에서 못 꽂아서다. 폴더에 놓인 exe 로 그림을 뽑으면 버전 탭이 늘
+    /// "설치본이 아니라 자동 업데이트를 쓸 수 없습니다"로 나와 사용자가 볼 화면과 달라진다.
+    ///
+    /// **문구에만 쓰이고 진짜 업데이트로는 새어 나가지 않는다** — 꽂은 값은
+    /// <see cref="IsInstalled"/> 에서 <c>manager</c> 를 만들기 **전에** 돌아 나가므로,
+    /// manager 가 있어야 움직이는 <see cref="DownloadAsync"/>·<see cref="Restart"/> 는
+    /// 이 값을 믿고 폴더에 놓인 앱을 갈아 끼우려 들 수 없다.
+    /// </summary>
+    public void Preview(string? latestVersion, DateTimeOffset? lastChecked, bool installed = true)
+    {
+        LatestVersion = latestVersion;
+        LastChecked = lastChecked;
+        previewInstalled = installed;
+        Changed?.Invoke();
+    }
+
+    private bool? previewInstalled;
 
     /// <summary>설치본이 아니면(개발 중 실행 등) 업데이트를 걸지 않는다.</summary>
     public bool IsInstalled
@@ -38,7 +70,13 @@ public sealed class UpdateService(HttpClient http)
             // **테스트판은 절대 업데이트하지 않는다.** 윈도우는 맥과 달리 조용히 받아
             // 갈아 끼우고 다시 뜨기 때문에, 막지 않으면 개발 빌드가 어느 날 정식판으로
             // 바뀌어 버리고 무엇을 검증하던 중이었는지 알 수 없게 된다.
+            //
+            // **꽂은 값보다 이게 먼저다.** 렌더 통로가 테스트 바이너리로 돌아도 설치본
+            // 행세를 하게 두면, 막아 둔 이유가 그림 한 장 때문에 뚫린다.
             if (AppInfo.IsTestBuild) return false;
+
+            // 렌더에서 꽂아 넣은 값. 여기서 돌아 나가므로 manager 는 만들어지지 않는다.
+            if (previewInstalled is { } preview) return preview;
 
             try
             {
@@ -65,14 +103,27 @@ public sealed class UpdateService(HttpClient http)
 
     public async Task CheckAsync(CancellationToken cancellationToken = default)
     {
+        // **테스트판은 확인 자체를 하지 않는다.** 화면은 "테스트판은 새 버전을 확인하지
+        // 않습니다"라고 말하는데 뒤에서 원격 내역을 받아 오면 말과 실제가 어긋나고,
+        // 변경 내역 목록도 앱에 박힌 것만 보여주는 맥 테스트판과 달라진다.
+        //
+        // **가드가 맨 앞에 있어야 한다.** `LoadChangelogAsync` 안에 넣으면 접속만 막히고
+        // `LastChecked`·`IsChecking` 은 그대로 움직이며 기록에 "업데이트 확인" 줄도 남는다.
+        // 부르는 쪽에 나눠 넣으면 호출부가 하나 늘 때마다 기억해야 하고 언젠가 빠뜨린다 —
+        // 여기 한 곳이면 지금 있는 것과 앞으로 생길 것까지 같이 막힌다. 바닥(`lastCheckAt`)을
+        // 소모하기 전이자 `IsChecking` 을 세우기 전이라, 확인 버튼이 잠긴 채 굳지도 않는다.
+        if (AppInfo.IsTestBuild) return;
+
         if (IsChecking || !CanCheckNow) return;
+
+        string? failure = null;
 
         lastCheckAt = DateTimeOffset.UtcNow;
         IsChecking = true;
         Changed?.Invoke();
         try
         {
-            await LoadChangelogAsync(cancellationToken).ConfigureAwait(false);
+            failure = await LoadChangelogAsync(cancellationToken).ConfigureAwait(false);
 
             if (IsInstalled && manager is { } updateManager)
             {
@@ -80,7 +131,6 @@ public sealed class UpdateService(HttpClient http)
                 LatestVersion = update?.TargetFullRelease.Version.ToString();
             }
 
-            LastChecked = DateTimeOffset.Now;
             AppLog.Write($"업데이트 확인: 설치본={IsInstalled} 최신={LatestVersion ?? "-"} 지금={AppInfo.Version}");
         }
         catch (Exception error)
@@ -92,9 +142,21 @@ public sealed class UpdateService(HttpClient http)
             // 확인 실패 자체는 정상적인 일이다(비행기 모드, 회사 프록시, 깨진 피드).
             // 다음 주기에 다시 한다.
             AppLog.Write($"업데이트 확인 실패: {error.Message}");
+
+            // 내역 받기가 남긴 사유가 있어도 여기서 덮는다 — Velopack 확인까지 못 간 것이
+            // 더 큰 실패라, 화면에 뜰 한 줄은 그쪽이어야 한다.
+            failure = $"업데이트 확인 실패: {error.Message}";
         }
         finally
         {
+            // **성공·실패를 가리지 않고 찍는다.** 예전에는 try 끝에서 찍어서, 비행기 모드나
+            // 회사 프록시로 어느 한쪽이 던지면 `LastChecked` 가 영영 null 로 남았다 —
+            // 버튼을 눌러도 상태 줄이 "아직 확인하지 않았습니다"에 머물러 아무 반응이
+            // 없는 것처럼 보였다. 걸어 본 것은 사실이므로 시각은 남긴다.
+            LastChecked = DateTimeOffset.Now;
+            // 성공하면 null 이 들어가 지난 사유가 지워진다. 안 지우면 한 번 실패한 뒤로
+            // 주황 줄이 영영 남는다.
+            CheckError = failure;
             IsChecking = false;
             Changed?.Invoke();
         }
@@ -105,17 +167,41 @@ public sealed class UpdateService(HttpClient http)
     ///
     /// 앱에 박혀 있는 내역은 그 버전까지밖에 모른다. **새 버전에 무엇이 들어갔는지
     /// 업데이트하기 전에 보려면** 밖에서 받아와야 한다.
+    ///
+    /// 성공하면 null, 실패하면 화면에 그대로 띄울 사유 한 줄을 돌려준다. 예전에는 조용히
+    /// 삼켜서 404 든 깨진 피드든 화면에도 기록에도 흔적이 없었다.
     /// </summary>
-    private async Task LoadChangelogAsync(CancellationToken cancellationToken)
+    private async Task<string?> LoadChangelogAsync(CancellationToken cancellationToken)
     {
         try
         {
-            var json = await http.GetStringAsync(Changelog.FeedUrl, cancellationToken).ConfigureAwait(false);
-            if (Changelog.Parse(json) is { } feed) RemoteEntries = feed.Entries;
+            // **`GetStringAsync` 를 쓰지 않는다.** 그쪽은 non-200 을 HttpRequestException 으로
+            // 뭉개서 404(피드가 없다)와 회선 끊김을 구별하지 못한다. 상태 코드를 손에 쥐어야
+            // 404 를 404 라 말할 수 있다.
+            using var response = await http.GetAsync(Changelog.FeedUrl, cancellationToken).ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+            var fetch = Changelog.Read((int)response.StatusCode, body);
+            if (fetch.Entries is { } entries)
+            {
+                RemoteEntries = entries;
+                return null;
+            }
+
+            // **실패해도 `RemoteEntries` 는 그대로 둔다.** 지난번에 받아 둔 것이 있으면
+            // 그게 낫다 — 일시적인 404 한 번에 잘 받아 뒀던 목록이 사라지면 안 된다.
+            AppLog.Write($"변경 내역 받기 실패: {fetch.Failure}");
+            return fetch.Failure;
         }
-        catch (Exception)
+        catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
         {
-            // 변경 내역을 못 받아도 앱에 박힌 것이 있다. 조용히 넘어간다.
+            // 앱이 꺼지는 중이면 실패가 아니다. 그대로 다시 던져 바깥 `CheckAsync` 의
+            // catch 가 삼키게 둔다 — 끄는 중에 주황 줄을 남길 이유가 없다.
+            if (cancellationToken.IsCancellationRequested) throw;
+
+            var reason = $"변경 내역을 받지 못했습니다 (네트워크: {error.Message})";
+            AppLog.Write($"변경 내역 받기 실패: {reason}");
+            return reason;
         }
     }
 

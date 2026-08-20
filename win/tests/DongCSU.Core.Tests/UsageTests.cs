@@ -116,6 +116,85 @@ public class CredentialTests
         Assert.Equal(2, source.Reads);
     }
 
+    /// <summary>
+    /// 만료된 자격 증명. 데스크톱 앱만 쓰는 사용자에게는 <c>.credentials.json</c> 이
+    /// 이 상태로 남아 있는 것이 **정상**이다 — 갱신해 줄 사람이 없어서 우리가 갱신했다.
+    /// 1704067200000 = 2024-01-01.
+    /// </summary>
+    private const string Stale = """
+        {
+          "claudeAiOauth": {
+            "accessToken": "sk-ant-oat01-stale",
+            "subscriptionType": "max",
+            "expiresAt": 1704067200000
+          }
+        }
+        """;
+
+    /// <summary>
+    /// 만료를 기준으로 삼으면 조건이 늘 참이라 조회마다 파일을 다시 읽는다. WSL 자리를
+    /// 훑는 사용자는 그때마다 배포판이 깨어난다.
+    /// </summary>
+    [Fact]
+    public void 만료된_파일을_조회마다_다시_읽지_않는다()
+    {
+        var source = new CountingSource(Stale);
+        var store = new CredentialStore(source, new FakeTime());
+
+        store.Current();
+        store.Current();
+        store.Current();
+
+        Assert.Equal(1, source.Reads);
+    }
+
+    [Fact]
+    public void 한참_지나면_다시_읽는다()
+    {
+        var source = new CountingSource(Stale);
+        var clock = new FakeTime();
+        var store = new CredentialStore(source, clock);
+
+        store.Current();
+        clock.Advance(CredentialStore.FileRereadInterval + TimeSpan.FromMinutes(1));
+        store.Current();
+
+        Assert.Equal(2, source.Reads);
+    }
+
+    /// <summary>401 뒤에는 바닥을 무시한다. 안 그러면 재로그인해도 죽은 캐시를 붙들고 있다.</summary>
+    [Fact]
+    public void 버리면_바닥을_무시하고_곧바로_다시_읽는다()
+    {
+        var source = new CountingSource(Stale);
+        var store = new CredentialStore(source, new FakeTime());
+
+        store.Current();
+        Assert.Equal(1, source.Reads);
+
+        // 시간은 안 흘린다 — 바닥이 살아 있으면 여기서 안 늘어난다.
+        store.Invalidate();
+        store.Current();
+
+        Assert.Equal(2, source.Reads);
+    }
+
+    /// <summary>
+    /// 못 읽은 상태에 바닥을 걸면 **방금 로그인한 사람이 한 시간을 기다린다.**
+    /// 그 경우는 401 도 안 나서 Invalidate() 가 불릴 일조차 없다.
+    /// </summary>
+    [Fact]
+    public void 아직_못_읽었으면_바닥을_두지_않는다()
+    {
+        var source = new CountingSource("{}");
+        var store = new CredentialStore(source, new FakeTime());
+
+        Assert.Null(store.Current());
+        Assert.Null(store.Current());
+
+        Assert.Equal(2, source.Reads);
+    }
+
     private sealed class CountingSource(string json) : ICredentialSource
     {
         public int Reads { get; private set; }
@@ -257,21 +336,7 @@ public class UsageStoreTests
         Assert.InRange(store.NextPollDelay(), TimeSpan.FromMinutes(2.9), TimeSpan.FromMinutes(3));
     }
 
-    /// <summary>상한이 없으면 한 번 막혔을 때 영영 안 돌아온다.</summary>
-    [Fact]
-    public void 연달아_막히면_점점_물러나되_30분을_넘지_않는다()
-    {
-        var time = new FakeTime();
-        var store = NewStore(time);
-
-        for (var i = 0; i < 20; i++)
-        {
-            store.Apply(UsageResult.Fail(UsageError.RateLimited(null)));
-        }
-
-        Assert.True(store.NextPollDelay() <= TimeSpan.FromMinutes(30));
-        Assert.True(store.NextPollDelay() > TimeSpan.FromMinutes(5));
-    }
+    // 잇달아 막혔을 때의 사다리와 상한은 FetchFloorTests 의 "429 물러나기" 구획에 있다.
 
     [Fact]
     public void 성공하면_물러나기가_풀린다()
@@ -303,6 +368,52 @@ public class UsageStoreTests
     public void 값이_없으면_불러오는_중이라고_한다()
     {
         Assert.Equal("사용량 불러오는 중…", NewStore(new FakeTime()).SummaryText());
+    }
+
+    /// <summary>
+    /// 렌더에서는 조회를 한 번도 안 건다. 그래서 예정 시각을 꽂아 넣지 못하면 상태 탭의
+    /// 조회 카운트다운만 통째로 비어서 실제 화면과 달라진다.
+    /// </summary>
+    [Fact]
+    public void 꽂아_넣은_예정_시각을_그대로_돌려준다()
+    {
+        var time = new FakeTime();
+        var store = NewStore(time);
+        var at = time.GetUtcNow().AddMinutes(7).AddSeconds(12);
+
+        store.Preview(Snapshot(time.GetUtcNow()), nextPoll: at);
+
+        Assert.Equal(at, store.NextPollAt);
+    }
+
+    /// <summary>물러나는 중도 아니고 조회한 적도 없다 — 그래도 꽂은 값이 먼저다.</summary>
+    [Fact]
+    public void 조회한_적이_없어도_꽂은_값이_우선한다()
+    {
+        var time = new FakeTime();
+        var store = NewStore(time);
+
+        Assert.Null(store.NextPollAt);
+
+        store.Preview(Snapshot(time.GetUtcNow()), nextPoll: time.GetUtcNow().AddMinutes(3));
+
+        Assert.Equal(time.GetUtcNow().AddMinutes(3), store.NextPollAt);
+    }
+
+    /// <summary>
+    /// **실제 조회가 돌면 고정값은 사라져야 한다.** 안 그러면 평소에 쓰는 저장소에도
+    /// 고정 카운트다운이 남아 화면이 영영 같은 시간을 가리킨다.
+    /// </summary>
+    [Fact]
+    public void 실제로_조회하면_꽂은_값이_사라진다()
+    {
+        var time = new FakeTime();
+        var store = NewStore(time);
+        store.Preview(Snapshot(time.GetUtcNow()), nextPoll: time.GetUtcNow().AddMinutes(7));
+
+        store.Apply(UsageResult.Ok(Snapshot(time.GetUtcNow())));
+
+        Assert.Equal(time.GetUtcNow() + store.PollInterval, store.NextPollAt);
     }
 
     private sealed class EmptySource : ICredentialSource
@@ -680,6 +791,26 @@ public class AppVersionTests
     {
         Assert.False(AppVersion.TryParse(text, out _));
         Assert.False(AppVersion.IsNewer(text, "1.0.0"));
+    }
+
+    /// <summary>
+    /// 릴리스에 올릴 수 있는 자리 수인지. `TryParse` 와 달리 **관대하면 안 된다** —
+    /// 여기를 통과한 문자열이 그대로 `vpk --packVersion` 으로 가고, 거기는
+    /// SemVer2 세 자리만 받는다. 꼬리표나 `v` 접두어를 봐주면 릴리스 막바지에 죽는다.
+    /// </summary>
+    [Theory]
+    [InlineData("1.0.0", true)]
+    [InlineData("1.12.3", true)]
+    [InlineData("10.0.0", true)]
+    [InlineData("1.0.0.1", false)]     // 긴급 자리는 윈도우에서 못 쓴다
+    [InlineData("1.0", false)]
+    [InlineData("1.2.3+build9", false)]
+    [InlineData("v1.2.3", false)]
+    [InlineData("", false)]
+    [InlineData(null, false)]
+    public void 세_자리인지_가른다(string? text, bool expected)
+    {
+        Assert.Equal(expected, AppVersion.IsThreePart(text));
     }
 }
 

@@ -29,6 +29,14 @@ public static class AppInfo
     ///
     /// 조립은 <see cref="AppVersion.Format"/> 이 한다. 네 번째 자리(긴급 수정)를
     /// 버리지 않기 위한 규칙이 거기 테스트와 함께 있다.
+    ///
+    /// **다만 여기로는 네 자리가 오지 않는다.** 이 값은 csproj 의
+    /// <c>&lt;Version&gt;</c> 하나에서 오고 그 값은 릴리스 워크플로가 태그에서 넘기는데,
+    /// 윈도우 설치본은 NuGet 패키지라 세 자리(SemVer2)만 통과한다 — 근거는
+    /// <c>win/CLAUDE.md</c> 의 "네 번째 자리를 쓸 수 없다". 네 번째 자리는 맥의 규칙이다.
+    /// <see cref="AppVersion.Format"/> 의 네 자리 분기는 <see cref="AppVersion.TryParse"/>
+    /// 로 읽어 들인 **남의 버전**(업데이트 피드·변경 내역 피드, 맥 쪽 목록이 섞여 들어올
+    /// 수 있다)을 그대로 보여줄 때를 위한 것이라 지우지 않는다.
     /// </summary>
     public static string Version { get; } =
         AppVersion.Format(Assembly.GetExecutingAssembly().GetName().Version);

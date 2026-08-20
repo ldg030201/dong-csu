@@ -51,6 +51,14 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer frameTimer = new();
     private readonly DispatcherTimer updateTimer = new();
 
+    /// <summary>
+    /// 직전에 본 "하루에 한 번 확인" 설정. **꺼짐 → 켜짐 전이만 잡으려고 들고 있는다.**
+    ///
+    /// 설정이 바뀔 때마다 확인을 내보내면 설정 창에서 슬라이더 하나만 움직여도 네트워크가
+    /// 나간다. 앱을 띄우면서 처음 값을 심어 둬야 뜨자마자 전이로 오인하지 않는다.
+    /// </summary>
+    private bool checkedForUpdatesWas;
+
     /// <summary>2초면 눈으로 보기 충분하고, 표본 자체는 거의 공짜다.</summary>
     private readonly DispatcherTimer statsTimer = new() { Interval = TimeSpan.FromSeconds(2) };
     private readonly ProcessUsageSampler sampler = new(new CurrentProcessSource());
@@ -144,6 +152,9 @@ public sealed class AppController : IDisposable
         tray.LoginRequested += StartLogin;
         tray.QuitRequested += Quit;
         tray.Activated += ToggleHudVisible;
+        // 메뉴가 떠 있는 동안에는 펫이 멈춰 있어야 한다. 제 메뉴를 두고 걸어나가면
+        // 메뉴가 가리키던 것이 어디 것인지 알 수 없어진다.
+        tray.MenuOpenChanged += open => hud?.SetMenuOpen(open);
 
         hud = new HudWindow(settings);
         stage = new PetStage(hud);
@@ -171,6 +182,11 @@ public sealed class AppController : IDisposable
         // 잠그거나 사용자를 바꾸면 아무도 안 본다. 그동안 움직임을 멈춘다.
         SystemEvents.SessionSwitch += OnSessionSwitch;
 
+        // **처음 값을 `ApplySettings()` 보다 먼저 심는다.** 아래 첫 확인을 거는 자리보다
+        // 이게 먼저 불려서, 안 심으면 앱이 뜨자마자 꺼짐 → 켜짐 전이로 오인해 확인이
+        // 두 번 나간다.
+        checkedForUpdatesWas = settings.ChecksForUpdates;
+
         ApplySettings();
         hud.RestorePosition();
         if (settings.IsHudVisible) hud.Show();
@@ -191,6 +207,9 @@ public sealed class AppController : IDisposable
             animator.IsDizzy = false;
             StartFrameTimer();
             RefreshHud();
+            // **여기를 빠뜨리면 흔든 뒤로 영영 안 걷는다.** 어지러운 동안 걷기 타이머가
+            // null 깨우기로 멎어 있어서, 풀렸다고 알려 주지 않으면 아무도 다시 걸지 않는다.
+            SyncMotion();
         };
 
         updateTimer.Interval = UpdateService.CheckInterval;
@@ -233,6 +252,24 @@ public sealed class AppController : IDisposable
         store.PollInterval = settings.PollInterval;
         pollTimer.Interval = store.NextPollDelay();
         pollTimer.Start();
+
+        // **자동 확인을 켜면 그 자리에서 한 번 확인한다.** 안 그러면 켜 놓고도 아무 일이
+        // 없어서 "업데이트 확인"을 따로 눌러야 한다 — 맥의 `UpdateChecker.start()` 도
+        // 타이머를 걸기 전에 한 번 부른다.
+        //
+        // **전이일 때만 부른다.** 매번 부르면 설정 창에서 무엇을 만질 때마다 확인이
+        // 나간다(껐다 켜기를 연타해도 `UpdateService.CanCheckNow` 의 10초 바닥이 막는다).
+        // 타이머를 껐다 켜는 것은 하루 주기를 **켠 시점부터** 다시 세기 위해서다 —
+        // 그냥 두면 켜자마자 한 번 확인해 놓고 남은 주기가 끝나 또 확인한다.
+        // 테스트판은 `CheckAsync` 초입의 가드가 되돌리므로 여기서 또 보지 않는다.
+        if (settings.ChecksForUpdates && !checkedForUpdatesWas)
+        {
+            updateTimer.Stop();
+            updateTimer.Start();
+            _ = updates.CheckAsync();
+        }
+        // 끄는 쪽은 다음 Tick 이 `settings.ChecksForUpdates` 로 걸러 낸다.
+        checkedForUpdatesWas = settings.ChecksForUpdates;
 
         if (settings.IsHudVisible) hud.Show(); else hud.Hide();
 
@@ -502,7 +539,10 @@ public sealed class AppController : IDisposable
     {
         if (hud is { } window)
         {
-            animator.IsDragged = window.IsHeld;
+            // **매달린 자세는 실제로 끌었을 때만 나온다.** 버튼을 누르고만 있거나 눌렀다
+            // 그 자리에서 떼는 클릭까지 버둥거리면 새로고침 한 번에 부엉이가 요동친다.
+            // 멈추는 것은 `IsHeld` 가 따로 본다 — 눌림도 여전히 멈추는 이유다.
+            animator.IsDragged = window.IsCarried;
             animator.IsDizzy = window.Shake.IsDizzy;
             StartFrameTimer();
             RefreshHud();
@@ -526,6 +566,8 @@ public sealed class AppController : IDisposable
         animator.IsDizzy = true;
         StartFrameTimer();
         RefreshHud();
+        // 대개 손에 잡혀 있어 이미 멈춰 있지만, 놓은 뒤 남은 시간을 위해 상태는 맞춰 둔다.
+        SyncMotion();
     });
 
     private readonly DispatcherTimer dizzyTimer = new();
@@ -546,6 +588,12 @@ public sealed class AppController : IDisposable
 
         motion.Wanders = settings.PetWanders;
         motion.DodgesCursor = settings.PetDodgesCursor;
+        // **기분을 그대로 쓴다.** `animator.Mood` 는 `OnStoreChanged` 가 `OwlMoodResolver`
+        // 로 정해 넣은 값이라, 그림과 걸음이 같은 신호에서 나온다. 여기서 사용률을 다시
+        // 견주면 마스코트는 주저앉았는데 산책은 계속 나가는 어긋남이 생긴다.
+        motion.IsDrained = animator.Mood == OwlMood.Exhausted;
+        // 어지러움도 같다 — 여기서 시간을 따로 세면 그림과 움직임이 어긋난다.
+        motion.IsDizzy = animator.IsDizzy;
         // 배회를 끄면 걷던 것이 그 자리에 서므로 자세를 바로 맞춘다.
         ApplyGait(motion.Gait);
 

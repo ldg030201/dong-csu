@@ -134,11 +134,18 @@ static int CheckIcon(string iconPath)
 }
 
 /// <summary>
-/// 이 버전을 내보내도 되는지.
+/// 이 버전을 내보내도 되는지. **이제 두 가지를 본다.**
 ///
-/// **태그만 붙이고 변경 내역을 안 적는 실수**를 막는다. 그러면 사용자는 새 버전을
+/// 하나는 **자리 수**다. 설치본이 NuGet 패키지 형식이라 버전이 세 자리여야 하고,
+/// 네 자리는 릴리스 막바지의 `vpk pack` 에서야 죽는다 — 그때는 태그가 이미 원격에
+/// 올라간 뒤라 되돌리기가 비싸다. 그래서 손으로도 미리 확인할 수 있게 여기서 본다.
+///
+/// 다른 하나는 **태그만 붙이고 변경 내역을 안 적는 실수**다. 그러면 사용자는 새 버전을
 /// 받았는데 설정 창의 버전 탭에는 아무것도 안 뜬다. 날짜도 함께 본다 — 비어 있으면
 /// "아직 안 나간 항목"이라는 뜻이라 릴리스와 앞뒤가 안 맞는다.
+///
+/// 자리 수가 틀려도 곧장 돌아서지 않는다. 변경 내역까지 한 번에 보여 주는 편이,
+/// 고치고 다시 돌렸더니 다음 문제가 나오는 것보다 낫다.
 /// </summary>
 static int CheckRelease(string? version)
 {
@@ -151,6 +158,11 @@ static int CheckRelease(string? version)
     var newest = Changelog.Entries[0];
     var problems = new List<string>();
 
+    if (!AppVersion.IsThreePart(version))
+    {
+        problems.Add($"{version} 은 세 자리가 아니다 — 설치본이 NuGet 패키지 형식이라 "
+            + "vpk 가 SemVer2 세 자리만 받는다 (win/CLAUDE.md '네 번째 자리를 쓸 수 없다')");
+    }
     if (newest.Version != version)
     {
         problems.Add($"변경 내역 맨 위가 {newest.Version} 인데 내려는 것은 {version} 이다");

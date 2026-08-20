@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -148,12 +149,65 @@ public sealed class AppSettings
     public double? WindowLeft { get; set; }
     public double? WindowTop { get; set; }
 
+    /// <summary>
+    /// 설정 창에서 열려 있는 탭.
+    ///
+    /// **창이 아니라 여기 둔다.** 설정 창은 닫을 때마다 버려지고 다음에 새로 만들어져서,
+    /// 창의 필드로 두면 닫았다 열 때마다 상태 탭으로 돌아간다. HUD 의 새 버전 표시가
+    /// 밖에서 <c>SelectTab("version")</c> 으로 탭을 지정하는 것도 창 밖에 있어야 한다.
+    ///
+    /// **<see cref="JsonIgnoreAttribute"/> 인 이유** — 닫았다 열면 보던 탭이 그대로여야
+    /// 하지만 앱을 껐다 켜면 상태 탭에서 시작하는 것이 맞다. 맥과 같다.
+    ///
+    /// 탭 키는 문자열이다. <c>ChangelogGroup.Tab</c> 이 이미 같은 키를 문자열로 쓰고,
+    /// Core 는 탭 목록이 무엇인지 알 필요가 없다.
+    /// </summary>
+    [JsonIgnore]
+    public string SettingsTab { get; set; } = "status";
+
     [JsonIgnore]
     public TimeSpan PollInterval => TimeSpan.FromSeconds(Math.Clamp(PollIntervalSeconds, 60, 1800));
 
     /// <summary>실제로 그릴 때 쓸 불투명도. 글자가 읽히는 아래쪽에서 막는다.</summary>
     [JsonIgnore]
     public double Backdrop => Math.Clamp(BackdropOpacity, MinBackdropOpacity, 1.0);
+
+    /// <summary>초기화해도 되돌리지 않는 것.</summary>
+    private static readonly string[] KeptOnReset = [nameof(MovedToSheetOwl)];
+
+    /// <summary>
+    /// 설정을 전부 기본값으로 되돌린다.
+    ///
+    /// **되돌릴 목록을 손으로 적지 않는다.** 설정 창이 <c>settings.Mode = fresh.Mode;</c>
+    /// 식으로 열아홉 줄을 옮겨 적고 있었고, 실제로 <see cref="PetHidesRingWhileHeld"/>
+    /// 한 줄을 빠뜨렸다. 설정이 하나 늘 때마다 같은 누락이 난다 — 그래서 반사로 훑는다.
+    ///
+    /// 두 가지만 남긴다.
+    ///
+    /// - <see cref="JsonIgnoreAttribute"/> 가 붙은 것. 파일에 안 적히는 값은 설정이 아니라
+    ///   화면 상태다. <see cref="SettingsTab"/> 이 여기 걸려서, 초기화를 눌러도 보던 탭이
+    ///   상태 탭으로 튀지 않는다.
+    /// - <see cref="MovedToSheetOwl"/>. 한 번만 도는 이주 표식이라 되돌리면 다음 실행의
+    ///   <see cref="Load"/> 에서 <see cref="MoveToSheetOwlOnce"/> 가 다시 돈다. 초기화한
+    ///   뒤 아이콘 탭에서 오리지널 부엉이를 고른 사람이 다음 실행에 그림 부엉이로 끌려간다.
+    ///
+    /// 자동 시작은 레지스트리에 있어 설정 파일 밖이다. 여기서 건드리지 않고 부르는 쪽에
+    /// 남긴다.
+    /// </summary>
+    public void ResetToDefaults()
+    {
+        var fresh = new AppSettings();
+
+        foreach (var property in typeof(AppSettings).GetProperties(BindingFlags.Public | BindingFlags.Instance))
+        {
+            // 읽기 전용인 PollInterval·Backdrop 은 CanWrite 에서 이미 걸러진다.
+            if (!property.CanRead || !property.CanWrite) continue;
+            if (property.GetCustomAttribute<JsonIgnoreAttribute>() is not null) continue;
+            if (KeptOnReset.Contains(property.Name)) continue;
+
+            property.SetValue(this, property.GetValue(fresh));
+        }
+    }
 
     // ── 저장 ──────────────────────────────────────────────────────
 

@@ -12,6 +12,12 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     /// <summary>사용량 API 는 레이트리밋 창을 쓴다. 너무 조이면 429 가 난다.</summary>
     public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromMinutes(5);
 
+    /// <summary>429 를 맞고 처음 물러나는 시간. 맥과 같은 60·120·240·300초 사다리의 첫 칸이다.</summary>
+    public static readonly TimeSpan RateLimitBackoffBase = TimeSpan.FromSeconds(60);
+
+    /// <summary>물러나기 상한. 이걸 넘기면 한 번 막혔을 때 사실상 안 돌아온다.</summary>
+    public static readonly TimeSpan MaxRateLimitBackoff = TimeSpan.FromMinutes(5);
+
     private readonly TimeProvider time = time ?? TimeProvider.System;
     private DateTimeOffset? backoffUntil;
     private DateTimeOffset? lastAttemptAt;
@@ -24,14 +30,27 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     /// <summary>
     /// 값을 직접 꽂아 넣는다. **테스트와 렌더 확인 전용** — 네트워크 없이 화면을 채운다.
     /// 맥의 <c>init(preview:)</c> 와 같은 자리다.
+    ///
+    /// <paramref name="nextPoll"/> 까지 받는 이유는 상태 탭이 **조회 카운트다운을 그리기**
+    /// 때문이다. 예정 시각이 없으면 그 줄만 비어서 실제 화면과 달라진다.
     /// </summary>
-    public void Preview(UsageSnapshot? snapshot, string? error = null, bool needsReauth = false)
+    public void Preview(
+        UsageSnapshot? snapshot,
+        string? error = null,
+        bool needsReauth = false,
+        DateTimeOffset? nextPoll = null)
     {
         Snapshot = snapshot;
         ErrorText = error;
         NeedsReauth = needsReauth;
+        previewNextPollAt = nextPoll;
         Changed?.Invoke();
     }
+
+    /// <summary>
+    /// 렌더·테스트 전용으로 꽂은 다음 조회 예정 시각. 실제 조회가 돌면 <see cref="Apply"/> 가 덮는다.
+    /// </summary>
+    private DateTimeOffset? previewNextPollAt;
     public string? ErrorText { get; private set; }
     public bool IsRefreshing { get; private set; }
 
@@ -83,6 +102,9 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     {
         get
         {
+            // 꽂아 넣은 값이 있으면 그것이 먼저다. 렌더에서는 조회를 한 번도 안 걸어서
+            // 아래 계산이 늘 null 이 되고, 카운트다운 줄만 통째로 빈다.
+            if (previewNextPollAt is { } preview) return preview;
             if (backoffUntil is { } until && until > time.GetUtcNow()) return until;
             return lastAttemptAt is { } at ? at + PollInterval : null;
         }
@@ -149,6 +171,9 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     {
         // 성공이든 실패든 한 번 걸었다. 다음 조회 시각은 여기서부터 센다.
         lastAttemptAt = time.GetUtcNow();
+        // 꽂아 둔 예정 시각은 여기서 버린다. 안 그러면 실제로 도는 앱에서도 화면이
+        // 영영 같은 시간을 가리킨다.
+        previewNextPollAt = null;
 
         if (result.Snapshot is { } snapshot)
         {
@@ -167,13 +192,20 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
         if (error.Kind == UsageErrorKind.RateLimited)
         {
             consecutiveRateLimits++;
-            // 서버가 시간을 알려주면 그대로 따르고, 아니면 주기를 배로 늘려 가며 물러난다.
-            // 상한을 두지 않으면 한 번 막혔을 때 영영 안 돌아온다.
-            var backoff = error.RetryAfter
-                ?? TimeSpan.FromSeconds(Math.Min(
-                    PollInterval.TotalSeconds * Math.Pow(2, consecutiveRateLimits),
-                    TimeSpan.FromMinutes(30).TotalSeconds));
-            backoffUntil = time.GetUtcNow() + backoff;
+            // **조회 주기와 떼어낸 고정 사다리다** — 60·120·240초, 최대 5분. 맥과 같은 기준.
+            //
+            // 예전에는 밑값이 사용자가 고른 조회 주기였는데, 그게 거꾸로였다. 자주 보도록
+            // 설정한 사람일수록 429 를 맞기 쉬운데 옛 식은 **그 사람만 빨리 돌아오게 하고**
+            // 드물게 보는 사람(30분 주기)은 첫 429 에 곧바로 30분을 재웠다. 막힌 정도는
+            // 서버 사정이지 우리가 얼마나 자주 보느냐가 아니다.
+            var ladder = TimeSpan.FromSeconds(Math.Min(
+                RateLimitBackoffBase.TotalSeconds * Math.Pow(2, consecutiveRateLimits - 1),
+                MaxRateLimitBackoff.TotalSeconds));
+            // 서버가 알려준 시간은 **더 길 때만** 따른다. 5초를 주더라도 우리 바닥은 지킨다.
+            // HTTP-date 로 이미 지난 시각이 오면 음수 TimeSpan 이 되는데, 이 비교가 그것도
+            // 같이 걸러 준다 — 음수는 사다리보다 짧아서 그냥 무시된다.
+            var hinted = error.RetryAfter is { } after && after > ladder ? after : ladder;
+            backoffUntil = time.GetUtcNow() + hinted;
         }
         else
         {

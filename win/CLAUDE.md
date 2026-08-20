@@ -77,7 +77,7 @@
 ### 확인 방법
 
 화면에 관한 것은 **띄워서 눌러 보는 것이 정본**이다. 다만 배치·색·문구는 아래
-"눈으로 확인하기" 의 `--render` 셋으로 먼저 본다 — 훨씬 빠르고 어긋나지 않는다.
+"눈으로 확인하기" 의 `--render` 넷으로 먼저 본다 — 훨씬 빠르고 어긋나지 않는다.
 
 개발을 통째로 이어받는 경우라면 [`docs/handoff.md`](docs/handoff.md) 에 시작 지점과
 맥에서 옮겨 올 목록이 정리돼 있다.
@@ -131,6 +131,7 @@ dotnet run --project tools/DongCSU.Tools -- --print-owl      idle    # 글자로
 DongCSU.exe --version
 DongCSU.exe --where          # 어느 판인지, 설정·기록·토큰이 어느 폴더인지
 DongCSU.exe --probe          # 자격 증명이 읽히는지, 사용량이 오는지
+DongCSU.exe --probe-layout   # 탭마다 세로로 몇 pt 인지, 가로로 잘리는 곳은 없는지
 DongCSU.exe --probe-owl idle
 DongCSU.exe --log            # 기록 파일 내용
 
@@ -138,9 +139,10 @@ DongCSU.exe --log            # 기록 파일 내용
 DongCSU.exe --render out.png 34 61 expanded owlsheet normal dark
 DongCSU.exe --render-settings out.png version 760x760 light
 DongCSU.exe --render-owl out.png 64
+DongCSU.exe --render-menubar out.png 32 6   # 트레이 아이콘. 기분마다 한 줄, 프레임마다 한 칸
 ```
 
-**화면에 관한 것은 이 셋으로 먼저 본다.** 앱을 띄우고 창을 찾아 마우스를 옮겨 가며
+**화면에 관한 것은 이 넷으로 먼저 본다.** 앱을 띄우고 창을 찾아 마우스를 옮겨 가며
 찍는 것은 느리고 잘 어긋난다 — 설정 창이 다른 창 뒤에 깔리면 엉뚱한 것이 찍힌다.
 실제로 그렇게 두 번 헛돌았다.
 

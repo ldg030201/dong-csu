@@ -1,8 +1,5 @@
 using System.Drawing;
-using System.Drawing.Imaging;
 using System.Windows.Forms;
-using DongCSU.App.Rendering;
-using DongCSU.Core.Owl;
 
 namespace DongCSU.App.Tray;
 
@@ -39,6 +36,17 @@ public sealed partial class TrayIcon : IDisposable
     public event Action? QuitRequested;
     public event Action? Activated;
 
+    /// <summary>
+    /// 메뉴가 떠 있는 동안 true. **펫이 제 메뉴를 두고 걸어나가지 않게 하려는 것이다** —
+    /// 맥은 <c>popUpContextMenu</c> 가 메뉴가 닫힐 때까지 안 돌아와서 앞뒤로 감싸면
+    /// 됐지만, WinForms 의 <c>Show</c> 는 곧바로 돌아오므로 열고 닫히는 것을 받아서 안다.
+    ///
+    /// 트레이 아이콘 우클릭과 **같은 메뉴 한 벌**이라 트레이에서 연 메뉴에서도 펫이
+    /// 멈춘다. 맥과 다른 점이지만 해로울 것이 없고, 메뉴를 두 벌로 갈라 두는 쪽이
+    /// 훨씬 나쁘다 — 한쪽에만 항목을 더하게 된다.
+    /// </summary>
+    public event Action<bool>? MenuOpenChanged;
+
     public TrayIcon()
     {
         summaryItem = new ToolStripMenuItem("사용량 불러오는 중…") { Enabled = false };
@@ -71,6 +79,12 @@ public sealed partial class TrayIcon : IDisposable
             new ToolStripSeparator(),
             quit,
         ]);
+
+        // **여는 쪽(`ShowMenuAtCursor`)이 아니라 메뉴에 건다.** 아래에서 알림 아이콘에
+        // 메뉴가 안 붙어 있으면 못 띄우고 되돌아가는 길이 있는데, 여는 쪽에서 켜 두면
+        // 뜨지도 않은 메뉴 때문에 펫이 영영 굳는다. `Closed` 도 반드시 함께 건다.
+        menu.Opened += (_, _) => MenuOpenChanged?.Invoke(true);
+        menu.Closed += (_, _) => MenuOpenChanged?.Invoke(false);
 
         TrayMenuStyle.Apply(menu, dark: true);
 
@@ -167,32 +181,13 @@ public sealed partial class TrayIcon : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// 그림은 <see cref="TrayIconArt"/> 가 그리고 여기서는 아이콘으로만 바꾼다.
+    /// **진단 통로가 같은 그림을 봐야 해서 갈라 뒀다.**
+    /// </summary>
     private static Icon BuildIcon(string[] grid, IReadOnlyDictionary<string, string> palette, int size)
     {
-        var document = OwlDocument.Embedded;
-        var cell = Math.Max(1, size / document.Grid.Lines);
-        var width = cell * document.Grid.Columns;
-        var height = cell * document.Grid.Lines;
-
-        using var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-        using (var graphics = Graphics.FromImage(bitmap))
-        {
-            graphics.Clear(System.Drawing.Color.Transparent);
-            for (var y = 0; y < grid.Length; y++)
-            {
-                var row = grid[y];
-                for (var x = 0; x < row.Length; x++)
-                {
-                    var key = OwlRenderer.PaletteKey(row[x]);
-                    if (key is null || !palette.TryGetValue(key, out var hex)) continue;
-
-                    var media = OwlRenderer.ParseColor(hex);
-                    using var brush = new SolidBrush(
-                        System.Drawing.Color.FromArgb(media.R, media.G, media.B));
-                    graphics.FillRectangle(brush, x * cell, y * cell, cell, cell);
-                }
-            }
-        }
+        using var bitmap = TrayIconArt.Render(grid, palette, size);
 
         var handle = bitmap.GetHicon();
         try

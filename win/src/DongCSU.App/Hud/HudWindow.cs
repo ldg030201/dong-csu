@@ -27,10 +27,20 @@ public sealed class HudWindow : Window
     private readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(1) };
 
 
+    /// <summary>
+    /// 끌어서 창이 **실제로 움직였다.** 누르고만 있는 것(<see cref="pressing"/>)과 가른다 —
+    /// 매달린 자세는 이쪽에서만 나온다.
+    /// </summary>
     private bool isDragging;
+
+    /// <summary>마스코트를 누르고 있는 중. 아직 한 칸도 안 움직였을 수 있다.</summary>
+    private bool pressing;
 
     /// <summary>버튼을 누른 채로 있는 중. 뗄 때 같은 자리면 그때 실행한다.</summary>
     private HudHit pressed = HudHit.None;
+
+    /// <summary>우클릭 메뉴가 떠 있는 중. 제 메뉴를 두고 걸어나가지 않게 붙잡는다.</summary>
+    private bool isMenuOpen;
 
     public event Action? ModeToggled;
 
@@ -60,12 +70,37 @@ public sealed class HudWindow : Window
     public HudView View => view;
 
     /// <summary>
-    /// 지금 손에 잡혀 있는지(끌거나 버튼을 누르고 있는지).
+    /// 지금 **멈춰 있어야 하는지.** 끄는 중이거나, 어디든 누르고 있거나, 우클릭 메뉴가
+    /// 떠 있으면 그렇다.
     ///
     /// 그동안에는 스스로 움직이지 않는다 — 손에 잡힌 채로 걸어나가면 잡은 자리에서
-    /// 미끄러진다.
+    /// 미끄러지고, 제 메뉴를 두고 걸어나가면 메뉴만 허공에 남는다.
+    ///
+    /// **매달린 자세와는 다른 값이다.** 그쪽은 <see cref="IsCarried"/> 를 본다.
     /// </summary>
-    public bool IsHeld => isDragging || pressed != HudHit.None;
+    public bool IsHeld => isDragging || pressing || pressed != HudHit.None || isMenuOpen;
+
+    /// <summary>
+    /// 지금 들려 있는지. **실제로 창이 움직인 뒤에만 true.**
+    ///
+    /// 누르기만 하고 만 클릭에 부엉이가 요동치지 않게 <see cref="IsHeld"/> 와 갈라 뒀다 —
+    /// 펫의 설정·새로고침 버튼을 누르고 있는 동안에도, 마스코트를 눌렀다 그 자리에서
+    /// 떼기만 해도 매달린 자세가 되면 새로고침 한 번에 부엉이가 버둥거린다.
+    /// </summary>
+    public bool IsCarried => isDragging;
+
+    /// <summary>
+    /// 우클릭 메뉴가 열렸다 닫혔다. 그동안 <see cref="IsHeld"/> 로 걸음을 멈춘다.
+    ///
+    /// **값이 그대로면 아무것도 하지 않는다** — 알릴 때마다 걸음이 <c>Reset</c> 되어
+    /// 배회가 계속 처음의 뜸들이기로 되돌아간다.
+    /// </summary>
+    public void SetMenuOpen(bool open)
+    {
+        if (isMenuOpen == open) return;
+        isMenuOpen = open;
+        HeldChanged?.Invoke();
+    }
 
     /// <summary>
     /// 지금 커서가 **비켜야 할 자리**에 있는지. 창 좌표를 뷰 좌표로 옮겨서 직접 본다.
@@ -115,8 +150,19 @@ public sealed class HudWindow : Window
         MouseRightButtonUp += (_, _) => ContextMenuRequested?.Invoke();
         LocationChanged += (_, _) =>
         {
-            if (isDragging)
+            if (pressing)
             {
+                // **여기서 처음으로 "끌렸다"가 된다.** 창이 실제로 움직이기 시작한 뒤에야
+                // 매달린 자세로 간다 — 누르기만 하고 만 클릭까지 버둥거리면 새로고침
+                // 한 번에 부엉이가 요동친다. 들고 있는 동안 링을 감추는 것도 같이 걸린다.
+                if (!isDragging)
+                {
+                    isDragging = true;
+                    view.IsDraggingPet = true;
+                    SyncPetRingFade();
+                    HeldChanged?.Invoke();
+                }
+
                 // 끄는 동안 자리를 계속 넣어 준다. DragMove 는 자기 루프를 돌지만
                 // LocationChanged 는 그 안에서도 온다.
                 var shaken = Shake.Sample(new PetPoint(Left, Top));
@@ -642,9 +688,13 @@ public sealed class HudWindow : Window
 
         try
         {
-            isDragging = true;
-            view.IsDraggingPet = true;
-            SyncPetRingFade();
+            // **누르고 있을 뿐이다.** 매달린 자세와 링 감추기는 창이 실제로 움직인
+            // 뒤에 LocationChanged 에서 걸린다.
+            pressing = true;
+            // 그림이 안 넘어가는데 기분만 어지러워지면 안 된다. 맥은 애니메이터가
+            // 멎어 있으면 세는 코드 자체가 안 돌지만, 우리는 창 이동에서 따로 세므로
+            // 여기서 끊는다. **끌기를 시작할 때마다 읽어서** 설정을 바꾸면 곧 따라간다.
+            Shake.Counts = settings.AnimatesMascot && settings.IconStyle.IsAnimated();
             Shake.Begin();
             HeldChanged?.Invoke();
             DragMove();
@@ -655,6 +705,7 @@ public sealed class HudWindow : Window
         }
         finally
         {
+            pressing = false;
             isDragging = false;
             view.IsDraggingPet = false;
             SyncPetRingFade();

@@ -21,11 +21,13 @@ on:
       - "win/**"
       - "shared/**"
       - ".github/workflows/build-win.yml"
+      - ".github/actions/win-checks/**"
   pull_request:
     paths:
       - "win/**"
       - "shared/**"
       - ".github/workflows/build-win.yml"
+      - ".github/actions/win-checks/**"
   workflow_dispatch:
 
 jobs:
@@ -52,22 +54,6 @@ jobs:
       - name: 테스트
         run: dotnet test -c Release --no-build
 
-      # 앱에 박아 둔 부엉이가 저장소의 것과 같은지. 다르면 맥과 다른 그림을 그린다.
-      - name: 부엉이 데이터가 저장소의 것과 같은지
-        shell: bash
-        run: |
-          dotnet run --project tools/DongCSU.Tools -c Release --no-build -- --dump-owl /tmp/win-owl.json
-          diff -q /tmp/win-owl.json ../shared/owl.json \
-            || { echo "앱에 박힌 owl.json 이 shared/owl.json 과 다르다 — 다시 빌드해라"; exit 1; }
-
-      - name: 변경 내역 파일이 소스와 맞는지
-        shell: bash
-        run: |
-          dotnet run --project tools/DongCSU.Tools -c Release --no-build -- --dump-changelog /tmp/win-changelog.json
-          diff -q /tmp/win-changelog.json docs/changelog.json \
-            || { echo "win/docs/changelog.json 이 Changelog.cs 와 다르다 — --dump-changelog 로 다시 뽑아라"; exit 1; }
-
-      # 아이콘 파일을 바이트로 비교하지 않는다 — PNG 압축 결과가 zlib 판마다 달라서
-      # 같은 그림인데도 어긋난다. 무엇으로 만들었는지(지문)를 본다.
-      - name: 아이콘이 부엉이 데이터와 맞는지
-        run: dotnet run --project tools/DongCSU.Tools -c Release --no-build -- --check-icon src/DongCSU.App/Resources/DongCSU.ico
+      # 대조 검사 셋은 win-release 도 똑같이 돌려야 해서 composite action 으로 뽑아 뒀다.
+      # 여기에는 `working-directory` 를 쓸 수 없어서(uses: 단계라) action 이 입력으로 받는다.
+      - uses: ./.github/actions/win-checks

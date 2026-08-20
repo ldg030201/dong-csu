@@ -61,6 +61,17 @@ public sealed class PetShake(TimeProvider? time = null)
     public bool Measured { get; private set; }
 
     /// <summary>
+    /// 점수를 쌓을지. 끄면 아무리 흔들어도 어지러워지지 않는다.
+    ///
+    /// 맥은 애니메이터가 멎어 있으면 점수를 세는 코드(<c>accumulateDizziness</c>)가 아예
+    /// 안 돈다. 윈도우는 창 이동 이벤트에서 따로 세므로 여기서 끈다.
+    ///
+    /// **속도는 그래도 잰다.** 끌리는 자세가 <see cref="Velocity"/> 를 쓰는데,
+    /// 그것까지 끊으면 매달린 몸이 안 처진다.
+    /// </summary>
+    public bool Counts { get; set; } = true;
+
+    /// <summary>
     /// 끌기 시작. **점수를 새로 센다** — 사이를 두고 조금씩 흔든 것이 쌓여서
     /// 엉뚱한 때에 어지러워지면 안 된다.
     /// </summary>
@@ -101,6 +112,9 @@ public sealed class PetShake(TimeProvider? time = null)
         var dy = (position.Y - before.Y) / seconds;
         Velocity = new PetPoint(dx, dy);
         Measured = true;
+
+        // 속도를 재고 **난 뒤에** 끊는다 — 위쪽을 건너뛰면 끌리는 자세가 통째로 죽는다.
+        if (!Counts) return false;
 
         // 아주 긴 간격(다른 창에 갔다 온 뒤 등)에 점수가 통째로 날아가지 않게 막는다.
         score = Math.Max(0, score - DecayPerSecond * Math.Min(seconds, 0.25));

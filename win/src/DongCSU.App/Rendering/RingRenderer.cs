@@ -24,6 +24,13 @@ public static class RingRenderer
     /// </summary>
     public const double MinimumFraction = 0.004;
 
+    /// <param name="spentColor">
+    /// 주간을 다 썼을 때 두 링에 함께 칠할 색. 안 넘기면 각자 제 사용률 색으로 그린다.
+    ///
+    /// **다 썼으면 둘 다 색을 뺀다.** 세션은 쓸 수 없어서고, 주간은 그 자신이 죽은
+    /// 이유라서다. 하나만 빨갛게 남으면 마스코트는 멈췄는데 링은 살아 있어서,
+    /// 아직 뭔가 되는 것처럼 읽힌다.
+    /// </param>
     public static void Draw(
         DrawingContext context,
         Point center,
@@ -35,7 +42,7 @@ public static class RingRenderer
         double? weeklyPercent,
         Color trackColor,
         bool grayscale,
-        Color? sessionSpentColor = null)
+        Color? spentColor = null)
     {
         // 선이 지름 밖으로 삐져나가지 않게 두께의 절반만큼 안으로 넣는다.
         var outerRadius = (outerDiameter - outerThickness) / 2;
@@ -43,10 +50,11 @@ public static class RingRenderer
         var innerRadius = (innerDiameter - innerThickness) / 2;
 
         DrawOne(context, center, outerRadius, outerThickness, sessionPercent, trackColor, grayscale,
-            sessionSpentColor);
+            spentColor);
         if (innerRadius > innerThickness)
         {
-            DrawOne(context, center, innerRadius, innerThickness, weeklyPercent, trackColor, grayscale);
+            DrawOne(context, center, innerRadius, innerThickness, weeklyPercent, trackColor, grayscale,
+                spentColor);
         }
     }
 

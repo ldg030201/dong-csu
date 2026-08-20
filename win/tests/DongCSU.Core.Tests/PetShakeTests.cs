@@ -161,4 +161,26 @@ public class PetShakeTests
         Assert.Equal(measured, shake.Velocity);
     }
 
+    /// <summary>
+    /// '캐릭터 애니메이션'을 꺼 두면 흔들어도 어지러워지지 않는다.
+    ///
+    /// 맥은 애니메이터가 멎어 있으면 세는 코드 자체가 안 돈다. 윈도우는 창 이동
+    /// 이벤트에서 따로 세므로, 끄지 않으면 그림은 안 넘어가는데 기분만 어지러움이 된다.
+    ///
+    /// **속도는 그래도 재야 한다** — 끌리는 자세가 그 값을 쓴다.
+    /// </summary>
+    [Fact]
+    public void 점수를_세지_않게_해_두면_어지러워지지_않는다()
+    {
+        var clock = new FakeTime(Start);
+        var shake = new PetShake(clock) { Counts = false };
+        shake.Begin();
+
+        Assert.False(Shake(shake, clock, 12, 30));
+        Assert.False(shake.IsDizzy);
+
+        // 끌리는 자세가 죽으면 안 된다 — 몸이 처지고 날개가 움직이려면 속도가 필요하다.
+        Assert.True(shake.Measured);
+        Assert.NotEqual(default, shake.Velocity);
+    }
 }
