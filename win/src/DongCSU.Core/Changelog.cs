@@ -134,8 +134,8 @@ public static class Changelog
     [
         new ChangelogEntry
         {
-            Version = "2.3.1",
-            Date = null,
+            Version = "2.4.0",
+            Date = "2026-08-20",
             Groups =
             [
                 new ChangelogGroup
