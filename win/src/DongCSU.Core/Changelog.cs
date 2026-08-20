@@ -180,9 +180,11 @@ public static class Changelog
                     Title = "마스코트",
                     Notes =
                     [
+                        ChangelogNote.Change("마스코트를 새로 그린 그림으로 교체 (옆모습이 통통해지고 눈·표정이 또렷해짐)"),
                         ChangelogNote.Change("캐릭터 애니메이션을 끄면 흔들어도 어지러워하지 않도록 변경"),
                         ChangelogNote.Fix("주간 한도를 다 써도 주간 링과 주간 점은 색이 남던 문제 수정"),
                         ChangelogNote.Fix("걸음을 멈출 때마다 눈을 감았다 뜨던 문제 수정"),
+                        ChangelogNote.Fix("펫 모드에서 마스코트가 맥보다 조금 작게 그려지던 문제 수정"),
                     ],
                 },
                 new ChangelogGroup

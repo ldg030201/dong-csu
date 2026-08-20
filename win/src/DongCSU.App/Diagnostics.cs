@@ -103,6 +103,13 @@ public static partial class Diagnostics
                 exitCode = Settings.ProbeLayout.Run(args);
                 return true;
 
+            // 시트가 실제로 어떻게 구워져 있는지 재서 칸 표와 맞대 본다.
+            // **칸 표는 맥 소스를 손으로 옮겨 적은 것이라 어긋날 수 있다** —
+            // 그림은 같은 파일을 쓰므로 안 갈리지만 읽는 방법은 갈린다.
+            case "--probe-mascot":
+                exitCode = Rendering.ProbeMascot.Run(args);
+                return true;
+
             case "--log":
                 // 로그 파일을 그대로 찍는다. 사용자가 파일을 찾아 헤매지 않게.
                 Console.WriteLine(AppLog.DefaultPath);
@@ -170,6 +177,7 @@ public static partial class Diagnostics
         Console.WriteLine("  --probe");
         Console.WriteLine("  --probe-owl [기분]");
         Console.WriteLine("  --probe-layout");
+        Console.WriteLine("  --probe-mascot");
         Console.WriteLine("  --log");
         Console.WriteLine("  --render <out.png> [세션%] [주간%] [보기] [아이콘] [배율] [테마]");
         Console.WriteLine("  --render-settings <out.png> [탭] [너비x높이] [dark|light]");

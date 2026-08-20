@@ -31,8 +31,11 @@ internal static class MascotRenderer
     private static BitmapSource? sheet;
     private static bool tried;
 
-    /// <summary>걷기·뛰기 칸 중 가장 낮은 잉크 바닥. 그것을 땅으로 삼는다.</summary>
-    private static int? gaitGround;
+    /// <summary>
+    /// 모든 칸의 잉크를 묶은 상자. **프레임마다 다시 재지 않는다** — 시트를 읽을 때
+    /// 한 번 재고 들고 있는다. 스물한 칸을 훑는 일이라 초당 열 번 하면 값이 아깝다.
+    /// </summary>
+    private static Int32Rect commonInk;
 
     /// <summary>시트가 있으면 true. 없으면 부르는 쪽이 격자로 떨어진다.</summary>
     public static bool IsAvailable => Sheet() is not null;
@@ -40,39 +43,51 @@ internal static class MascotRenderer
     /// <summary>
     /// 칸 하나를 <paramref name="bounds"/> 안에 그린다.
     ///
-    /// 세로는 **바닥을 맞춘다** — 서 있든 걷든 발이 같은 줄에 와야 한다. 걷기·뛰기는
-    /// 그림에 그려진 뜬 높이를 지킨다(<see cref="MascotSheet.KeepsLift"/>).
+    /// <b>칸마다 자리를 다시 잡지 않는다.</b> 모든 칸의 잉크를 한 상자로 묶고
+    /// (<see cref="CommonInk"/>) 그 상자에만 배율을 매긴 뒤, 칸은 <b>구워진 자리
+    /// 그대로</b> 옮긴다. 맥이 <c>trimTogether</c> 로 칸을 함께 잘라 내고
+    /// <c>MascotSpriteView</c> 가 묶음 상자 하나만 보는 것과 같은 셈이다.
     ///
-    /// 가로는 걷기만 **머리를 기준**으로 맞춘다. 잉크 상자 가운데로 맞추면 다리가
-    /// 벌어질 때마다 몸이 앞뒤로 밀린다.
+    /// <b>예전에는 칸마다 바닥·머리를 다시 맞췄다.</b> 서 있는 자세끼리는 그래도
+    /// 같은 답이 나왔지만(시트가 이미 그렇게 구워져 있다), 그 방식은 시트에 구워 둔
+    /// 상대 위치를 지운다 — 매달린 칸은 칸 위쪽에, 벽붙기 칸은 왼쪽 끝에 그려져
+    /// 있는데 그것을 바닥·가운데로 끌어내려서 <b>벽붙기가 39px 밀렸다.</b> 게다가
+    /// 배율 기준이 칸(256)이라 맥(묶음 상자 253)보다 <b>1.2% 작게</b> 그렸다.
     /// </summary>
     /// <param name="flipped">
     /// 좌우를 뒤집어 그릴지. 걷기·달리기 칸이 왼쪽을 보고 그려져 있어서, 오른쪽으로
-    /// 갈 때 이걸 켠다. **뒤집는 축은 칸의 가운데가 아니라 그려 놓은 자리의 가운데다** —
-    /// 칸을 기준으로 돌리면 발이 땅에서 뜨거나 몸이 옆으로 밀린다.
+    /// 갈 때 이걸 켠다. <b>뒤집는 축은 자리의 가운데다</b> — 묶음 상자를 이미 자리
+    /// 한가운데에 놓았으므로 그 점이 제자리에 남는다.
     /// </param>
-    public static bool Draw(DrawingContext context, MascotSprite sprite, Rect bounds, bool flipped = false)
+    /// <param name="widthLimited">
+    /// 옆으로 퍼지는 것을 자리 너비에서 막을지. <b>맥의 <c>widthLimit</c> 과 같은
+    /// 자리다</b> — HUD 는 링 안에 들어가야 해서 켜고, 펫 모드는 링이 없어서 끈다.
+    /// 끄면 높이에만 맞춰 커진다.
+    /// </param>
+    public static bool Draw(
+        DrawingContext context, MascotSprite sprite, Rect bounds,
+        bool flipped = false, bool widthLimited = true)
     {
         if (Resolve(sprite) is not { } slice) return false;
 
-        // 칸 안에서 그림이 차지하는 만큼만 키운다. 칸째로 맞추면 그림이 작아 보인다.
-        var scale = Math.Min(bounds.Width / MascotSheet.Cell, bounds.Height / MascotSheet.Cell);
+        var box = CommonInk();
+        if (box.Width <= 0 || box.Height <= 0) return false;
+
+        // **높이를 먼저 맞춘다.** 격자 부엉이가 같은 값을 높이로 받으므로, 이래야
+        // 아이콘 갈래를 바꿔도 크기가 그대로다.
+        var scale = bounds.Height / box.Height;
+        if (widthLimited) scale = Math.Min(scale, bounds.Width / box.Width);
+
+        // 묶음 상자를 자리 한가운데에 놓는다. 한쪽으로 쏠리지 않게.
+        var boxLeft = bounds.Left + (bounds.Width - box.Width * scale) / 2;
+        var boxTop = bounds.Top + (bounds.Height - box.Height * scale) / 2;
 
         var width = slice.Ink.Width * scale;
         var height = slice.Ink.Height * scale;
-
-        // 바닥 맞추기. 걷기는 땅을 걷기끼리 공유해서 뜬 높이가 남는다.
-        var ground = MascotSheet.KeepsLift(sprite) && gaitGround is { } shared
-            ? shared
-            : slice.Ink.Y + slice.Ink.Height;
-        var bottom = bounds.Bottom - (ground - (slice.Ink.Y + slice.Ink.Height)) * scale;
-
-        var centerX = MascotSheet.CentersOnHead(sprite)
-            ? slice.HeadCenterX
-            : slice.Ink.X + slice.Ink.Width / 2.0;
-        var left = bounds.Left + bounds.Width / 2 - (centerX - slice.Ink.X) * scale;
-
-        var target = new Rect(left, bottom - height, width, height);
+        var target = new Rect(
+            boxLeft + (slice.Ink.X - box.X) * scale,
+            boxTop + (slice.Ink.Y - box.Y) * scale,
+            width, height);
 
         // **그림자를 안 깐다.** 맥은 `.shadow(검정 45%, 번짐 2)` 를 붙이지만, 여기서
         // 같은 값을 내려면 알파를 직접 흐려야 하고 그 결과가 그림 둘레에 뿌연 테로
@@ -215,7 +230,7 @@ internal static class MascotRenderer
             image.Freeze();
             sheet = (TestLook ?? AppInfo.IsTestBuild) ? HueRotated(image, TestLookDegrees) : image;
 
-            MeasureGaitGround();
+            MeasureCommonInk();
             return sheet;
         }
         catch (Exception)
@@ -313,18 +328,84 @@ internal static class MascotRenderer
         blue = (byte)Math.Round(b * 255);
     }
 
-    /// <summary>걷기·뛰기 칸에서 가장 낮은 잉크 바닥. 그것이 땅이다.</summary>
-    private static void MeasureGaitGround()
+    /// <summary>
+    /// 모든 칸의 잉크를 묶은 상자를 한 번 잰다. **맥의 <c>trimTogether</c> 와 같은 셈이다.**
+    ///
+    /// 맥은 자를 때 이 상자로 모든 칸을 함께 잘라내고, 그릴 때는 이 상자 하나에만
+    /// 배율을 매긴다. 그래서 칸에 구워 둔 상대 위치가 그대로 남는다.
+    /// </summary>
+    private static void MeasureCommonInk()
     {
-        var lowest = 0;
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;
         foreach (var sprite in Enum.GetValues<MascotSprite>())
         {
-            if (!MascotSheet.KeepsLift(sprite)) continue;
             if (SliceOf(sprite) is not { } slice) continue;
-
-            lowest = Math.Max(lowest, slice.Ink.Y + slice.Ink.Height);
+            minX = Math.Min(minX, slice.Ink.X);
+            minY = Math.Min(minY, slice.Ink.Y);
+            maxX = Math.Max(maxX, slice.Ink.X + slice.Ink.Width - 1);
+            maxY = Math.Max(maxY, slice.Ink.Y + slice.Ink.Height - 1);
         }
-        gaitGround = lowest > 0 ? lowest : null;
+        commonInk = maxX < 0 ? default : new Int32Rect(minX, minY, maxX - minX + 1, maxY - minY + 1);
+    }
+
+    /// <summary>칸 하나를 잰 결과. 진단 통로가 읽는다.</summary>
+    /// <param name="Drawn">
+    /// 실제로 그려지는 칸. 시트에 없어서 <see cref="MascotSheet.Fallback"/> 을 타고
+    /// 내려갔으면 <paramref name="Sprite"/> 와 다르다.
+    /// </param>
+    internal sealed record CellReport(
+        MascotSprite Sprite, MascotSprite? Drawn, Int32Rect Ink, int HeadCenterX);
+
+    /// <summary>
+    /// 시트가 실제로 어떻게 구워져 있는지 잰다. <c>--probe-mascot</c> 가 쓴다.
+    ///
+    /// **픽셀을 만지는 코드를 두 벌로 두지 않으려고 여기 둔다.** 진단이 제 손으로
+    /// 알파를 훑으면 그리는 쪽과 다른 답을 내놓을 수 있는데, 그러면 진단이 진단을
+    /// 못 한다.
+    /// </summary>
+    internal static IReadOnlyList<CellReport> Measure()
+    {
+        var found = new List<CellReport>();
+        foreach (var sprite in Enum.GetValues<MascotSprite>())
+        {
+            var drawn = DrawnCell(sprite);
+            if (SliceOf(sprite) is { } own)
+            {
+                found.Add(new CellReport(sprite, sprite, own.Ink, own.HeadCenterX));
+            }
+            else if (drawn is { } step && SliceOf(step) is { } borrowed)
+            {
+                found.Add(new CellReport(sprite, step, borrowed.Ink, borrowed.HeadCenterX));
+            }
+            else
+            {
+                found.Add(new CellReport(sprite, null, default, 0));
+            }
+        }
+        return found;
+    }
+
+    /// <summary>그 자세를 그리면 실제로 나오는 칸. 하나도 없으면 null.</summary>
+    private static MascotSprite? DrawnCell(MascotSprite sprite)
+    {
+        for (var i = 0; i < 8; i++)
+        {
+            if (SliceOf(sprite) is not null) return sprite;
+            if (MascotSheet.Fallback(sprite) is not { } next) return null;
+            sprite = next;
+        }
+        return null;
+    }
+
+    /// <summary>시트의 픽셀 크기. 규격의 몇 배인지 보여줄 때 쓴다.</summary>
+    internal static (int Width, int Height)? SheetSize()
+        => Sheet() is { } found ? (found.PixelWidth, found.PixelHeight) : null;
+
+    /// <summary>모든 칸의 잉크를 묶은 상자. 시트를 못 읽었으면 빈 값이다.</summary>
+    internal static Int32Rect CommonInk()
+    {
+        Sheet();
+        return commonInk;
     }
 }
 

@@ -706,7 +706,9 @@ public sealed class HudView : FrameworkElement
             var dim = IsDisconnected && !IconStyle.IsAnimated();
             if (dim) context.PushOpacity(0.4);
             // 마스코트가 주인공이라 링 안지름과 무관하게 크게 잡는다.
-            DrawIcon(context, center, BasePetOwlHeight * s);
+            // **폭을 막지 않는다** — 링이 없어서 뚫을 것이 없다. 맥도 펫에서만
+            // `widthLimit` 을 비워 둔다.
+            DrawIcon(context, center, BasePetOwlHeight * s, widthLimited: false);
             if (dim) context.Pop();
             return;
         }
@@ -719,7 +721,11 @@ public sealed class HudView : FrameworkElement
         DrawIcon(context, center, available);
     }
 
-    private void DrawIcon(DrawingContext context, Point center, double available)
+    /// <param name="widthLimited">
+    /// 링을 뚫지 않게 옆으로 퍼지는 것을 막을지. HUD 는 켜고 펫 모드는 끈다.
+    /// </param>
+    private void DrawIcon(
+        DrawingContext context, Point center, double available, bool widthLimited = true)
     {
         if (available <= 0) return;
 
@@ -727,7 +733,8 @@ public sealed class HudView : FrameworkElement
         {
             case IconStyle.OwlSheet:
                 // 시트를 못 읽으면 격자로 떨어진다 — 가운데가 비면 안 된다.
-                if (!MascotRenderer.Draw(context, MascotFrame, Square(center, available), MascotFlipped))
+                if (!MascotRenderer.Draw(
+                        context, MascotFrame, Square(center, available), MascotFlipped, widthLimited))
                 {
                     DrawPixelated(context, ctx => DrawOwl(ctx, center, available));
                 }

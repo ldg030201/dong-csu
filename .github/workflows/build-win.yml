@@ -54,6 +54,26 @@ jobs:
       - name: 테스트
         run: dotnet test -c Release --no-build
 
+      # 시트를 실제로 재서 칸 표(MascotSheet)와 맞대 본다.
+      #
+      # **칸 표는 맥 MascotSprite.swift 를 손으로 옮겨 적은 것인데, 격자 부엉이
+      # (shared/owl.json)와 달리 어긋났는지 알려 주는 것이 아무것도 없었다.** 그림은
+      # 맥 번들과 같은 파일이라 안 갈리지만 그 그림을 어떻게 읽느냐는 갈릴 수 있고,
+      # 갈려도 화면에 그럴듯한 것이 나와서 안 드러난다.
+      #
+      # **여기에만 두고 win-checks 로 빼지 않는다.** 이건 앱(App)을 빌드해야 돌아가는데
+      # win-release 는 그 자리에서 App 을 아직 안 빌드했다. 도구 프로젝트만으로는
+      # 못 한다 — PNG 를 읽는 데 WPF 가 필요하고 Core 는 맥에서도 컴파일돼야 한다.
+      - name: 시트가 칸 표와 맞는지
+        shell: pwsh
+        run: |
+          $exe = "src/DongCSU.App/bin/Release/net10.0-windows/win-x64/DongCSU.exe"
+          & $exe --probe-mascot
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "시트와 MascotSheet 의 칸 표가 어긋난다 — 맥 MascotSprite.swift 를 다시 봐라"
+            exit 1
+          }
+
       # 대조 검사 셋은 win-release 도 똑같이 돌려야 해서 composite action 으로 뽑아 뒀다.
       # 여기에는 `working-directory` 를 쓸 수 없어서(uses: 단계라) action 이 입력으로 받는다.
       - uses: ./.github/actions/win-checks

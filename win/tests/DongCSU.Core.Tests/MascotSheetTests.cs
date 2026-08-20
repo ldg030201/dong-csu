@@ -175,3 +175,71 @@ public class MascotSheetTests
         }
     }
 }
+
+/// <summary>
+/// 칸이 칸 안 <b>어느 모서리에 붙어 있는지</b>와 <b>얼마나 창 안으로 넘어가는지</b>.
+///
+/// 맥 <c>MascotSprite.anchor</c> · <c>MascotSprite.gripDepth</c> 를 옮겨 적은 값이라
+/// 여기서 굳혀 둔다. <b>그림과 맞는지는 테스트가 못 본다</b> — 그건 앱의
+/// <c>--probe-mascot</c> 이 실제 시트를 재서 대조한다. 여기서 보는 것은
+/// "맥이 정해 둔 값을 그대로 옮겼는가" 하나다.
+/// </summary>
+public class MascotAnchorTests
+{
+    [Fact]
+    public void 매달린_칸은_위에_붙는다()
+    {
+        Assert.Equal(MascotAnchor.Top, MascotSheet.Anchor(MascotSprite.Ledge));
+        Assert.Equal(MascotAnchor.Top, MascotSheet.Anchor(MascotSprite.BlinkLedge));
+    }
+
+    [Fact]
+    public void 벽붙기_칸은_왼쪽_끝에_붙는다()
+    {
+        Assert.Equal(MascotAnchor.Leading, MascotSheet.Anchor(MascotSprite.Cling));
+        Assert.Equal(MascotAnchor.Leading, MascotSheet.Anchor(MascotSprite.BlinkCling));
+    }
+
+    [Theory]
+    [InlineData(MascotSprite.Idle)]
+    [InlineData(MascotSprite.WalkA)]
+    [InlineData(MascotSprite.Sit)]
+    [InlineData(MascotSprite.Dead)]
+    public void 나머지는_바닥에_선다(MascotSprite sprite)
+        => Assert.Equal(MascotAnchor.Bottom, MascotSheet.Anchor(sprite));
+
+    [Fact]
+    public void 눈감음_짝은_같은_모서리와_같은_깊이를_쓴다()
+    {
+        // 붙어 있는 동안 깜빡일 때 자리가 흔들리면 안 된다.
+        foreach (var sprite in Enum.GetValues<MascotSprite>())
+        {
+            if (MascotSheet.Blinking(sprite) is not { } closed) continue;
+            Assert.Equal(MascotSheet.Anchor(sprite), MascotSheet.Anchor(closed));
+            Assert.Equal(MascotSheet.GripDepth(sprite), MascotSheet.GripDepth(closed));
+        }
+    }
+
+    [Fact]
+    public void 창에_붙는_칸만_깊이를_갖는다()
+    {
+        Assert.Equal(0.15, MascotSheet.GripDepth(MascotSprite.Sit));
+        Assert.Equal(0.15, MascotSheet.GripDepth(MascotSprite.Ledge));
+        Assert.Equal(0.25, MascotSheet.GripDepth(MascotSprite.Cling));
+
+        Assert.Equal(0, MascotSheet.GripDepth(MascotSprite.Idle));
+        Assert.Equal(0, MascotSheet.GripDepth(MascotSprite.WalkA));
+        Assert.Equal(0, MascotSheet.GripDepth(MascotSprite.Held));
+    }
+
+    [Fact]
+    public void 뜬_높이를_지키는_칸은_걸음뿐이다()
+    {
+        // 서 있는 자세까지 여기 들어가면 바닥이 흔들린다. 그림에 그려 넣은
+        // 오르내림은 걷기·뛰기 안에서만 뜻이 있다.
+        foreach (var sprite in Enum.GetValues<MascotSprite>())
+        {
+            Assert.Equal(MascotSheet.IsGait(sprite), MascotSheet.KeepsLift(sprite));
+        }
+    }
+}

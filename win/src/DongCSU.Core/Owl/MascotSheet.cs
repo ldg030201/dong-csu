@@ -15,6 +15,17 @@ public enum MascotSprite
 }
 
 /// <summary>
+/// 칸 안에서 그림이 붙어 있는 모서리. 맥 <c>MascotAnchor</c> 와 같다.
+/// </summary>
+public enum MascotAnchor
+{
+    Top,
+    Bottom,
+    /// <summary>왼쪽 끝. 세로 모서리에 옆으로 붙는 자세가 쓴다.</summary>
+    Leading,
+}
+
+/// <summary>
 /// 규격 시트의 배치와 칸 자리.
 ///
 /// **좌표를 파일로 받지 않는다.** 크기를 못 박고 칸을 선으로 갈라 두면 좌표가 계산으로
@@ -110,6 +121,56 @@ public static class MascotSheet
         MascotSprite.Cling => MascotSprite.BlinkCling,
         MascotSprite.Sit => MascotSprite.BlinkSit,
         _ => null,
+    };
+
+    /// <summary>
+    /// 칸 안에서 어느 모서리에 붙어 있는지. **맥 <c>MascotSprite.anchor</c> 를 옮겼다.**
+    ///
+    /// **맞닿는 자리가 곧 정보인 자세가 있다.** 가장자리에 매달린 모습은 위 모서리에
+    /// 발이 닿아 있어야 "매달렸다"로 읽히고, 조금이라도 떠 있으면 공중에 뜬 것으로
+    /// 보인다. 벽에 붙은 모습은 붙잡은 쪽이 왼쪽 끝에 닿아야 한다.
+    ///
+    /// 나머지는 전부 아래다 — 발이 한 줄에 서야 상태가 바뀔 때 캐릭터가 오르내리지 않는다.
+    ///
+    /// **이 값은 그릴 때 쓰는 것이 아니라 시트가 그렇게 구워져 있다는 사실이다.**
+    /// 맥이 시트를 구울 때(<c>SheetPrep</c>) 이 값으로 자리를 잡아 놓으므로, 그리는
+    /// 쪽은 칸을 그대로 옮기기만 하면 된다. <c>--probe-mascot</c> 이 그림에서 잰 것과
+    /// 이 표를 맞대 본다 — 어긋나면 표가 틀린 것이다.
+    /// </summary>
+    public static MascotAnchor Anchor(MascotSprite sprite) => sprite switch
+    {
+        MascotSprite.Ledge or MascotSprite.BlinkLedge => MascotAnchor.Top,
+        MascotSprite.Cling or MascotSprite.BlinkCling => MascotAnchor.Leading,
+        _ => MascotAnchor.Bottom,
+    };
+
+    /// <summary>
+    /// 창 테두리 선이 그림 안쪽 **어디를 지나는지.** 잉크 상자에 대한 비율이다.
+    /// **맥 <c>MascotSprite.gripDepth</c> 를 옮겼다.**
+    ///
+    /// **붙잡는 부위만 창 안으로 넘어간다.** 0 이면 그림이 통째로 테두리 바깥에 딱
+    /// 붙는데, 그러면 붙잡는 부위가 테두리에 닿기만 하고 넘어가질 않아서 껴안은 것이
+    /// 아니라 벽에 부딪친 것으로 보인다. 반대로 몸까지 겹치면 무엇에 붙어 있는지가
+    /// 흐려진다 — 넘어가는 것은 다리 · 발 · 붙잡는 앞다리뿐이다.
+    ///
+    /// **그리는 쪽에 요구하는 값과 같아야 한다.** <c>docs/characters/prompt.txt</c> 가
+    /// "걸터앉기의 아래 15% 는 다리와 발" 이라고 못 박아 두었다.
+    ///
+    /// 눈감음 짝도 같은 값을 든다 — 붙어 있는 동안 깜빡일 때 자리가 흔들리면 안 된다.
+    ///
+    /// <b>아직 앱이 안 쓴다.</b> 창에 붙이기(맥 2.5.0)를 옮겨 올 때 쓸 자리라 값만 먼저
+    /// 맞춰 둔다 — 그림은 이미 이 값에 맞춰 그려져 있다.
+    /// </summary>
+    public static double GripDepth(MascotSprite sprite) => sprite switch
+    {
+        // 다리와 발이 창 안으로. 프롬프트의 "다리는 키의 15%" 와 같은 숫자다.
+        MascotSprite.Sit or MascotSprite.BlinkSit => 0.15,
+        // 발과 발목만. 몸통이 딸려 들어가면 매달린 것이 아니라 빠진 것으로 보인다.
+        MascotSprite.Ledge or MascotSprite.BlinkLedge => 0.15,
+        // 뻗은 앞다리 하나가 옆모습 폭에서 차지하는 몫.
+        MascotSprite.Cling or MascotSprite.BlinkCling => 0.25,
+        // 나머지는 창에 붙지 않는다.
+        _ => 0,
     };
 
     /// <summary>
