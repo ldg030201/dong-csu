@@ -654,8 +654,13 @@ public sealed class UsageMeter
     /// <summary>
     /// 기록 폴더가 있는지. 없으면 아예 안 훑는다(WSL 만 쓰는 사람이 여기 걸린다).
     /// 고정값 미터(<see cref="Preview"/>)는 폴더가 있든 없든 안 훑는다.
+    ///
+    /// <b>화면도 이걸 봐야 한다.</b> <see cref="ClaudeCodeUsage.IsAvailable"/> 을 직접
+    /// 보면 <b>이 미터가 실제로 보는 폴더</b>가 아니라 기본 폴더를 묻게 된다 — 검사나
+    /// 진단이 임시 폴더를 꽂아 놓으면 훑기는 멀쩡히 되는데 토큰 카드만 사라진다.
+    /// 실제로 CI 에서 그렇게 걸렸다(빌드 기계에는 기본 폴더가 없다).
     /// </summary>
-    private bool RecordsAvailable
+    public bool RecordsAvailable
         => scansTranscripts && (root is null ? ClaudeCodeUsage.IsAvailable : Directory.Exists(root));
 
     /// <summary>

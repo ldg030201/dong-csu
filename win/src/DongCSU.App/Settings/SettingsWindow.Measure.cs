@@ -148,7 +148,10 @@ public sealed partial class SettingsWindow
                 state.Tokens,
                 state.TokensByModel,
                 settings.MeasureIncludesCache,
-                ClaudeCodeUsage.IsAvailable,
+                // **전역이 아니라 이 미터에게 묻는다.** `ClaudeCodeUsage.IsAvailable` 은
+                // 기본 폴더를 보므로, 검사·진단이 임시 폴더를 꽂아 놓으면 훑기는
+                // 멀쩡한데 토큰 카드만 사라진다 — CI 에서 실제로 그렇게 걸렸다.
+                meter.RecordsAvailable,
                 // **`ApplyAndRedraw` 여야 한다.** 줄 수·합계·모델별 표가 함께 바뀐다.
                 value => { settings.MeasureIncludesCache = value; ApplyAndRedraw(); }));
         }
