@@ -145,14 +145,8 @@ public static class Changelog
                     IsNew = true,
                     Notes =
                     [
-                        ChangelogNote.New("시작·중지 사이에 쓴 한도 %p와 토큰 수 측정 (설정 창 측정 탭)"),
-                        ChangelogNote.New("모델별 한도·토큰 표시"),
-                        ChangelogNote.New("토큰 합계와 캐시 제외 합계 표시 (기본은 캐시 제외)"),
-                        ChangelogNote.New("일시정지·계속 (세워 둔 동안의 시간과 사용량은 빼고 셈)"),
-                        ChangelogNote.New("측정 기록 목록 (중지하면 남고, 누르면 그때 값을 펼쳐 봄)"),
-                        ChangelogNote.New("기록을 하나씩 또는 전부 지우기 (지우기 전에 한 번 물어봄)"),
-                        ChangelogNote.New("HUD·펫 모드의 측정 버튼 (설정 버튼 왼쪽, 누르면 측정 화면이 열림)"),
-                        ChangelogNote.New("토큰은 Claude Code 기록에서만 셈 (WSL 안에서 쓰면 못 셈)"),
+                        ChangelogNote.New("시작·중지 사이에 쓴 한도 %p와 토큰 수 측정 (설정 창 측정 탭 · HUD·펫의 측정 버튼)"),
+                        ChangelogNote.New("일시정지·계속과 측정 기록 목록 (중지하면 남고, 눌러 그때 값을 봄)"),
                         ChangelogNote.New("아직 다듬는 중이라 beta 표시 (숫자가 실제와 어긋날 수 있음)"),
                     ],
                 },
