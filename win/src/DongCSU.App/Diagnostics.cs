@@ -198,8 +198,8 @@ public static partial class Diagnostics
         Console.WriteLine("  --probe-owl [기분]");
         Console.WriteLine("  --probe-layout");
         Console.WriteLine("  --probe-mascot");
+        Console.WriteLine("  --probe-meter [selftest|scan|ui]");
         Console.WriteLine("  --probe-tokens [분]");
-        Console.WriteLine("  --probe-meter [selftest|scan]");
         Console.WriteLine("  --log");
         Console.WriteLine("  --render <out.png> [세션%] [주간%] [보기] [아이콘] [배율] [테마]");
         Console.WriteLine("  --render-settings <out.png> [탭] [너비x높이] [dark|light]");
@@ -391,13 +391,16 @@ public static partial class Diagnostics
             null => MeterStatus(),
             "selftest" => MeterSelfTestRun(),
             "scan" => MeterScan(),
+            // **눌러 봐야만 아는 것.** 그리는 것은 --render-settings 가 보여주지만,
+            // 시작을 누르면 정말 재기 시작하는지는 눌러 보고 상태를 봐야 안다.
+            "ui" => Settings.ProbeMeasureUi.Run(args),
             _ => Unknown(mode),
         };
 
         static int Unknown(string? given)
         {
             Console.WriteLine($"모르는 갈래: {given}");
-            Console.WriteLine("  --probe-meter [selftest|scan]");
+            Console.WriteLine("  --probe-meter [selftest|scan|ui]");
             return 2;
         }
     }

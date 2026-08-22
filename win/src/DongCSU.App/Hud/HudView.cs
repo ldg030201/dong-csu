@@ -386,6 +386,29 @@ public sealed class HudView : FrameworkElement
         public const int Count = 4;
     }
 
+    /// <summary>
+    /// 그 버튼 자리의 한가운데. 없는 자리(펫의 접기)면 null.
+    ///
+    /// <b><c>--probe-meter ui</c> 가 쓴다.</b> 자리를 재는 곳과 누른 것을 판정하는 곳이
+    /// 갈려 있어서, 칸이 하나 늘면서 한쪽만 밀리면 <b>엉뚱한 버튼이 눌린다</b> —
+    /// 화면은 멀쩡해 보인다. 그래서 검사가 "여기를 누르면 무엇으로 잡히나" 를 물어본다.
+    /// </summary>
+    internal Point? ProbeButtonCenter(HudHit hit)
+    {
+        var slot = hit switch
+        {
+            HudHit.Collapse => Slot.Collapse,
+            HudHit.Measure => Slot.Measure,
+            HudHit.Settings => Slot.Settings,
+            HudHit.Refresh => Slot.Refresh,
+            _ => -1,
+        };
+        if (slot < 0) return null;
+
+        var rect = ButtonRects()[slot];
+        return rect.IsEmpty ? null : new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
+    }
+
     /// <summary>버튼 네 칸. 차례는 접기 · 측정 · 설정 · 새로고침이다.</summary>
     private Rect[] ButtonRects()
     {

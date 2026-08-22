@@ -81,6 +81,26 @@ jobs:
             exit 1
           }
 
+      # 측정 화면의 버튼이 실제로 먹는지. **그리는 것과 다른 검사다** —
+      # `--render-settings` 는 화면을 보여줄 뿐이고, *시작을 누르면 정말 재기 시작하는가*
+      # 는 눌러 보고 그 뒤 상태를 봐야 안다. 배치를 바꾸다 버튼과 판정이 어긋나면
+      # 화면은 멀쩡한 채로 아무 일도 안 일어나는데, 그걸 여기서 잡는다.
+      #
+      # **이건 바깥 것에 안 기댄다** — 저장소도 기록 폴더도 임시 자리를 쓰고 기록 한 줄을
+      # 지어내므로 빌드 기계에서도 돈다(`--probe-tokens` 를 CI 에 안 넣는 이유와 다르다).
+      - name: 측정 화면의 버튼이 먹는지
+        shell: pwsh
+        run: |
+          $exe = "src/DongCSU.App/bin/Release/net10.0-windows/win-x64/DongCSU.exe"
+          $log = Join-Path $env:RUNNER_TEMP "probe-meter-ui.txt"
+          $run = Start-Process -FilePath $exe -ArgumentList '--probe-meter','ui' `
+            -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log
+          Get-Content $log -Encoding UTF8
+          if ($run.ExitCode -ne 0) {
+            Write-Error "측정 화면의 버튼이 안 먹는다"
+            exit 1
+          }
+
       # 대조 검사 셋은 win-release 도 똑같이 돌려야 해서 composite action 으로 뽑아 뒀다.
       # 여기에는 `working-directory` 를 쓸 수 없어서(uses: 단계라) action 이 입력으로 받는다.
       - uses: ./.github/actions/win-checks

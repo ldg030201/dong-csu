@@ -207,7 +207,8 @@ internal static class ProbeLayout
     /// 곳에서 나와야 잰 화면과 그린 화면이 같다.
     /// </param>
     internal static SettingsWindow ProbeWindow(
-        AppSettings settings, string? latestVersion = null, MeterState? meterState = null)
+        AppSettings settings, string? latestVersion = null, MeterState? meterState = null,
+        UsageMeter? meter = null)
     {
         // 테스트 바이너리로 돌려도 정식판 색으로 본다. 렌더 통로와 같은 판단이다.
         MascotRenderer.TestLook = false;
@@ -240,7 +241,10 @@ internal static class ProbeLayout
 
         // **저장소를 안 무는 쪽으로 만든다.** 보통 생성자를 쓰면 탭을 재 볼 때마다
         // 사용자의 진짜 meter.json 이 고정값으로 덮인다.
-        var meter = UsageMeter.Preview(meterState ?? MeterPreview.State());
+        // **버튼을 눌러 보는 검사만 진짜 엔진을 꽂는다**(`--probe-meter ui`). 재는 것이
+        // 실제로 시작되는지는 고정값으로 알 수 없다. 나머지는 전부 고정값이라 사용자의
+        // `meter.json` 을 건드리지 않는다.
+        meter ??= UsageMeter.Preview(meterState ?? MeterPreview.State());
 
         return new SettingsWindow(
             settings, store, meter, updates,

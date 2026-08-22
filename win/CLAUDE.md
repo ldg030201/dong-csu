@@ -136,6 +136,7 @@ DongCSU.exe --probe-mascot   # 시트가 어떻게 구워져 있는지 재서 �
 DongCSU.exe --probe-owl idle
 DongCSU.exe --probe-tokens   # 최근 몇 분(기본 30) 동안 Claude Code 가 쓴 토큰. 처음부터 훑는다
 DongCSU.exe --probe-meter    # 저장된 측정 상태 · selftest 계산 검사 · scan 실제로 훑어 얹기
+DongCSU.exe --probe-meter ui # 측정 화면의 버튼을 실제로 눌러 본다 (눈으로 볼 수 없는 검사)
 DongCSU.exe --log            # 기록 파일 내용
 
 # 화면을 PNG 로 (창을 안 띄운다)
@@ -144,6 +145,12 @@ DongCSU.exe --render-settings out.png version 760x760 light
 DongCSU.exe --render-owl out.png 64
 DongCSU.exe --render-menubar out.png 32 6   # 트레이 아이콘. 기분마다 한 줄, 프레임마다 한 칸
 ```
+
+**`--probe-meter ui` 는 눌러야만 아는 것을 본다.** 그리는 것은 `--render-settings` 가
+보여주지만 *시작을 누르면 정말 재기 시작하는가* 는 눌러 보고 그 뒤 상태를 봐야 안다.
+맥의 `--probe-perch selftest` 와 같은 자리다. 저장소와 기록 폴더를 임시 자리로 돌려
+사용자의 `meter.json` 을 안 건드리고, 기록 한 줄을 지어내 훑기까지 태운다.
+**이건 CI 에 넣어도 된다** — 바깥 것에 기대지 않는다.
 
 **측정 둘(`--probe-tokens` · `--probe-meter`)은 CI 에 넣지 않는다.** 빌드 기계에는
 Claude Code 기록 폴더도 `meter.json` 도 없어서 늘 1로 떨어진다. 리셋 넘김 계산이 맞는지는
