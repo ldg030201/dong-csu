@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using DongCSU.App.Services;
 using DongCSU.Core;
@@ -64,6 +65,13 @@ public static partial class Diagnostics
                 Console.WriteLine($"settings: {AppSettings.DefaultPath}");
                 Console.WriteLine($"log:      {AppLog.DefaultPath}");
                 Console.WriteLine($"token:    {RefreshedTokenStore.DefaultPath}");
+                Console.WriteLine($"meter:    {MeterStore.DefaultPath}");
+
+                // 토큰을 세는 자리. **없다고 0을 보여주면 안 되는 값이라** 여기서도
+                // 있는지 없는지를 같이 말한다 — WSL 안에서만 Claude Code 를 쓰는 사람은
+                // 늘 없는 것으로 나오고, 그건 고장이 아니라 우리가 WSL 을 안 보기 때문이다.
+                Console.WriteLine($"records:  {ClaudeCodeUsage.ProjectsDirectory}"
+                    + (ClaudeCodeUsage.IsAvailable ? "" : "  (없음)"));
 
                 Console.WriteLine("credential candidates:");
                 foreach (var path in FileCredentialSource.DefaultPaths()) Console.WriteLine($"  {path}");
@@ -95,6 +103,18 @@ public static partial class Diagnostics
 
             case "--probe-owl":
                 PrintOwl(args.ElementAtOrDefault(1) ?? "idle");
+                return true;
+
+            // 측정 두 통로. **CI 에 넣지 않는다** — 빌드 기계에는 기록 폴더도
+            // meter.json 도 없어서 늘 1로 떨어진다. `selftest` 만은 어디서나 돌지만
+            // 그건 `dotnet test` 가 같은 표(`MeterSelfTest`)를 이미 보고 있어서
+            // CI 에 또 걸 이유가 없다 — 여기 있는 것은 사람이 눈으로 볼 통로다.
+            case "--probe-tokens":
+                exitCode = ProbeTokens(args);
+                return true;
+
+            case "--probe-meter":
+                exitCode = ProbeMeter(args);
                 return true;
 
             // 설정 창을 화면 밖에서 만들어 탭마다 얼마나 차지하는지 잰다. 가로로
@@ -178,6 +198,8 @@ public static partial class Diagnostics
         Console.WriteLine("  --probe-owl [기분]");
         Console.WriteLine("  --probe-layout");
         Console.WriteLine("  --probe-mascot");
+        Console.WriteLine("  --probe-tokens [분]");
+        Console.WriteLine("  --probe-meter [selftest|scan]");
         Console.WriteLine("  --log");
         Console.WriteLine("  --render <out.png> [세션%] [주간%] [보기] [아이콘] [배율] [테마]");
         Console.WriteLine("  --render-settings <out.png> [탭] [너비x높이] [dark|light]");
@@ -293,6 +315,178 @@ public static partial class Diagnostics
         static string Show(UsageWindow? window) => window is { } value
             ? $"{value.Utilization}% resets_at={value.ResetsAt?.ToString("O") ?? "-"}"
             : "-";
+    }
+
+    /// <summary>
+    /// <c>--probe-tokens [분]</c> — 최근 몇 분 동안 Claude Code 가 쓴 토큰.
+    ///
+    /// **일부러 느린 길을 간다.** 오프셋도 본 id 도 없이 파일을 처음부터 통째로 읽고
+    /// 시각으로만 거른다 — 그래야 오프셋을 쓰는 실제 동작(<c>--probe-meter scan</c>)이
+    /// 같은 답을 내는지 견줄 수 있다. 이 기계에는 jsonl 이 백 개 넘고 하나가 10MB 를
+    /// 넘기도 해서 몇 초 걸린다. 그게 정상이라 걸린 시간을 같이 찍는다.
+    ///
+    /// 화면과 달리 숫자를 억·만으로 줄이지 않는다. 견주는 자리라 원래 값이 필요하다.
+    /// </summary>
+    private static int ProbeTokens(string[] args)
+    {
+        // **반드시 `InvariantCulture` 로 읽는다.** 쉼표를 소수점으로 쓰는 로케일에서
+        // `1,5` 가 15 로 읽히면 기준 시각이 열 배로 벌어진다.
+        var minutes = args.Length > 1 && double.TryParse(
+            args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : 30;
+
+        // **후보 목록을 찍지 않는다.** `ProjectsDirectory` 는 `CLAUDE_CONFIG_DIR` 이 있으면
+        // 무조건 그쪽이라 후보가 하나뿐이다(맥과 글자 그대로 같게 맞춘 자리다).
+        Console.WriteLine($"기록 폴더: {ClaudeCodeUsage.ProjectsDirectory}");
+        if (!ClaudeCodeUsage.IsAvailable)
+        {
+            // WSL 은 보지 않는다. 거기서만 Claude Code 를 쓰면 여기로 떨어지는 것이 정상이다.
+            Console.WriteLine("찾지 못했다 (WSL 안은 보지 않는다)");
+            return 1;
+        }
+
+        var files = ClaudeCodeUsage.Transcripts();
+        Console.WriteLine($"파일: {files.Count}개");
+
+        // 대조 계산과 견주려면 기준 시각이 정확히 같아야 한다. **쓴 값을 그대로 찍는다.**
+        // `"o"` 는 마이크로초까지 나와서 맥(밀리초 3자리)과 글자가 갈린다.
+        var since = DateTimeOffset.UtcNow.AddMinutes(-minutes);
+        Console.WriteLine($"기준: {since.ToUniversalTime():yyyy-MM-ddTHH:mm:ss.fffZ} ({minutes}분 전)");
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var result = new TokenScan(since, offsets: null, seenIds: null).Run();
+        clock.Stop();
+
+        var tally = result.Added;
+        Console.WriteLine($"응답: {tally.Responses}");
+        Console.WriteLine($"input: {tally.Input}");
+        Console.WriteLine($"output: {tally.Output}");
+        Console.WriteLine($"cache_creation: {tally.CacheCreation}");
+        Console.WriteLine($"cache_read: {tally.CacheRead}");
+        Console.WriteLine($"걸린 시간: {clock.Elapsed.TotalSeconds:0.0}초");
+
+        foreach (var (model, byModel) in result.AddedByModel.OrderByDescending(pair => pair.Value.Output))
+        {
+            Console.WriteLine($"  {model}: 응답 {byModel.Responses} output {byModel.Output}");
+        }
+
+        // **파일이 0개여도 0으로 끝난다.** 폴더는 있는데 아직 대화가 없는 사람이 있다.
+        return 0;
+    }
+
+    /// <summary>
+    /// <c>--probe-meter [selftest|scan]</c> — 측정 상태를 보거나, 계산을 스스로 검사하거나,
+    /// 실제로 한 번 훑어 얹는다.
+    ///
+    /// 갈래마다 종료 코드가 다르다. 인자 없이 부르면 기록이 없어도 **0** 이고(볼 것이
+    /// 없다는 것이 답이다), <c>scan</c> 은 기록이 없으면 **1** 이다(훑을 것이 없으면
+    /// 할 일을 못 한 것이다). 맥이 그렇게 갈라 놨다.
+    /// </summary>
+    private static int ProbeMeter(string[] args)
+    {
+        var mode = args.ElementAtOrDefault(1)?.ToLowerInvariant();
+        return mode switch
+        {
+            null => MeterStatus(),
+            "selftest" => MeterSelfTestRun(),
+            "scan" => MeterScan(),
+            _ => Unknown(mode),
+        };
+
+        static int Unknown(string? given)
+        {
+            Console.WriteLine($"모르는 갈래: {given}");
+            Console.WriteLine("  --probe-meter [selftest|scan]");
+            return 2;
+        }
+    }
+
+    /// <summary>저장된 <c>meter.json</c> 을 그대로 읽어 찍는다. 아무것도 안 고친다.</summary>
+    private static int MeterStatus()
+    {
+        // 기록이 없는 것은 고장이 아니다 — 아직 한 번도 안 재 본 것이다.
+        if (new MeterStore().Read() is not { StartedAt: { } startedAt } state)
+        {
+            Console.WriteLine("기록 없음");
+            return 0;
+        }
+
+        // 멈춰 둔 것과 중지한 것은 다르다 — 앞은 아직 재는 중이고 뒤는 끝난 것이다.
+        var stopped = state.StoppedAt is { } stoppedAt
+            ? stoppedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : state.IsPaused ? "재는 중 (멈춰 둠)" : "재는 중";
+
+        Console.WriteLine($"시작: {startedAt.ToLocalTime():yyyy-MM-dd HH:mm:ss}");
+        Console.WriteLine($"중지: {stopped}");
+        Console.WriteLine($"표본: {state.Samples}회");
+
+        // **`Tracks` 를 그냥 돌지 않는다.** 사전은 차례가 없어서 볼 때마다 순서가 바뀐다 —
+        // 화면과 같은 차례로 보려면 `Order` 를 따라가야 한다.
+        foreach (var track in state.TracksInOrder)
+        {
+            Console.WriteLine($"  {track.Title}: {track.Accumulated:0}%p (리셋 {track.Resets}회)");
+        }
+
+        var tokens = state.Tokens;
+        Console.WriteLine($"토큰: 응답 {tokens.Responses} output {tokens.Output}"
+            + $" cache_read {tokens.CacheRead}");
+        Console.WriteLine($"기록: {state.History.Count}건");
+        return 0;
+    }
+
+    /// <summary>
+    /// 표를 <see cref="MeterSelfTest"/> 에서 받아 찍기만 한다.
+    ///
+    /// **여기에 표를 다시 적지 않는다** — 같은 표를 `Core.Tests` 도 보고 있어서,
+    /// 두 벌이 되면 한쪽만 고친 채로 둘 다 초록인 날이 온다.
+    /// </summary>
+    private static int MeterSelfTestRun()
+    {
+        var report = MeterSelfTest.Run();
+        foreach (var step in report.Steps)
+        {
+            Console.WriteLine($"  {step.Percent,5:0}% → 누적 {step.Accumulated,6:0}%p"
+                + $"  리셋 {step.Resets}회   ({step.Note})");
+        }
+
+        if (!report.Passed)
+        {
+            Console.WriteLine($"실패: 누적 {report.Accumulated:0}%p, 리셋 {report.Resets}회");
+            return 1;
+        }
+
+        Console.WriteLine($"통과 (누적 {MeterSelfTest.ExpectedAccumulated:0}%p,"
+            + $" 리셋 {MeterSelfTest.ExpectedResets}회)");
+        return 0;
+    }
+
+    /// <summary>
+    /// 앱이 1분마다 하는 것과 **같은 일**을 한 번 한다 — 훑고, 얹고, 저장까지.
+    ///
+    /// **사용자의 진짜 <c>meter.json</c> 에 쓴다.** 그게 목적이다: 두 번 연달아 부르면
+    /// 두 번째는 0 이 더해져야 하고, 그게 증분 읽기가 맞다는 조건이다. 쓰지 않으면
+    /// 오프셋이 안 옮겨져 늘 같은 값이 나와 아무것도 확인하지 못한다.
+    /// </summary>
+    private static int MeterScan()
+    {
+        var store = new MeterStore();
+        if (store.Read() is not { StartedAt: { } startedAt } state)
+        {
+            Console.WriteLine("기록 없음");
+            return 1;
+        }
+
+        var result = new TokenScan(startedAt, state.Offsets, state.SeenIds).Run();
+        // 실제 동작과 같은 코드를 탄다. 여기서 손으로 더하면 확인 통로와 앱이 갈라진다.
+        var updated = UsageMeter.Applying(result, state);
+        store.Write(updated);
+
+        Console.WriteLine($"더함: 응답 {result.Added.Responses} output {result.Added.Output}"
+            + $" cache_read {result.Added.CacheRead}");
+        Console.WriteLine($"누적: 응답 {updated.Tokens.Responses} output {updated.Tokens.Output}"
+            + $" cache_read {updated.Tokens.CacheRead}");
+        return 0;
     }
 
     /// <summary>부엉이를 글자로 찍는다. 그림을 못 보는 자리에서 자세를 확인한다.</summary>

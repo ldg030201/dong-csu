@@ -20,11 +20,18 @@ namespace DongCSU.App.Settings;
 ///
 /// **크기를 고정하지 않는다.** 고DPI 나 큰 글꼴에서 항목이 잘리고, 창을 키워 편하게
 /// 볼 수도 없다. 내용은 늘어나고, 좁히면 스크롤이 생긴다.
+///
+/// **측정 탭은 <c>SettingsWindow.Measure.cs</c> 에 따로 있다.** 이 파일이 이미 길어서
+/// 탭 하나가 통째로 들어오면 아무도 못 읽는다.
 /// </summary>
-public sealed class SettingsWindow : Window
+public sealed partial class SettingsWindow : Window
 {
     private readonly AppSettings settings;
     private readonly UsageStore store;
+
+    /// <summary>측정. **앱 수명만큼 살고 창은 닫힐 때마다 버려진다** — 구독을 꼭 푼다.</summary>
+    private readonly UsageMeter meter;
+
     private readonly UpdateService updates;
     private readonly Action onChanged;
 
@@ -86,6 +93,9 @@ public sealed class SettingsWindow : Window
     internal static readonly (string Key, string Title)[] TabList =
     [
         ("status", "상태"),
+        // **상태 다음이다**(맥과 같은 차례). 둘 다 "지금 값을 보는 곳"이라 붙어 있어야 한다.
+        // 중간에 끼워도 저장된 탭이 안 어긋난다 — `Selected` 가 번호가 아니라 키로 찾는다.
+        ("measure", "측정"),
         ("display", "표시"),
         ("icon", "아이콘"),
         ("pet", "펫 모드"),
@@ -105,6 +115,7 @@ public sealed class SettingsWindow : Window
     public SettingsWindow(
         AppSettings settings,
         UsageStore store,
+        UsageMeter meter,
         UpdateService updates,
         Action onChanged,
         Action onResetPosition,
@@ -113,6 +124,7 @@ public sealed class SettingsWindow : Window
     {
         this.settings = settings;
         this.store = store;
+        this.meter = meter;
         this.updates = updates;
         this.onChanged = onChanged;
         this.onResetPosition = onResetPosition;
@@ -143,8 +155,10 @@ public sealed class SettingsWindow : Window
         ShowInTaskbar = true;
         Content = root;
 
-        tick.Tick += (_, _) => { if (TabList[Selected].Key == "status") ShowTab(); };
+        // 측정 탭도 초가 움직인다(경과 시간·표본 나이). 언제 도는지는 `SyncTicker` 가 정한다.
+        tick.Tick += (_, _) => { if (TabList[Selected].Key is "status" or "measure") ShowTab(); };
 
+        HookMeasure();
         Rebuild();
     }
 
@@ -257,6 +271,27 @@ public sealed class SettingsWindow : Window
             DockPanel.SetDock(label, Dock.Left);
             row.Children.Add(label);
 
+            // **숫자가 기대와 어긋날 수 있다는 표시.** 한도는 1%p 눈금이라 잔돈이 안
+            // 잡히고, 토큰은 Claude Code 것만 센다. 다듬어 믿을 만해지면 뺀다.
+            //
+            // **반드시 라벨 뒤에 넣는다.** `PaintNav` 가 `row.Children[0]`(아이콘)·
+            // `[1]`(라벨) 을 번호로 찍어 물들이므로, 사이에 끼우면 라벨 대신 이 딱지가
+            // 강조색으로 물든다.
+            if (TabList[i].Key == "measure")
+            {
+                var beta = new TextBlock
+                {
+                    Text = "beta",
+                    FontSize = 9,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = palette.Brush(palette.Warning),
+                    Margin = new Thickness(6, 0, 0, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                DockPanel.SetDock(beta, Dock.Left);
+                row.Children.Add(beta);
+            }
+
             // **새 버전이 있을 때만.** 설정 창을 열어도 어느 탭을 봐야 하는지 알 방법이
             // 없었다 — HUD 딱지는 창을 열면 사라진다.
             //
@@ -346,9 +381,15 @@ public sealed class SettingsWindow : Window
 
     private void SyncTicker()
     {
-        var needed = TabList[Selected].Key == "status";
+        var key = TabList[Selected].Key;
+
+        // **재고 있지 않은 측정 탭에서는 안 돈다.** 움직이는 숫자가 하나도 없는데
+        // 1초마다 기록 목록을 통째로 다시 만드는 것은 그냥 낭비다.
+        var needed = key == "status" || (key == "measure" && meter.IsRunning);
         if (needed && !tick.IsEnabled) tick.Start();
         else if (!needed && tick.IsEnabled) tick.Stop();
+
+        SyncMeasureScan(key);
     }
 
     private void ShowTab()
@@ -359,6 +400,7 @@ public sealed class SettingsWindow : Window
 
         body.Content = TabList[Selected].Key switch
         {
+            "measure" => MeasureTab(palette),
             "display" => DisplayTab(palette),
             "icon" => IconTab(palette),
             "pet" => PetTab(palette),
@@ -1569,6 +1611,7 @@ public sealed class SettingsWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         tick.Stop();
+        UnhookMeasure();
         base.OnClosed(e);
     }
 

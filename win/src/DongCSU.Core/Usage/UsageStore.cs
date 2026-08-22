@@ -80,6 +80,22 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     /// <summary>값이 바뀔 때마다 부른다. 화면이 여기 붙어서 다시 그린다.</summary>
     public event Action? Changed;
 
+    /// <summary>
+    /// 조회가 **성공했을 때만** 부른다. 측정(<c>UsageMeter</c>)이 여기 붙어 표본을 받는다.
+    ///
+    /// 실패한 조회는 표본이 아니므로 오지 않는다. <see cref="Preview"/> 도 부르지 않는다 —
+    /// 렌더·테스트로 꽂은 고정값이 측정 기록에 들어가면, 문서 그림을 한 장 뽑을 때마다
+    /// 사용자의 진짜 기록에 가짜 표본이 하나씩 쌓인다.
+    ///
+    /// 저장소가 측정 객체를 직접 알지 않으려고 일부러 이벤트로 끊어 뒀다. 한 덩어리가
+    /// 되면 조회만 쓰는 미리보기에도 측정이 딸려 온다.
+    ///
+    /// **UI 스레드라고 믿지 마라.** <see cref="RefreshAsync"/> 가 <c>ConfigureAwait(false)</c>
+    /// 로 걸어 두어서 <see cref="Apply"/> 는 아무 스레드에서나 불릴 수 있다. 화면을 만지는
+    /// 구독자는 스스로 디스패치해야 한다.
+    /// </summary>
+    public event Action<UsageSnapshot>? SnapshotReceived;
+
     /// <summary>다음 조회까지 기다릴 시간. 429 를 맞았으면 그만큼 물러난다.</summary>
     public TimeSpan NextPollDelay()
     {
@@ -182,6 +198,10 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
             NeedsReauth = false;
             backoffUntil = null;
             consecutiveRateLimits = 0;
+            // **필드를 전부 정리한 뒤에 부른다.** 훅 안에서 저장소를 다시 봐도 앞뒤가
+            // 맞아야 한다. Changed 는 RefreshAsync 의 finally 가 그 뒤에 쏘므로,
+            // 측정이 먼저 기록하고 화면이 그다음에 그리는 차례가 저절로 지켜진다.
+            SnapshotReceived?.Invoke(snapshot);
             return;
         }
 

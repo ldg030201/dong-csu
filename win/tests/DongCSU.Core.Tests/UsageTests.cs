@@ -272,6 +272,175 @@ public class UsageApiTests
         Assert.False(UsageError.Network("끊김").IsTerminal);
         Assert.False(UsageError.Http(500).IsTerminal);
     }
+
+    // MARK: - limits 배열
+    //
+    // `five_hour`·`seven_day` 두 창만 읽으면 **모델별로 갈린 주간 한도를 놓친다.**
+    // 측정이 한도 %p 를 이 배열로 세므로, 여기가 비면 측정이 아무것도 못 센다.
+
+    /// <summary>세 갈래가 다 들어 있는 실제 모양.</summary>
+    private const string ThreeLimits = """
+        {
+          "five_hour": { "utilization": 34.2, "resets_at": "2026-08-06T15:30:00Z" },
+          "seven_day": { "utilization": 61,   "resets_at": "2026-08-10T00:00:00.000Z" },
+          "limits": [
+            { "kind": "session",        "percent": 24, "resets_at": "2026-08-06T15:30:00Z" },
+            { "kind": "weekly_all",     "percent": 90 },
+            { "kind": "weekly_scoped",  "percent": 15,
+              "scope": { "model": { "display_name": "Fable" } } }
+          ]
+        }
+        """;
+
+    [Fact]
+    public void 한도_배열을_읽는다()
+    {
+        var limits = UsageApi.Parse(ThreeLimits, Cred("max"), Now).Snapshot!.Limits;
+
+        Assert.Equal(3, limits.Count);
+        Assert.Equal(new[] { "session", "weekly_all", "weekly_scoped/Fable" },
+            limits.Select(limit => limit.Id));
+        Assert.Equal(new[] { "세션 (5시간)", "주간 (7일)", "주간 · Fable" },
+            limits.Select(limit => limit.Title));
+        Assert.Equal(new[] { 24d, 90d, 15d }, limits.Select(limit => limit.Percent));
+        Assert.Null(limits[1].ModelName);
+        Assert.Equal("Fable", limits[2].ModelName);
+    }
+
+    /// <summary>
+    /// **한도는 창을 대체하지 않고 덧붙는다.** HUD 는 그대로 두 창을 그리고, 측정만
+    /// 모델별로 갈린 것까지 필요해서 배열을 본다.
+    /// </summary>
+    [Fact]
+    public void 한도를_읽어도_두_창은_그대로다()
+    {
+        var snapshot = UsageApi.Parse(ThreeLimits, Cred("max"), Now).Snapshot!;
+
+        Assert.Equal(34.2, snapshot.FiveHour!.Value.Utilization, 3);
+        Assert.Equal(61, snapshot.SevenDay!.Value.Utilization, 3);
+    }
+
+    /// <summary>옛 응답에는 배열이 아예 없다. 그것도 정상이고, 창은 그대로 나와야 한다.</summary>
+    [Theory]
+    // 배열 자체가 없다
+    [InlineData("""{"five_hour":{"utilization":34.2},"seven_day":{"utilization":61}}""")]
+    // 배열 자리에 엉뚱한 것이 왔다
+    [InlineData("""{"five_hour":{"utilization":34.2},"seven_day":{"utilization":61},"limits":{}}""")]
+    [InlineData("""{"five_hour":{"utilization":34.2},"seven_day":{"utilization":61},"limits":null}""")]
+    [InlineData("""{"five_hour":{"utilization":34.2},"seven_day":{"utilization":61},"limits":[]}""")]
+    public void 한도가_없으면_빈_목록이고_창은_남는다(string body)
+    {
+        var snapshot = UsageApi.Parse(body, Cred("max"), Now).Snapshot!;
+
+        Assert.Empty(snapshot.Limits);
+        Assert.Equal(34.2, snapshot.FiveHour!.Value.Utilization, 3);
+        Assert.Equal(61, snapshot.SevenDay!.Value.Utilization, 3);
+    }
+
+    [Fact]
+    public void 한도_퍼센트를_0에서_100_사이로_자른다()
+    {
+        const string body = """
+            {"limits":[{"kind":"session","percent":140},{"kind":"weekly_all","percent":-3}]}
+            """;
+
+        var limits = UsageApi.Parse(body, Cred(null), Now).Snapshot!.Limits;
+
+        Assert.Equal(100, limits[0].Percent);
+        Assert.Equal(0, limits[1].Percent);
+    }
+
+    /// <summary>
+    /// **원소 하나가 이상해도 나머지는 살린다.** 서버가 낯선 항목을 하나 끼웠다고 한도가
+    /// 통째로 사라지면 측정이 그 순간부터 아무것도 못 센다.
+    /// </summary>
+    [Fact]
+    public void 이상한_원소만_버린다()
+    {
+        const string body = """
+            {"limits":[
+              {"percent":10},
+              {"kind":"weekly_all","percent":"많이"},
+              {"kind":"","percent":10},
+              {"kind":"weekly_all"},
+              "글자",
+              {"kind":"session","percent":24}
+            ]}
+            """;
+
+        var limit = Assert.Single(UsageApi.Parse(body, Cred(null), Now).Snapshot!.Limits);
+
+        Assert.Equal("session", limit.Id);
+        Assert.Equal(24, limit.Percent);
+    }
+
+    [Theory]
+    [InlineData("2026-08-06T15:30:00Z")]
+    [InlineData("2026-08-06T15:30:00.000Z")]
+    // Z 가 없어도 UTC 로 읽는다 — 로컬로 읽으면 시간대만큼 통째로 어긋난다.
+    [InlineData("2026-08-06T15:30:00")]
+    [InlineData("2026-08-07T00:30:00+09:00")]
+    public void 초기화_시각을_UTC_로_읽는다(string text)
+    {
+        var body = $$"""{"limits":[{"kind":"session","percent":24,"resets_at":"{{text}}"}]}""";
+
+        var limit = Assert.Single(UsageApi.Parse(body, Cred(null), Now).Snapshot!.Limits);
+
+        Assert.Equal(new DateTimeOffset(2026, 8, 6, 15, 30, 0, TimeSpan.Zero), limit.ResetsAt);
+    }
+
+    /// <summary>
+    /// <c>GetString()</c> 은 ValueKind 가 String 이 아니면 **던진다.** 서버가 숫자나
+    /// 객체를 흘려도 그 한도만 초기화 시각이 비어야지, 조회가 통째로 실패하면 안 된다.
+    /// </summary>
+    [Theory]
+    [InlineData("12345")]
+    [InlineData("{}")]
+    [InlineData("null")]
+    [InlineData("\"곧\"")]
+    public void 초기화_시각이_이상해도_던지지_않는다(string raw)
+    {
+        var body = $$"""{"limits":[{"kind":"session","percent":24,"resets_at":{{raw}}}]}""";
+
+        var limit = Assert.Single(UsageApi.Parse(body, Cred(null), Now).Snapshot!.Limits);
+
+        Assert.Null(limit.ResetsAt);
+        Assert.Equal(24, limit.Percent);
+    }
+
+    /// <summary>
+    /// 모르는 <c>kind</c> 는 원문을 그대로 쓴다. 서버가 갈래를 하나 늘렸을 때 빈칸이
+    /// 되는 것보다, 낯설어도 실제 값이 보이는 편이 낫다.
+    /// </summary>
+    [Fact]
+    public void 모르는_갈래는_원문_그대로다()
+    {
+        const string body = """{"limits":[{"kind":"monthly_all","percent":5}]}""";
+
+        var limit = Assert.Single(UsageApi.Parse(body, Cred(null), Now).Snapshot!.Limits);
+
+        Assert.Equal("monthly_all", limit.Id);
+        Assert.Equal("monthly_all", limit.Title);
+    }
+
+    /// <summary>
+    /// 모델 이름이 빈 문자열이면 없는 것으로 눕힌다 — 그대로 두면 id 가
+    /// <c>weekly_scoped/</c>, 제목이 <c>주간 · </c> 로 꼬리가 빈 채 화면에 나간다.
+    /// </summary>
+    [Theory]
+    [InlineData("""{"model":{"display_name":""}}""")]
+    [InlineData("""{"model":{"display_name":null}}""")]
+    [InlineData("""{"model":{}}""")]
+    [InlineData("""{}""")]
+    public void 모델_이름이_없으면_갈래만_남는다(string scope)
+    {
+        var body = $$"""{"limits":[{"kind":"weekly_scoped","percent":5,"scope":{{scope}}}]}""";
+
+        var limit = Assert.Single(UsageApi.Parse(body, Cred(null), Now).Snapshot!.Limits);
+
+        Assert.Null(limit.ModelName);
+        Assert.Equal("weekly_scoped", limit.Id);
+    }
 }
 
 public class UsageStoreTests
@@ -414,6 +583,109 @@ public class UsageStoreTests
         store.Apply(UsageResult.Ok(Snapshot(time.GetUtcNow())));
 
         Assert.Equal(time.GetUtcNow() + store.PollInterval, store.NextPollAt);
+    }
+
+    // MARK: - 표본 훅 (SnapshotReceived)
+    //
+    // 측정이 여기 붙어 표본을 받는다. 저장소가 측정 객체를 직접 알지 않으려고 일부러
+    // 이벤트로 끊어 뒀다 — 한 덩어리가 되면 조회만 쓰는 미리보기에도 측정이 딸려 온다.
+
+    [Fact]
+    public void 성공한_조회에서만_표본이_온다()
+    {
+        var time = new FakeTime();
+        var store = NewStore(time);
+        var received = new List<UsageSnapshot>();
+        store.SnapshotReceived += snapshot => received.Add(snapshot);
+
+        var sample = Snapshot(time.GetUtcNow());
+        store.Apply(UsageResult.Ok(sample));
+
+        Assert.Same(sample, Assert.Single(received));
+    }
+
+    /// <summary>**실패한 조회는 표본이 아니다.** 여기서 새면 측정이 빈 값을 기록에 넣는다.</summary>
+    [Fact]
+    public void 실패한_조회는_표본이_아니다()
+    {
+        var store = NewStore(new FakeTime());
+        var count = 0;
+        store.SnapshotReceived += _ => count++;
+
+        store.Apply(UsageResult.Fail(UsageError.RateLimited(null)));
+        store.Apply(UsageResult.Fail(UsageError.TokenExpired()));
+        store.Apply(UsageResult.Fail(UsageError.NoCredentials()));
+        store.Apply(UsageResult.Fail(UsageError.Network("끊김")));
+
+        Assert.Equal(0, count);
+    }
+
+    /// <summary>
+    /// 값을 잃지 않으려고 옛 스냅숏을 그대로 들고 있는데, 그것을 다시 표본으로 쏘면
+    /// 실패할 때마다 같은 값이 한 번 더 기록된다.
+    /// </summary>
+    [Fact]
+    public void 성공_뒤에_실패해도_표본은_한_번뿐이다()
+    {
+        var time = new FakeTime();
+        var store = NewStore(time);
+        var count = 0;
+        store.SnapshotReceived += _ => count++;
+
+        store.Apply(UsageResult.Ok(Snapshot(time.GetUtcNow())));
+        store.Apply(UsageResult.Fail(UsageError.Network("끊김")));
+
+        Assert.Equal(1, count);
+    }
+
+    /// <summary>
+    /// **미리보기는 표본이 아니다.** 렌더로 꽂은 고정값이 기록에 들어가면, 문서 그림을
+    /// 한 장 뽑을 때마다 사용자의 진짜 기록에 가짜 표본이 하나씩 쌓인다.
+    /// </summary>
+    [Fact]
+    public void 미리보기는_표본이_아니다()
+    {
+        var time = new FakeTime();
+        var store = NewStore(time);
+        var samples = 0;
+        var changes = 0;
+        store.SnapshotReceived += _ => samples++;
+        store.Changed += () => changes++;
+
+        store.Preview(Snapshot(time.GetUtcNow()));
+
+        Assert.Equal(0, samples);
+        Assert.Equal(1, changes);
+    }
+
+    /// <summary>
+    /// 훅 안에서 저장소를 다시 봐도 앞뒤가 맞아야 한다 — 필드를 **전부 정리한 뒤에**
+    /// 부르기 때문이다. 앞서 실패해 있던 흔적이 남아 있으면 측정이 옛 오류를 보고
+    /// 표본을 버릴 수 있다.
+    /// </summary>
+    [Fact]
+    public void 훅_안에서_본_저장소는_이미_새_값이다()
+    {
+        var time = new FakeTime();
+        var store = NewStore(time);
+        store.Apply(UsageResult.Fail(UsageError.TokenExpired()));
+
+        UsageSnapshot? seen = null;
+        string? error = "아직 안 봤다";
+        var needsReauth = true;
+        store.SnapshotReceived += _ =>
+        {
+            seen = store.Snapshot;
+            error = store.ErrorText;
+            needsReauth = store.NeedsReauth;
+        };
+
+        var sample = Snapshot(time.GetUtcNow());
+        store.Apply(UsageResult.Ok(sample));
+
+        Assert.Same(sample, seen);
+        Assert.Null(error);
+        Assert.False(needsReauth);
     }
 
     private sealed class EmptySource : ICredentialSource
@@ -633,6 +905,21 @@ public class AppSettingsTests
         Assert.Equal(HudScale.Large, loaded.Scale);
         Assert.Equal(HudTheme.Dark, loaded.Theme);
         Assert.Equal(12.5, loaded.WindowLeft);
+    }
+
+    /// <summary>
+    /// **캐시를 뺀 값이 기본이다.** 캐시 읽기가 수천만이라 켜 두면 실제로 주고받은 양이
+    /// 묻힌다 — 처음 보는 사람이 자기가 그만큼 쓴 줄 안다.
+    /// </summary>
+    [Fact]
+    public void 측정은_캐시를_빼고_보여주는_것이_기본이다()
+    {
+        Assert.False(new AppSettings().MeasureIncludesCache);
+
+        using var file = new TemporaryFile();
+        new AppSettings { MeasureIncludesCache = true }.Save(file.Path);
+
+        Assert.True(AppSettings.Load(file.Path).MeasureIncludesCache);
     }
 
     /// <summary>설정 파일이 깨졌다고 앱이 안 뜨면 안 된다.</summary>

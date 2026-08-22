@@ -14,6 +14,8 @@ public enum HudHit
     None,
     /// <summary>접기·펼치기.</summary>
     Collapse,
+    /// <summary>측정. **누르면 재기 시작이 아니라 측정 화면이 열린다** — 까닭은 배선한 자리에 적어 뒀다.</summary>
+    Measure,
     Settings,
     Refresh,
     /// <summary>새 버전 표시. 누르면 버전 화면이 열린다.</summary>
@@ -47,9 +49,13 @@ public static class HudHitExtensions
     ///
     /// 나머지(빈 자리·마스코트·설명만 붙은 자리)는 창이 다 같이 다룬다 — 끌 수 있고,
     /// 두 번 누르면 접힌다. 설명 문구를 붙이겠다고 끌 수 있는 자리를 뺏으면 안 된다.
+    ///
+    /// **<see cref="HudHit"/> 에 누를 것을 더하면 여기도 더한다.** 빠뜨리면 손가락 커서도
+    /// 안 뜨고, 누른 채로 창이 끌려가며, 두 번 누르면 접힌다 — 셋 다 여기 하나에 걸려 있다.
     /// </summary>
     public static bool IsButton(this HudHit hit) =>
-        hit is HudHit.Collapse or HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge;
+        hit is HudHit.Collapse or HudHit.Measure or HudHit.Settings or HudHit.Refresh
+            or HudHit.UpdateBadge;
 }
 
 /// <summary>
@@ -102,6 +108,14 @@ public sealed class HudPalette
     public Color UpdateBadge => IsDark ? Color.FromRgb(0x4A, 0x99, 0xFC) : Color.FromRgb(0x1C, 0x70, 0xE6);
 
     /// <summary>
+    /// 재는 중인 측정 버튼.
+    ///
+    /// 설정 창의 <c>Danger</c> 와 같은 빨강이라 두 화면이 이어진다 — HUD 에서 빨간
+    /// 스톱워치를 보고 측정 탭을 열면 거기 "재는 중" 알약이 같은 색으로 서 있다.
+    /// </summary>
+    public Color Measuring => IsDark ? Color.FromRgb(0xF2, 0x6A, 0x6A) : Color.FromRgb(0xC0, 0x35, 0x35);
+
+    /// <summary>
     /// 테스트판 버전 딱지. 마스코트의 테스트 팔레트와 같은 보라 계열이다.
     ///
     /// 곁눈으로도 걸려야 한다 — 두 판을 나란히 띄워 놓고 비교하는 중에 어느 쪽을
@@ -125,7 +139,7 @@ public sealed class HudView : FrameworkElement
 {
     public const double BaseExpandedWidth = 240;
     public const double BaseExpandedHeight = 88;
-    /// <summary>접은 모습: 링 + 버튼 세 칸이 세로로. 맥과 같은 108 이다.</summary>
+    /// <summary>접은 모습: 링 + 버튼 네 칸이 세로로. 맥과 같은 108 이다.</summary>
     public const double BaseCollapsedWidth = 108;
     public const double BaseCollapsedHeight = 88;
 
@@ -174,6 +188,15 @@ public sealed class HudView : FrameworkElement
     private const string GlyphChevronLeft = "\uE76B";
     private const string GlyphSettings = "\uE713";
     private const string GlyphRefresh = "\uE72C";
+
+    /// <summary>
+    /// 스톱워치. 설정 창의 측정 탭 아이콘(<c>TabIcon</c> 의 <c>"measure"</c>)과 **같은
+    /// 코드포인트**다 — HUD 버튼과 탭이 다른 그림이면 어디로 가는 버튼인지 알 수 없다.
+    ///
+    /// 맥은 재는 동안 <c>stopwatch.fill</c> 로 갈아 끼우지만 Segoe MDL2 에는 채운
+    /// 스톱워치가 없다. **모양이 아니라 색이 상태를 말한다** — 같은 글리프를 빨갛게 칠한다.
+    /// </summary>
+    private const string GlyphStopwatch = "\uE916";
 
     private static readonly OwlDocument Document = OwlDocument.Embedded;
     private static readonly Typeface Regular = new("Segoe UI");
@@ -345,27 +368,50 @@ public sealed class HudView : FrameworkElement
 
     // ── 자리 재기 (그리는 쪽과 누르는 쪽이 같은 것을 본다) ──────────────
 
-    /// <summary>버튼 세 칸. 차례는 접기 · 설정 · 새로고침이다.</summary>
+    /// <summary>
+    /// <see cref="ButtonRects"/> 배열의 자리 이름.
+    ///
+    /// **인덱스를 숫자로 적지 않는다.** 재는 곳(<see cref="ButtonRects"/>)과 누르는 곳
+    /// (<see cref="HitTest"/>), 그리는 두 곳이 같은 배열을 각자 뒤지는데, 칸이 하나
+    /// 늘면서 한 곳만 밀리면 **엉뚱한 버튼이 눌린다.** 이름으로 적어 두면 안 밀린다.
+    /// </summary>
+    private static class Slot
+    {
+        public const int Collapse = 0;
+        public const int Measure = 1;
+        public const int Settings = 2;
+        public const int Refresh = 3;
+
+        /// <summary>펼침·접힘의 칸 수. 맥의 <c>controlButtonCount</c> 와 같은 값이다.</summary>
+        public const int Count = 4;
+    }
+
+    /// <summary>버튼 네 칸. 차례는 접기 · 측정 · 설정 · 새로고침이다.</summary>
     private Rect[] ButtonRects()
     {
         var size = DesiredHudSize;
         var button = BaseButton * Scale;
 
-        // 펫은 링 **아래 줄**에 설정·새로고침 둘만 둔다. 접기 자리는 없다 —
+        // 펫은 링 **아래 줄**에 측정·설정·새로고침 셋만 둔다. 접기 자리는 없다 —
         // 나가는 길은 마스코트를 두 번 누르는 것이다.
         if (Mode == HudMode.Pet)
         {
             var petButton = BasePetButton * Scale;
             var gap = 8 * Scale;
             var row = BasePetButtonRow * Scale;
-            var petLeft = (size.Width - (petButton * 2 + gap)) / 2;
+            // 24×3 + 8×2 = 88 로 펫 폭 128 안에 든다. 제일 작은 배율 0.85 에서도 74.8 이다.
+            var petLeft = (size.Width - (petButton * 3 + gap * 2)) / 2;
             var petTop = size.Height - row + (row - petButton) / 2;
+            var step = petButton + gap;
 
+            // 접기 자리는 **빈 사각형**으로 채워 둔다. `Rect.Empty.Contains` 는 늘 false 라
+            // 히트 테스트가 그냥 지나간다 — 펫만 인덱스가 밀리는 것보다 훨씬 안전하다.
             return
             [
                 Rect.Empty,
                 new Rect(petLeft, petTop, petButton, petButton),
-                new Rect(petLeft + petButton + gap, petTop, petButton, petButton),
+                new Rect(petLeft + step, petTop, petButton, petButton),
+                new Rect(petLeft + step * 2, petTop, petButton, petButton),
             ];
         }
 
@@ -373,22 +419,26 @@ public sealed class HudView : FrameworkElement
         {
             var trailing = BaseCollapsedTrailing * Scale;
             var x = ToRight ? size.Width - trailing - button : trailing;
-            var top = (size.Height - button * 3) / 2;
+            // **칸이 셋에서 넷으로 늘면서 세로 가운데가 10 위로 올라갔다**(배율 1 에서 14 → 4).
+            // 20×4 = 80 이 접힌 높이 88 안에 겨우 들어간다.
+            var top = (size.Height - button * Slot.Count) / 2;
             return
             [
                 new Rect(x, top, button, button),
                 new Rect(x, top + button, button, button),
                 new Rect(x, top + button * 2, button, button),
+                new Rect(x, top + button * 3, button, button),
             ];
         }
 
         var inset = BaseInset * Scale;
-        var left = ToRight ? size.Width - inset - button * 3 : inset;
+        var left = ToRight ? size.Width - inset - button * Slot.Count : inset;
         return
         [
             new Rect(left, inset, button, button),
             new Rect(left + button, inset, button, button),
             new Rect(left + button * 2, inset, button, button),
+            new Rect(left + button * 3, inset, button, button),
         ];
     }
 
@@ -470,7 +520,7 @@ public sealed class HudView : FrameworkElement
         if (!RingRect().Contains(point)) return false;
 
         // 새 버전 표시는 펫에서 창 오른쪽 위라 이 사각형과 겹친다. 빼 두지 않으면
-        // 누르러 갈 때마다 달아나서 영영 못 누른다. 설정·새로고침 버튼은 링 아래
+        // 누르러 갈 때마다 달아나서 영영 못 누른다. 측정·설정·새로고침 버튼은 링 아래
         // 버튼 줄에 있어 이 사각형에 애초에 안 들어오므로 따로 뺄 것이 없다.
         return !(HasUpdate && UpdateBadgeRect().Contains(point));
     }
@@ -481,9 +531,10 @@ public sealed class HudView : FrameworkElement
         if (HasUpdate && UpdateBadgeRect().Contains(point)) return HudHit.UpdateBadge;
 
         var buttons = ButtonRects();
-        if (buttons[0].Contains(point)) return HudHit.Collapse;
-        if (buttons[1].Contains(point)) return HudHit.Settings;
-        if (buttons[2].Contains(point)) return HudHit.Refresh;
+        if (buttons[Slot.Collapse].Contains(point)) return HudHit.Collapse;
+        if (buttons[Slot.Measure].Contains(point)) return HudHit.Measure;
+        if (buttons[Slot.Settings].Contains(point)) return HudHit.Settings;
+        if (buttons[Slot.Refresh].Contains(point)) return HudHit.Refresh;
 
         // 마스코트는 **버튼 다음**이다. 펫에서는 링이 창의 거의 전부라 먼저 보면
         // 다른 것을 다 덮는다. 링과 마스코트가 겹쳐 있으므로 링 전체를 잡는다.
@@ -552,6 +603,7 @@ public sealed class HudView : FrameworkElement
     public string? TooltipFor(HudHit hit) => hit switch
     {
         HudHit.Collapse => Mode == HudMode.Collapsed ? "펼치기" : "접기",
+        HudHit.Measure => MeasureTooltip,
         HudHit.Settings => "설정",
         HudHit.Refresh => RefreshTooltip,
         HudHit.UpdateBadge => "새 버전이 나왔다 — 눌러서 확인",
@@ -577,6 +629,23 @@ public sealed class HudView : FrameworkElement
     private string RefreshTooltip => ErrorText is { } error
         ? $"갱신 실패: {error} — 눌러서 다시 시도"
         : FetchCooldownSeconds > 0 ? $"새로고침 — {FetchCooldownSeconds}초 뒤에 가능" : "새로고침";
+
+    /// <summary>
+    /// 지금 사용량을 재고 있는지. 창이 넣어 준다 — 버튼이 빨개지고 설명이 달라진다.
+    /// </summary>
+    public bool IsMeasuring { get; set; }
+
+    /// <summary>
+    /// 측정 버튼 설명.
+    ///
+    /// **여기 한 곳에서만 만든다.** 펼친 보기·접힌 보기·펫이 같은 <see cref="TooltipFor"/>
+    /// 를 타는데, 자리마다 적으면 한 곳만 고쳐져 세 화면의 말이 갈린다(맥이
+    /// <c>measureHelp</c> 를 static 으로 뺀 이유 그대로다).
+    ///
+    /// **누르면 재기 시작이 아니라 측정 화면이 열린다는 것을 말로 밝힌다** — 스톱워치
+    /// 그림만 보면 누르는 순간 재기 시작하는 것으로 읽힌다.
+    /// </summary>
+    private string MeasureTooltip => IsMeasuring ? "측정 중 — 측정 화면 열기" : "측정";
 
     /// <summary>카운트다운 자리가 지금 무슨 뜻인지. 숫자만으로는 멈춘 건지 도는 건지 모른다.</summary>
     private string CountdownHelp
@@ -645,7 +714,7 @@ public sealed class HudView : FrameworkElement
         if (Mode == HudMode.Expanded) DrawMetrics(context, palette, s);
         if (dim) context.Pop();
 
-        // 펫에는 숫자도 버전 딱지도 없다. 링 아래 버튼 둘과 새 버전 표시만 얹는다.
+        // 펫에는 숫자도 버전 딱지도 없다. 링 아래 버튼 셋과 새 버전 표시만 얹는다.
         if (Mode == HudMode.Pet)
         {
             DrawPetButtons(context, palette, s);
@@ -1080,7 +1149,7 @@ public sealed class HudView : FrameworkElement
     }
 
     /// <summary>
-    /// 링 밖 아래에 붙는 동그란 버튼 둘.
+    /// 링 밖 아래에 붙는 동그란 버튼 셋 — 측정 · 설정 · 새로고침.
     ///
     /// **링과 같은 조건으로만 보인다** — 펫은 마스코트만 띄우는 보기라, 버튼이 늘
     /// 떠 있으면 그 뜻이 사라진다. 다만 자리는 늘 살아 있어서, 다가가면 뜨고 눌린다.
@@ -1092,14 +1161,24 @@ public sealed class HudView : FrameworkElement
         if (PetRingFade < 1) context.PushOpacity(PetRingFade);
 
         var rects = ButtonRects();
-        DrawPetButton(context, rects[1], GlyphSettings, HudHit.Settings, palette, s);
-        DrawPetButton(context, rects[2], GlyphRefresh, HudHit.Refresh, palette, s);
+        DrawPetButton(
+            context, rects[Slot.Measure], GlyphStopwatch, HudHit.Measure, MeasureTint(palette), palette, s);
+        DrawPetButton(
+            context, rects[Slot.Settings], GlyphSettings, HudHit.Settings, palette.ControlIdle, palette, s);
+        DrawPetButton(
+            context, rects[Slot.Refresh], GlyphRefresh, HudHit.Refresh, palette.ControlIdle, palette, s);
 
         if (PetRingFade < 1) context.Pop();
     }
 
     private void DrawPetButton(
-        DrawingContext context, Rect rect, string glyph, HudHit target, HudPalette palette, double s)
+        DrawingContext context,
+        Rect rect,
+        string glyph,
+        HudHit target,
+        Color idle,
+        HudPalette palette,
+        double s)
     {
         var center = new Point(rect.Left + rect.Width / 2, rect.Top + rect.Height / 2);
 
@@ -1109,7 +1188,7 @@ public sealed class HudView : FrameworkElement
         var border = Paint.Pen(palette.RingTrack, Math.Max(1, s));
         context.DrawEllipse(fill, border, center, rect.Width / 2, rect.Height / 2);
 
-        var color = Hover == target ? palette.ControlActive : palette.ControlIdle;
+        var color = Hover == target && idle != palette.Measuring ? palette.ControlActive : idle;
         if (target == HudHit.Refresh && IsRefreshing)
         {
             color = Color.FromArgb((byte)(color.A * 0.35), color.R, color.G, color.B);
@@ -1119,6 +1198,13 @@ public sealed class HudView : FrameworkElement
         context.DrawText(text, new Point(center.X - text.Width / 2, center.Y - text.Height / 2));
     }
 
+    /// <summary>
+    /// 측정 버튼 색. **재는 중이면 빨강 고정이고 호버보다 세다** — 호버색으로 덮이면
+    /// 커서를 올린 동안 재는 중인지 알 수 없다(맥의 <c>measureTint</c> 도 그 순서다).
+    /// </summary>
+    private Color MeasureTint(HudPalette palette) =>
+        IsMeasuring ? palette.Measuring : palette.ControlIdle;
+
     private void DrawButtons(DrawingContext context, HudPalette palette, double s)
     {
         var rects = ButtonRects();
@@ -1126,12 +1212,14 @@ public sealed class HudView : FrameworkElement
         // 눌렀을 때 창이 움직일 방향을 가리킨다.
         var chevron = (Mode == HudMode.Collapsed) == ToRight ? GlyphChevronRight : GlyphChevronLeft;
 
-        DrawButton(context, rects[0], chevron, HudHit.Collapse, palette.ControlIdle, palette, s);
-        DrawButton(context, rects[1], GlyphSettings, HudHit.Settings, palette.ControlIdle, palette, s);
+        DrawButton(context, rects[Slot.Collapse], chevron, HudHit.Collapse, palette.ControlIdle, palette, s);
+        DrawButton(
+            context, rects[Slot.Measure], GlyphStopwatch, HudHit.Measure, MeasureTint(palette), palette, s);
+        DrawButton(context, rects[Slot.Settings], GlyphSettings, HudHit.Settings, palette.ControlIdle, palette, s);
 
         // 갱신에 실패해 화면 숫자가 낡았으면 버튼 자체를 경고색으로 물들인다.
         var refreshTint = ErrorText is null ? palette.ControlIdle : palette.Warning;
-        DrawButton(context, rects[2], GlyphRefresh, HudHit.Refresh, refreshTint, palette, s);
+        DrawButton(context, rects[Slot.Refresh], GlyphRefresh, HudHit.Refresh, refreshTint, palette, s);
     }
 
     private void DrawButton(
@@ -1152,7 +1240,12 @@ public sealed class HudView : FrameworkElement
                 rect.Width / 2, rect.Height / 2);
         }
 
-        var color = hovering && idle != palette.Warning ? palette.ControlActive : idle;
+        // **상태를 말하는 색은 호버가 못 덮는다.** 경고(주황)는 값이 낡았다는 뜻이고
+        // 재는 중(빨강)은 지금 재고 있다는 뜻이라, 커서를 올린 동안 그 사실이 사라지면
+        // 안 된다. 나머지 유휴색만 밝아진다.
+        var color = hovering && idle != palette.Warning && idle != palette.Measuring
+            ? palette.ControlActive
+            : idle;
         // 갱신 중에는 흐리게. 돌아가는 애니메이션은 유휴 상태에서 계속 도는 위험이 있어 쓰지 않는다.
         if (target == HudHit.Refresh && IsRefreshing)
         {

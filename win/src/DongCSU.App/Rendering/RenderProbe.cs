@@ -148,7 +148,8 @@ internal static class RenderProbe
 
         if (args.Length < 2)
         {
-            Console.WriteLine("--render-settings <out.png> [status|display|icon|pet|account|version] "
+            Console.WriteLine("--render-settings <out.png> "
+                + "[status|measure|display|icon|pet|account|version] "
                 + "[너비x높이] [dark|light] [새 버전(예: 1.2.3)]");
             return 2;
         }
@@ -189,8 +190,16 @@ internal static class RenderProbe
         // 늘 "설치본이 아니라 자동 업데이트를 쓸 수 없습니다" 가 나와 실제와 달라진다.
         updates.Preview(latest, now.AddMinutes(-40));
 
+        // 측정 탭도 꽂아 주지 않으면 통째로 빈다. 고정값은 `MeterPreview` 한 곳에서만
+        // 나온다 — `--probe-layout` 이 재는 화면과 여기서 그리는 화면이 갈리면 둘 다
+        // 못 믿게 된다.
+        //
+        // **반드시 `UsageMeter.Preview` 다.** 보통 생성자는 저장소를 물어서, 문서 그림을
+        // 한 장 뽑을 때마다 사용자의 진짜 meter.json 이 고정값으로 덮인다.
+        var meter = UsageMeter.Preview(MeterPreview.State());
+
         var window = new SettingsWindow(
-            settings, store, updates,
+            settings, store, meter, updates,
             onChanged: () => { }, onResetPosition: () => { },
             onTogglePet: () => { }, onLogin: () => { })
         {

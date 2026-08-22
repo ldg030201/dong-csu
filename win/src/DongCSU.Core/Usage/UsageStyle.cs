@@ -1,3 +1,4 @@
+using System.Globalization;
 using DongCSU.Core.Owl;
 
 namespace DongCSU.Core.Usage;
@@ -118,5 +119,66 @@ public static class RemainingTime
         var seconds = remaining % 60;
 
         return hours > 0 ? $"{hours}:{minutes:D2}:{seconds:D2}" : $"{minutes}:{seconds:D2}";
+    }
+
+    /// <summary>
+    /// 잰 시간. 카운트다운(<see cref="ClockText"/>)과 달리 자릿수를 맞추지 않는다 —
+    /// 측정 화면에서는 "얼마나 쟀나"가 한눈에 읽히는 편이 낫다.
+    /// </summary>
+    public static string ElapsedText(TimeSpan elapsed)
+    {
+        // **TimeSpan.Days·Hours 를 쓰지 않는다.** 답은 같지만, 맥 소스와 눈으로 대조할 수
+        // 있게 같은 식으로 적는다.
+        var total = (long)Math.Max(0, Math.Floor(elapsed.TotalSeconds));
+        var days = total / (24 * 3600);
+        var hours = total % (24 * 3600) / 3600;
+        var minutes = total % 3600 / 60;
+        var seconds = total % 60;
+
+        if (days > 0) return $"{days}일 {hours}시간";
+        if (hours > 0) return $"{hours}시간 {minutes}분";
+        if (minutes > 0) return $"{minutes}분 {seconds}초";
+        return $"{seconds}초";
+    }
+}
+
+/// <summary>토큰 수를 사람이 읽는 형태로.</summary>
+public static class TokenFormat
+{
+    /// <summary>억 문턱.</summary>
+    public const long HundredMillion = 100_000_000;
+
+    /// <summary>만 문턱.</summary>
+    public const long TenThousand = 10_000;
+
+    /// <summary>
+    /// 한눈에 크기를 잡는 용도. <c>452,846,994</c> 는 세어 봐야 알지만 <c>4.5억</c> 은
+    /// 안 세도 된다.
+    ///
+    /// 받는 값이 <c>long</c> 인 것은 <c>TokenTally</c> 가 <c>long</c> 이라서다 —
+    /// 캐시 읽기는 한 측정에서 이미 4.5억이라 <c>int</c> 로는 몇 번 만에 넘친다.
+    /// </summary>
+    public static string Short(long value)
+    {
+        var magnitude = Math.Abs(value);
+        if (magnitude >= HundredMillion) return Trim(value / (double)HundredMillion) + "억";
+        if (magnitude >= TenThousand) return Trim(value / (double)TenThousand) + "만";
+        return Exact(value);
+    }
+
+    /// <summary>자릿점만 찍은 그대로의 값.</summary>
+    public static string Exact(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    private static string Trim(double value)
+    {
+        // 100 을 넘으면 소수점이 의미가 없다(123.4만 → 123만).
+        //
+        // **서식마다 InvariantCulture 를 준다.** 이 기계는 ko-KR 이라 마침 결과가 같지만,
+        // 유럽 로케일에서는 "F1" 이 `12,3` 을 내놓아 아래의 ".0" 떼기가 안 먹고 자릿점이
+        // 소수점처럼 보인다.
+        var text = Math.Abs(value) >= 100
+            ? value.ToString("F0", CultureInfo.InvariantCulture)
+            : value.ToString("F1", CultureInfo.InvariantCulture);
+        return text.EndsWith(".0", StringComparison.Ordinal) ? text[..^2] : text;
     }
 }

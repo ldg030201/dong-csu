@@ -15,7 +15,7 @@ namespace DongCSU.App.Hud;
 /// 화면 위에 항상 떠 있는 창.
 ///
 /// 창틀이 없고 배경이 비치며 작업 표시줄에 안 나온다. 드래그로 옮기고 더블클릭으로
-/// 접었다 편다 — 맥판과 같다. 카드 위의 버튼 세 개(접기·설정·새로고침)와 새 버전
+/// 접었다 편다 — 맥판과 같다. 카드 위의 버튼 네 개(접기·측정·설정·새로고침)와 새 버전
 /// 표시는 <see cref="HudView.HitTest"/> 로 직접 자리를 재서 나눠 준다.
 /// </summary>
 public sealed class HudWindow : Window
@@ -63,6 +63,13 @@ public sealed class HudWindow : Window
     public event Action? FetchCooldownWanted;
 
     public event Action? ContextMenuRequested;
+
+    /// <summary>
+    /// 측정 버튼을 눌렀다. **재기를 시작하라는 뜻이 아니라 측정 화면을 열라는 뜻이다** —
+    /// 까닭은 받는 쪽(<c>AppController</c>)에 적어 뒀다.
+    /// </summary>
+    public event Action? MeasureRequested;
+
     public event Action? SettingsRequested;
     public event Action? RefreshRequested;
     public event Action? UpdatesRequested;
@@ -558,8 +565,8 @@ public sealed class HudWindow : Window
         // 버튼 줄도 포함해야 한다. 링을 스쳐 버튼으로 내려가는 동안 사라져 버리면
         // 누르려던 것이 눈앞에서 없어진다.
         var hovering = view.Mode == HudMode.Pet
-            && hit is HudHit.Mascot or HudHit.Settings or HudHit.Refresh or HudHit.UpdateBadge
-                or HudHit.PetRow;
+            && hit is HudHit.Mascot or HudHit.Measure or HudHit.Settings or HudHit.Refresh
+                or HudHit.UpdateBadge or HudHit.PetRow;
         if (hovering != view.IsHovered)
         {
             view.IsHovered = hovering;
@@ -730,6 +737,7 @@ public sealed class HudWindow : Window
         switch (target)
         {
             case HudHit.Collapse: ModeToggled?.Invoke(); break;
+            case HudHit.Measure: MeasureRequested?.Invoke(); break;
             case HudHit.Settings: SettingsRequested?.Invoke(); break;
             case HudHit.Refresh: RefreshRequested?.Invoke(); break;
             case HudHit.UpdateBadge: UpdatesRequested?.Invoke(); break;

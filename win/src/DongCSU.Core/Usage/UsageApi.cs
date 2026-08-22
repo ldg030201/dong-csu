@@ -219,6 +219,7 @@ public sealed class UsageApi(
                 TokenExpiresAt = credential.ExpiresAt,
                 FiveHour = Window(root, "five_hour"),
                 SevenDay = Window(root, "seven_day"),
+                Limits = ParseLimits(root),
                 FetchedAt = now,
             });
         }
@@ -243,14 +244,94 @@ public sealed class UsageApi(
             return null;
         }
 
-        DateTimeOffset? resetsAt = null;
-        if (element.TryGetProperty("resets_at", out var reset) && reset.GetString() is { } text
-            && DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
-                DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var parsed))
+        return new UsageWindow(Math.Clamp(utilization, 0, 100), ResetsAt(element));
+    }
+
+    /// <summary>
+    /// <c>resets_at</c> 하나를 읽는다.
+    ///
+    /// **창과 한도가 같은 함수를 쓴다.** 두 곳에 적어 두면 서버가 형식을 바꿨을 때
+    /// 한쪽만 고치게 되고, 그 한쪽은 조용히 null 이 되어 카운트다운만 사라진다.
+    /// </summary>
+    private static DateTimeOffset? ResetsAt(JsonElement owner)
+    {
+        // GetString() 은 ValueKind 가 String 이 아니면 **던진다.** 먼저 본다.
+        if (!owner.TryGetProperty("resets_at", out var element)
+            || element.ValueKind != JsonValueKind.String
+            || element.GetString() is not { } text)
         {
-            resetsAt = parsed;
+            return null;
         }
 
-        return new UsageWindow(Math.Clamp(utilization, 0, 100), resetsAt);
+        // AdjustToUniversal|AssumeUniversal 을 빼면 `Z` 없는 문자열이 로컬 시각으로
+        // 읽혀 시간대만큼 통째로 어긋난다.
+        return DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
+            DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    /// <summary>
+    /// 응답 최상위의 <c>limits</c> 배열.
+    ///
+    /// **원소 하나가 이상해도 나머지는 살린다** — 서버가 낯선 항목을 하나 끼웠다고 한도가
+    /// 통째로 사라지면 측정이 그 순간부터 아무것도 못 센다. <c>kind</c> 와 <c>percent</c>
+    /// 를 둘 다 읽은 원소만 받고 나머지는 버린다(맥과 같다).
+    /// </summary>
+    private static IReadOnlyList<UsageLimit> ParseLimits(JsonElement root)
+    {
+        if (!root.TryGetProperty("limits", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            // 옛 응답에는 이 배열이 아예 없다. 그것도 정상이다.
+            return [];
+        }
+
+        var limits = new List<UsageLimit>();
+        foreach (var element in array.EnumerateArray())
+        {
+            if (element.ValueKind != JsonValueKind.Object) continue;
+
+            if (!element.TryGetProperty("kind", out var kind)
+                || kind.ValueKind != JsonValueKind.String
+                || kind.GetString() is not { Length: > 0 } name)
+            {
+                continue;
+            }
+
+            if (!element.TryGetProperty("percent", out var raw)
+                || raw.ValueKind != JsonValueKind.Number
+                || !raw.TryGetDouble(out var percent)
+                || double.IsNaN(percent) || double.IsInfinity(percent))
+            {
+                continue;
+            }
+
+            limits.Add(new UsageLimit
+            {
+                Kind = name,
+                ModelName = ModelName(element),
+                Percent = Math.Clamp(percent, 0, 100),
+                ResetsAt = ResetsAt(element),
+            });
+        }
+
+        return limits;
+    }
+
+    /// <summary><c>scope.model.display_name</c>. 모델별로 갈린 한도에만 있다.</summary>
+    private static string? ModelName(JsonElement limit)
+    {
+        if (!limit.TryGetProperty("scope", out var scope) || scope.ValueKind != JsonValueKind.Object
+            || !scope.TryGetProperty("model", out var model) || model.ValueKind != JsonValueKind.Object
+            || !model.TryGetProperty("display_name", out var name)
+            || name.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        // 빈 문자열은 없는 것으로 눕힌다. 그대로 두면 Id 가 `weekly_scoped/` 로,
+        // 제목이 `주간 · ` 로 꼬리가 빈 채 화면에 나간다.
+        var text = name.GetString();
+        return string.IsNullOrEmpty(text) ? null : text;
     }
 }

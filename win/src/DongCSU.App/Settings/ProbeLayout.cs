@@ -46,10 +46,39 @@ internal static class ProbeLayout
         return passed ? 0 : 1;
     }
 
-    /// <summary>창 하나를 만들어 탭을 차례로 열어 보며 잰다. 잘리는 탭이 없으면 true.</summary>
+    /// <summary>탭을 차례로 열어 보며 잰다. 잘리는 탭이 없으면 true.</summary>
     private static bool Measure(string label, bool minimum)
     {
-        var window = ProbeWindow(new AppSettings());
+        var printedHeader = false;
+        var passed = true;
+
+        // **탭 목록을 그대로 돈다.** 탭이 하나 늘면 여기 손대지 않아도 저절로 걸린다.
+        var all = SettingsWindow.TabList.Select(tab => (tab.Key, Label: tab.Key)).ToArray();
+        passed &= Sweep(ProbeWindow(new AppSettings()), label, minimum, all, ref printedHeader);
+
+        // **측정 탭만 한 번 더 잰다.** 재는 중이냐에 따라 화면이 통째로 다르다 — 멈추면
+        // 머리·한도·토큰 카드가 통째로 빠지고 기록 목록만 남아서, 재는 중인 모습만 재면
+        // 멈춘 쪽이 잘리는 것을 영영 못 본다. 고정값은 창을 만들 때 물리므로 한 창에서
+        // 갈아 끼울 수 없어 창을 하나 더 만든다 — `Sweep` 이 제 창을 반드시 닫는다.
+        passed &= Sweep(
+            ProbeWindow(new AppSettings(), meterState: MeterPreview.State(running: false)),
+            label, minimum, [("measure", "measure(멈춤)")], ref printedHeader);
+
+        return passed;
+    }
+
+    /// <summary>
+    /// 창 하나로 탭 몇 개를 재고 <b>반드시 닫는다.</b>
+    /// </summary>
+    /// <param name="tabs">열 탭과 찍을 이름. 같은 탭을 다른 고정값으로 두 번 재려고 갈랐다.</param>
+    /// <param name="printedHeader">머리줄은 창을 몇 개 만들든 한 번만 찍는다.</param>
+    private static bool Sweep(
+        SettingsWindow window,
+        string label,
+        bool minimum,
+        IReadOnlyList<(string Key, string Label)> tabs,
+        ref bool printedHeader)
+    {
         if (minimum)
         {
             window.Width = window.MinWidth;
@@ -64,8 +93,7 @@ internal static class ProbeLayout
             window.Show();
             window.UpdateLayout();
 
-            var printedHeader = false;
-            foreach (var (key, _) in SettingsWindow.TabList)
+            foreach (var (key, tabLabel) in tabs)
             {
                 window.SelectTab(key);
 
@@ -77,7 +105,7 @@ internal static class ProbeLayout
 
                 if (window.ContentScroller is not { } scroll)
                 {
-                    Console.WriteLine($"  {key,-16} 스크롤을 못 찾았다");
+                    Console.WriteLine($"  {tabLabel,-16} 스크롤을 못 찾았다");
                     passed = false;
                     continue;
                 }
@@ -115,7 +143,7 @@ internal static class ProbeLayout
                 }
 
                 Console.WriteLine(
-                    $"  {key,-16} {scroll.ExtentHeight,5:0}pt  {string.Join(" · ", notes)}".TrimEnd());
+                    $"  {tabLabel,-16} {scroll.ExtentHeight,5:0}pt  {string.Join(" · ", notes)}".TrimEnd());
             }
         }
         finally
@@ -173,7 +201,13 @@ internal static class ProbeLayout
     /// 상태 탭은 통째로 비고 계정 탭의 로그인 카드는 아예 안 그려져서, 정작 자리를
     /// 제일 많이 먹는 부분이 빠진 채로 재게 된다.
     /// </summary>
-    internal static SettingsWindow ProbeWindow(AppSettings settings, string? latestVersion = null)
+    /// <param name="meterState">
+    /// 측정 탭의 고정값. 안 주면 재는 중인 모습(<c>MeterPreview.State()</c>)이다.
+    /// <b>여기서 새 고정값을 지어내지 않는다</b> — <c>--render-settings</c> 와 같은
+    /// 곳에서 나와야 잰 화면과 그린 화면이 같다.
+    /// </param>
+    internal static SettingsWindow ProbeWindow(
+        AppSettings settings, string? latestVersion = null, MeterState? meterState = null)
     {
         // 테스트 바이너리로 돌려도 정식판 색으로 본다. 렌더 통로와 같은 판단이다.
         MascotRenderer.TestLook = false;
@@ -204,14 +238,20 @@ internal static class ProbeLayout
         // "설치본이 아니라 자동 업데이트를 쓸 수 없습니다" 가 나와 실제와 달라진다.
         updates.Preview(latestVersion, now.AddMinutes(-40));
 
+        // **저장소를 안 무는 쪽으로 만든다.** 보통 생성자를 쓰면 탭을 재 볼 때마다
+        // 사용자의 진짜 meter.json 이 고정값으로 덮인다.
+        var meter = UsageMeter.Preview(meterState ?? MeterPreview.State());
+
         return new SettingsWindow(
-            settings, store, updates,
+            settings, store, meter, updates,
             onChanged: () => { }, onResetPosition: () => { },
             onTogglePet: () => { }, onLogin: () => { })
         {
             // 창을 띄워야 레이아웃이 도는데, 화면 밖에 두면 잠깐이라도 안 보인다.
             // **앞서 잰 창의 크기가 다음 창에 새어 드는 것도 여기서 막힌다** —
             // SettingsWindow 는 닫을 때 자리를 기억하지만 화면 밖 자리는 되돌리지 않는다.
+            // 한 번 재는 데 창을 둘 만드는(측정 탭을 멈춘 모습으로 한 번 더 재는) 지금
+            // 구조가 그 성질에 기대고 있다.
             Left = -20000,
             Top = -20000,
             ShowInTaskbar = false,

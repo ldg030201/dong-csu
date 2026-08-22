@@ -5,12 +5,61 @@ namespace DongCSU.Core.Usage;
 /// <param name="ResetsAt">초기화 시각. 서버가 안 주면 null.</param>
 public readonly record struct UsageWindow(double Utilization, DateTimeOffset? ResetsAt);
 
+/// <summary>
+/// 서버가 따로 내려주는 한도 하나.
+///
+/// <c>five_hour</c>·<c>seven_day</c> 둘만 읽으면 **모델별로 갈린 한도를 놓친다.** 응답의
+/// <c>limits</c> 배열에는 그것까지 들어 있다(<c>weekly_scoped</c>). HUD 는 둘만 그리면
+/// 되지만 측정 기록은 이쪽을 센다 — 나중에 "오퍼스에 얼마 썼나"를 물을 수 있어야 한다.
+/// </summary>
+public sealed record UsageLimit
+{
+    /// <summary><c>session</c> · <c>weekly_all</c> · <c>weekly_scoped</c>.</summary>
+    public required string Kind { get; init; }
+
+    /// <summary>모델별 한도일 때만 채워진다.</summary>
+    public string? ModelName { get; init; }
+
+    /// <summary>0–100 으로 자른 사용률.</summary>
+    public required double Percent { get; init; }
+
+    public DateTimeOffset? ResetsAt { get; init; }
+
+    /// <summary>
+    /// 창이 새로 열려도 같은 한도를 가리키는 이름. **측정이 이 값으로 기록을 묶는다** —
+    /// 초기화 시각이나 차례로 묶으면 창이 넘어갈 때마다 다른 한도가 된다.
+    /// </summary>
+    public string Id => ModelName is { } model ? $"{Kind}/{model}" : Kind;
+
+    /// <summary>화면에 쓰는 이름. 모르는 <see cref="Kind"/> 는 원문을 그대로 둔다.</summary>
+    public string Title => ModelName is { } model
+        ? $"주간 · {model}"
+        : Kind switch
+        {
+            "session" => "세션 (5시간)",
+            "weekly_all" => "주간 (7일)",
+            _ => Kind,
+        };
+}
+
 public sealed record UsageSnapshot
 {
     public string? PlanName { get; init; }
     public UsageWindow? FiveHour { get; init; }
     public UsageWindow? SevenDay { get; init; }
     public required DateTimeOffset FetchedAt { get; init; }
+
+    /// <summary>
+    /// 서버가 준 한도 전부. **옛 응답에는 없어서 빈 목록일 수 있다** — 없다고 던지지 않는다.
+    ///
+    /// <see cref="FiveHour"/>·<see cref="SevenDay"/> 를 대체하지 않고 **덧붙는다.** HUD 는
+    /// 그 둘을 그대로 쓰고, 측정만 모델별로 갈린 것까지 필요해서 이쪽을 본다.
+    ///
+    /// 이 레코드는 값 비교가 자동이지만 목록 칸은 **참조 비교**가 된다. 내용이 같아도 다른
+    /// 스냅숏으로 잡히므로, 나중에 "값이 안 바뀌었으면 다시 안 그린다" 를 넣게 되면
+    /// 이 칸을 뺀 비교를 따로 만들어야 한다.
+    /// </summary>
+    public IReadOnlyList<UsageLimit> Limits { get; init; } = [];
 
     // 아래 둘은 서버가 아니라 **자격 증명에서 온다.** 계정 탭이 보여준다.
     // 조회할 때 자격 증명을 이미 읽으므로 같이 실어 보내면 따로 읽을 일이 없다.

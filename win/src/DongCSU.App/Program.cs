@@ -52,6 +52,21 @@ public sealed class AppController : IDisposable
     private readonly DispatcherTimer updateTimer = new();
 
     /// <summary>
+    /// 사용량 측정. **앱 수명만큼 산다** — 설정 창은 열고 닫을 때마다 버려지지만
+    /// 재던 것은 창을 닫아도 계속돼야 한다.
+    /// </summary>
+    private readonly UsageMeter meter = new(new MeterStore());
+
+    /// <summary>
+    /// 측정이 토큰 기록을 다시 훑는 주기(60초).
+    ///
+    /// **<c>Core</c> 에는 타이머를 두지 않았다.** 화면 없는 쪽이 <c>DispatcherTimer</c> 를
+    /// 들면 맥에서 컴파일되지 않고, 검사도 시간을 밀 수 없다. 다른 주기들과 마찬가지로
+    /// 여기서 걸고 <see cref="SyncScanTimer"/> 가 켰다 껐다 한다.
+    /// </summary>
+    private readonly DispatcherTimer scanTimer = new() { Interval = UsageMeter.ScanInterval };
+
+    /// <summary>
     /// 직전에 본 "하루에 한 번 확인" 설정. **꺼짐 → 켜짐 전이만 잡으려고 들고 있는다.**
     ///
     /// 설정이 바뀔 때마다 확인을 내보내면 설정 창에서 슬라이더 하나만 움직여도 네트워크가
@@ -136,6 +151,17 @@ public sealed class AppController : IDisposable
         store = new UsageStore(api) { PollInterval = settings.PollInterval };
         store.Changed += OnStoreChanged;
 
+        // **재는 동안 따로 조회하지 않는다.** 평소 조회가 들어올 때마다 측정이 그 표본으로
+        // 한도 소모를 쌓는다 — 측정이 제 주기로 또 물으면 요청이 두 배가 되고 429 를 부른다.
+        store.SnapshotReceived += meter.Record;
+        // 시작·계속·중지를 누른 그 자리에서 기준점을 잡아야 한다. 다음 조회까지 기다리면
+        // 그 사이에 쓴 것은 기준이 없어서 못 센다.
+        //
+        // **force 를 주지 않는다** — force 는 429 백오프를 무시해서 요청 제한을 더 부른다.
+        // 30초 바닥은 `UsageMeter` 쪽이 이미 지킨다.
+        meter.SampleWanted += () => _ = store.RefreshAsync();
+        meter.Changed += OnMeterChanged;
+
         updates = new UpdateService(http);
         // 갈아 끼우기 전에 트레이 아이콘과 창을 놓아 준다. 남아 있으면 프로세스가
         // 깨끗이 안 끝나서 Velopack 이 파일을 못 바꾸고 물러난다.
@@ -170,6 +196,12 @@ public sealed class AppController : IDisposable
         // 우클릭은 트레이와 **같은 메뉴**를 띄운다. 설정 창이 튀어나오면 놀란다.
         hud.ContextMenuRequested += () => tray?.ShowMenuAtCursor();
         hud.SettingsRequested += () => OpenSettings();
+        // **재기를 시작하지 않는다. 측정 화면을 열기만 한다.**
+        //
+        // HUD 는 손이 스치는 자리다. 여기서 바로 재기 시작하면 재던 것이 끊기고, 눌러서
+        // 시작됐다 한들 카드 위에는 그 사실이 거의 안 보인다. 시작·일시정지·중지는
+        // 값이 보이는 자리에서 누르게 한다 — 맥의 `handleOpenMeasure` 와 같은 자리다.
+        hud.MeasureRequested += () => OpenSettings("measure");
         hud.RefreshRequested += () => _ = store.RefreshAsync(force: true);
         hud.FetchCooldownWanted += () =>
             hud.View.FetchCooldownSeconds = (int)Math.Ceiling(store.FetchCooldown().TotalSeconds);
@@ -186,6 +218,8 @@ public sealed class AppController : IDisposable
         // 이게 먼저 불려서, 안 심으면 앱이 뜨자마자 꺼짐 → 켜짐 전이로 오인해 확인이
         // 두 번 나간다.
         checkedForUpdatesWas = settings.ChecksForUpdates;
+        // 같은 이유로 여기도 처음 값을 심는다 — 안 심으면 첫 알림을 전이로 오인한다.
+        measuringWas = meter.IsRunning;
 
         ApplySettings();
         hud.RestorePosition();
@@ -201,6 +235,8 @@ public sealed class AppController : IDisposable
         };
         motionTimer.Tick += (_, _) => OnMotionTick();
         dodgeTimer.Tick += (_, _) => OnDodgeTick();
+        // 겹쳐 돌지 않고 예외도 삼키므로 기다리지 않고 던져 둔다.
+        scanTimer.Tick += (_, _) => _ = meter.ScanTokensAsync();
         dizzyTimer.Tick += (_, _) =>
         {
             dizzyTimer.Stop();
@@ -221,6 +257,11 @@ public sealed class AppController : IDisposable
 
         _ = store.RefreshAsync(force: true);
         if (settings.ChecksForUpdates) _ = updates.CheckAsync();
+
+        // **끄고 있던 동안 쌓인 것을 뜨자마자 한 번 얹는다.** 안 그러면 다시 켠 뒤
+        // 첫 훑기까지 1분 동안 토큰 칸이 빈 채로 서 있는다.
+        if (meter.WantsScanning) _ = meter.ScanTokensAsync();
+        SyncScanTimer();
 
         StartFrameTimer();
     }
@@ -244,6 +285,8 @@ public sealed class AppController : IDisposable
         hud.View.VersionBadge = settings.ShowsVersionBadge ? AppInfo.BadgeText : null;
         hud.View.VersionBadgeIsTest = AppInfo.IsTestBuild;
         hud.View.HasUpdate = updates.HasUpdate;
+        // 앱이 뜰 때 이미 재는 중일 수 있다 — 측정은 파일에 남아서 껐다 켜도 이어진다.
+        hud.View.IsMeasuring = meter.IsRunning;
 
         hud.View.IconStyle = settings.IconStyle;
         hud.View.PetRingDisplay = settings.PetRingDisplay;
@@ -305,6 +348,46 @@ public sealed class AppController : IDisposable
         {
             statsTimer.Stop();
         }
+    }
+
+    /// <summary>
+    /// 측정 값이 바뀌었다.
+    ///
+    /// **UI 스레드가 아닐 수 있다** — 토큰 훑기가 스레드풀에서 돌다가 여기로 알린다.
+    /// </summary>
+    private void OnMeterChanged() => Dispatch(() =>
+    {
+        // 시작·중지·일시정지에서 훑기 주기가 켜졌다 꺼진다.
+        SyncScanTimer();
+
+        // **재는 중인지가 바뀔 때만 HUD 를 다시 그린다.** 측정은 표본을 받을 때마다,
+        // 토큰을 셀 때마다 알리는데 HUD 에서 달라지는 것은 측정 버튼 색 하나뿐이다.
+        // 그때마다 링·부엉이·버튼을 통째로 다시 그리면 재는 내내 헛일이다 —
+        // 맥이 `wasMeasuring` 으로 거른 것과 같은 자리다.
+        if (measuringWas == meter.IsRunning) return;
+        measuringWas = meter.IsRunning;
+
+        if (hud is not null)
+        {
+            hud.View.IsMeasuring = meter.IsRunning;
+            hud.View.InvalidateVisual();
+        }
+    });
+
+    /// <summary>직전에 본 "재는 중". 이 값이 바뀔 때만 HUD 를 다시 그린다.</summary>
+    private bool measuringWas;
+
+    /// <summary>
+    /// 토큰 훑기를 **재는 중일 때만** 돌린다.
+    ///
+    /// 안 재는 동안 1분마다 기록 폴더를 훑으면 아무도 안 보는 숫자를 위해 디스크를 읽는다.
+    /// 일시정지도 같다 — 세워 둔 동안 쓴 것은 애초에 측정에 안 들어간다.
+    /// </summary>
+    private void SyncScanTimer()
+    {
+        var needed = meter.WantsScanning;
+        if (needed && !scanTimer.IsEnabled) scanTimer.Start();
+        else if (!needed && scanTimer.IsEnabled) scanTimer.Stop();
     }
 
     private bool IsDarkTheme() => SystemTheme.IsDark(settings.Theme);
@@ -786,7 +869,7 @@ public sealed class AppController : IDisposable
         if (settingsWindow is null)
         {
             settingsWindow = new SettingsWindow(
-                settings, store, updates, ApplySettings, ResetHudPosition, TogglePet, StartLogin);
+                settings, store, meter, updates, ApplySettings, ResetHudPosition, TogglePet, StartLogin);
             settingsWindow.Closed += (_, _) => settingsWindow = null;
         }
 
@@ -805,6 +888,7 @@ public sealed class AppController : IDisposable
         frameTimer.Stop();
         updateTimer.Stop();
         statsTimer.Stop();
+        scanTimer.Stop();
 
         settingsWindow?.Close();
         settingsWindow = null;
@@ -843,6 +927,7 @@ public sealed class AppController : IDisposable
         statsTimer.Stop();
         motionTimer.Stop();
         dodgeTimer.Stop();
+        scanTimer.Stop();
         tray?.Dispose();
         http.Dispose();
     }

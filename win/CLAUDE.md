@@ -134,6 +134,8 @@ DongCSU.exe --probe          # 자격 증명이 읽히는지, 사용량이 오�
 DongCSU.exe --probe-layout   # 탭마다 세로로 몇 pt 인지, 가로로 잘리는 곳은 없는지
 DongCSU.exe --probe-mascot   # 시트가 어떻게 구워져 있는지 재서 칸 표와 대조
 DongCSU.exe --probe-owl idle
+DongCSU.exe --probe-tokens   # 최근 몇 분(기본 30) 동안 Claude Code 가 쓴 토큰. 처음부터 훑는다
+DongCSU.exe --probe-meter    # 저장된 측정 상태 · selftest 계산 검사 · scan 실제로 훑어 얹기
 DongCSU.exe --log            # 기록 파일 내용
 
 # 화면을 PNG 로 (창을 안 띄운다)
@@ -142,6 +144,12 @@ DongCSU.exe --render-settings out.png version 760x760 light
 DongCSU.exe --render-owl out.png 64
 DongCSU.exe --render-menubar out.png 32 6   # 트레이 아이콘. 기분마다 한 줄, 프레임마다 한 칸
 ```
+
+**측정 둘(`--probe-tokens` · `--probe-meter`)은 CI 에 넣지 않는다.** 빌드 기계에는
+Claude Code 기록 폴더도 `meter.json` 도 없어서 늘 1로 떨어진다. 리셋 넘김 계산이 맞는지는
+`MeterSelfTest` 를 부르는 `dotnet test` 가 이미 본다 — `--probe-meter selftest` 는 **같은
+표**를 사람이 눈으로 보는 통로다. `scan` 은 사용자의 진짜 `meter.json` 에 쓴다(그게 목적이다 —
+두 번 연달아 부르면 두 번째는 0 이 더해져야 증분 읽기가 맞는 것이다).
 
 **화면에 관한 것은 이 넷으로 먼저 본다.** 앱을 띄우고 창을 찾아 마우스를 옮겨 가며
 찍는 것은 느리고 잘 어긋난다 — 설정 창이 다른 창 뒤에 깔리면 엉뚱한 것이 찍힌다.

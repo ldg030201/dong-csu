@@ -109,6 +109,18 @@ public sealed class AppSettings
     public bool ShowsProcessStats { get; set; }
 
     /// <summary>
+    /// 측정 화면에서 캐시 토큰까지 세어 보여줄지. **기본은 꺼짐이다.**
+    ///
+    /// 캐시 읽기가 보통 전체의 90% 를 넘어서, 켜 두면 어느 측정이나 억 단위로 보이고
+    /// 실제로 주고받은 양이 묻힌다. 캐시는 같은 글을 다시 보내지 않으려고 서버가 들고
+    /// 있는 것이라 단가도 입력의 1/10 이다.
+    ///
+    /// **초기화는 여기 적을 것이 없다** — <see cref="ResetToDefaults"/> 가 반사로 훑어서
+    /// 설정이 늘어도 저절로 되돌아간다.
+    /// </summary>
+    public bool MeasureIncludesCache { get; set; }
+
+    /// <summary>
     /// 마스코트를 움직일지. 끄면 평소 자세로 멈추되 기분에 따른 색은 그대로다.
     ///
     /// 움직임이 거슬리거나 노트북에서 배터리를 아끼고 싶을 때 쓴다.
