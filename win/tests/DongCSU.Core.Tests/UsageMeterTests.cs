@@ -7,7 +7,8 @@ namespace DongCSU.Core.Tests;
 ///
 /// 5시간 창이 실제로 새로 열리기를 기다리면 확인에 다섯 시간이 걸리고, 훑는 도중에
 /// 다시 시작을 누르는 상황은 손으로 재현할 수 없다. 그래서 시계(<see cref="FakeTime"/>)와
-/// 훑기(<see cref="UsageMeter.ScanRunner"/>)를 밖에서 꽂아 그 순간들을 직접 만든다.
+/// 훑기(<see cref="UsageMeter"/> 생성자의 <c>scanRunner</c>)를 밖에서 꽂아 그 순간들을
+/// 직접 만든다.
 /// </summary>
 internal static class Meters
 {
@@ -47,8 +48,16 @@ internal static class Meters
     public static string MissingRoot()
         => Path.Combine(Path.GetTempPath(), "dongcsu-없음-" + Guid.NewGuid().ToString("N"));
 
-    public static UsageMeter Meter(FakeTime time, MeterStore? store = null, string? root = null)
-        => new(store, time, root ?? MissingRoot());
+    /// <param name="scan">
+    /// 훑기를 대신 돌릴 것. **생성자로만 꽂을 수 있다** — 살아 있는 미터의 훑기를 도중에
+    /// 갈아 끼우지 못하게 막아 둔 자리다.
+    /// </param>
+    public static UsageMeter Meter(
+        FakeTime time,
+        MeterStore? store = null,
+        string? root = null,
+        Func<TokenScan, CancellationToken, Task<TokenScanResult>>? scan = null)
+        => new(store, time, root ?? MissingRoot(), scan);
 
     public static UsageLimit Limit(
         string kind, double percent, DateTimeOffset? resetsAt = null, string? model = null)
@@ -56,13 +65,6 @@ internal static class Meters
 
     public static UsageSnapshot Sample(DateTimeOffset at, params UsageLimit[] limits)
         => new() { FetchedAt = at, Limits = limits };
-
-    /// <summary>훑기가 끝나기를 기다린다. 계속은 스레드풀에서 돌아오므로 값을 봐야 안다.</summary>
-    public static async Task Settled(UsageMeter meter)
-    {
-        for (var i = 0; i < 400 && meter.IsScanning; i++) await Task.Delay(5);
-        Assert.False(meter.IsScanning);
-    }
 }
 
 /// <summary>잰 시간과 파생 값. 시계를 밀어 가며 본다.</summary>
@@ -185,6 +187,89 @@ public class MeterStateTests
         }
     }
 
+    /// <summary>
+    /// **칸을 하나 더하면서 복사에 적는 것을 잊으면 그 값이 모든 상태 변화에서 조용히
+    /// 초기화된다.** 참조 칸만 원본 것으로 되돌려 견주면, 나머지가 하나도 안 빠졌을 때에만
+    /// 값이 같아진다 — <c>record</c> 의 값 비교가 그걸 대신 세어 준다.
+    /// </summary>
+    [Fact]
+    public void 복사가_칸을_하나도_안_빠뜨린다()
+    {
+        var state = new MeterState
+        {
+            StartedAt = Meters.Origin,
+            StoppedAt = Meters.Origin.AddHours(2),
+            Tracks = new Dictionary<string, LimitTrack>(StringComparer.Ordinal)
+            {
+                ["session"] = new() { Title = "세션 (5시간)", Accumulated = 12 },
+            },
+            Order = ["session"],
+            Tokens = new TokenTally(1, 2, 3, 4, 5),
+            TokensByModel = new Dictionary<string, TokenTally>(StringComparer.Ordinal)
+            {
+                ["Opus 5"] = new(1, 2, 3, 4, 5),
+            },
+            Offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [@"C:\a.jsonl"] = 7 },
+            SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_1" },
+            Samples = 9,
+            LastSampledAt = Meters.Origin.AddMinutes(-2),
+            PausedAt = Meters.Origin.AddMinutes(-1),
+            PausedTotal = TimeSpan.FromMinutes(3),
+            History = [new MeterRecord { StartedAt = Meters.Origin, StoppedAt = Meters.Origin }],
+        };
+
+        var copy = state.Copy();
+        var scalarsOnly = copy with
+        {
+            Tracks = state.Tracks,
+            Order = state.Order,
+            TokensByModel = state.TokensByModel,
+            Offsets = state.Offsets,
+            SeenIds = state.SeenIds,
+            History = state.History,
+        };
+
+        Assert.Equal(state, scalarsOnly);
+
+        // 그러면서도 참조는 나눠 쓰지 않는다 — 복사본을 고쳐도 원본이 안 움직여야 한다.
+        Assert.NotSame(state.Tracks, copy.Tracks);
+        Assert.NotSame(state.Tracks["session"], copy.Tracks["session"]);
+        Assert.NotSame(state.Order, copy.Order);
+        Assert.NotSame(state.TokensByModel, copy.TokensByModel);
+        Assert.NotSame(state.Offsets, copy.Offsets);
+        Assert.NotSame(state.SeenIds, copy.SeenIds);
+        Assert.NotSame(state.History, copy.History);
+    }
+
+    /// <summary>
+    /// 훑기 결과를 얹을 때 쓰는 복사. 오프셋·본 id 는 **넘긴 것을 그대로 들이고**
+    /// (바로 갈아 끼울 것이라 베끼면 그 자리에서 버려진다) 나머지는 깊은 복사다.
+    /// </summary>
+    [Fact]
+    public void 얹기용_복사는_오프셋과_id_를_그대로_들인다()
+    {
+        var state = new MeterState
+        {
+            Tracks = new Dictionary<string, LimitTrack>(StringComparer.Ordinal)
+            {
+                ["session"] = new() { Accumulated = 5 },
+            },
+            Offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [@"C:\a.jsonl"] = 7 },
+            SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_0" },
+        };
+        var offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [@"C:\a.jsonl"] = 90 };
+        var seen = new HashSet<string>(StringComparer.Ordinal) { "msg_1" };
+
+        var copy = state.CopyAdopting(offsets, seen);
+
+        Assert.Same(offsets, copy.Offsets);
+        Assert.Same(seen, copy.SeenIds);
+        Assert.NotSame(state.Tracks["session"], copy.Tracks["session"]);
+        // 원본은 그대로다.
+        Assert.Equal(7, state.Offsets[@"C:\a.jsonl"]);
+        Assert.Equal(new[] { "msg_0" }, state.SeenIds);
+    }
+
     [Fact]
     public void 훑기_주기와_상수들이_맥과_같다()
     {
@@ -295,6 +380,35 @@ public class UsageMeterAdvanceTests
         var toNull = UsageMeter.Advance(track, Meters.Limit("session", 3, null));
         Assert.Equal(0, toNull.Resets);
         Assert.Equal(0d, toNull.Accumulated, 6);
+    }
+
+    /// <summary>
+    /// 재기준은 **누적도 리셋도 안 건드리고 기준만 옮긴다.** 이름까지 옮기는 것이
+    /// <see cref="UsageMeter.Advance"/> 와 같아야 한다 — 여기만 빼놓으면 계속을 누른
+    /// 측정에서 한도 이름 하나가 옛것으로 남는다.
+    /// </summary>
+    [Fact]
+    public void 재기준은_기준만_옮기고_인자를_안_고친다()
+    {
+        var track = new LimitTrack
+        {
+            Title = "옛 이름",
+            Accumulated = 30,
+            LastPercent = 20,
+            LastResetsAt = First,
+            Resets = 2,
+        };
+
+        var next = UsageMeter.Baseline(track, Meters.Limit("weekly_all", 88, Second));
+
+        Assert.Equal(30d, next.Accumulated, 6);
+        Assert.Equal(2, next.Resets);
+        Assert.Equal(88d, next.LastPercent, 6);
+        Assert.Equal(Second, next.LastResetsAt);
+        Assert.Equal("주간 (7일)", next.Title);
+
+        Assert.Equal("옛 이름", track.Title);
+        Assert.Equal(20d, track.LastPercent, 6);
     }
 
     /// <summary>맥은 struct 라 저절로 지켜지는 것이라, C# 에서는 이 검사가 그 자리를 대신한다.</summary>
@@ -764,6 +878,10 @@ public class UsageMeterHistoryTests
 /// </summary>
 public class UsageMeterScanTests
 {
+    /// <summary>
+    /// <c>Moved</c> 를 세워 둔다 — 손으로 지어낸 결과의 기본값은 "아무것도 안 움직였다"
+    /// 라서, 안 세우면 얹는 쪽이 통째로 건너뛴다.
+    /// </summary>
     private static TokenScanResult Result(long output = 100, string path = @"C:\a.jsonl", long offset = 500)
         => new()
         {
@@ -774,6 +892,7 @@ public class UsageMeterScanTests
             },
             Offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [path] = offset },
             SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_1" },
+            Moved = true,
         };
 
     [Fact]
@@ -781,17 +900,17 @@ public class UsageMeterScanTests
     {
         using var root = new Meters.TempRoot();
         var time = new Meters.FakeTime(Meters.Origin);
-        var meter = Meters.Meter(time, root: root.Path);
         var release = new TaskCompletionSource<TokenScanResult>();
-        meter.ScanRunner = (_, _) => release.Task;
+        var meter = Meters.Meter(time, root: root.Path, scan: (_, _) => release.Task);
 
         meter.Start();
+        var scanning = meter.ScanTokensAsync();
         Assert.True(meter.IsScanning);
 
         time.Advance(TimeSpan.FromMinutes(1));
         meter.Start();                       // 표식이 달라진다
         release.SetResult(Result());
-        await Meters.Settled(meter);
+        await scanning;
 
         Assert.True(meter.State.Tokens.IsEmpty);
         Assert.Empty(meter.State.SeenIds);
@@ -804,13 +923,10 @@ public class UsageMeterScanTests
     {
         using var root = new Meters.TempRoot();
         var time = new Meters.FakeTime(Meters.Origin);
-        var meter = Meters.Meter(time, root: root.Path);
         var release = new TaskCompletionSource<TokenScanResult>();
+        var meter = Meters.Meter(time, root: root.Path, scan: (_, _) => release.Task);
 
         meter.Start();
-        await Meters.Settled(meter);         // 시작이 건 훑기부터 끝낸다
-
-        meter.ScanRunner = (_, _) => release.Task;
         var scanning = meter.ScanTokensAsync();
         Assert.True(meter.IsScanning);
 
@@ -829,13 +945,10 @@ public class UsageMeterScanTests
     {
         using var root = new Meters.TempRoot();
         var time = new Meters.FakeTime(Meters.Origin);
-        var meter = Meters.Meter(time, root: root.Path);
         var release = new TaskCompletionSource<TokenScanResult>();
+        var meter = Meters.Meter(time, root: root.Path, scan: (_, _) => release.Task);
 
         meter.Start();
-        await Meters.Settled(meter);
-
-        meter.ScanRunner = (_, _) => release.Task;
         var scanning = meter.ScanTokensAsync();
         meter.Stop();
         release.SetResult(Result(output: 250));
@@ -852,19 +965,61 @@ public class UsageMeterScanTests
     {
         using var root = new Meters.TempRoot();
         var time = new Meters.FakeTime(Meters.Origin);
-        var meter = Meters.Meter(time, root: root.Path);
         var release = new TaskCompletionSource<TokenScanResult>();
         var runs = 0;
-        meter.ScanRunner = (_, _) => { runs++; return release.Task; };
+        var meter = Meters.Meter(time, root: root.Path, scan: (_, _) => { runs++; return release.Task; });
 
-        meter.Start();                       // 훑기 하나가 이미 걸려 있다
-        await meter.ScanTokensAsync();
+        meter.Start();
+        var scanning = meter.ScanTokensAsync();   // 하나가 돌기 시작한다
+        await meter.ScanTokensAsync();            // 겹쳐 부른 것은 그 자리에서 돌아선다
         await meter.ScanTokensAsync();
 
         Assert.Equal(1, runs);
         release.SetResult(Result());
-        await Meters.Settled(meter);
+        await scanning;
         Assert.Equal(100, meter.State.Tokens.Output);
+    }
+
+    /// <summary>
+    /// **시작은 훑지 않는다.** 방금 모든 오프셋을 파일 끝으로 못 박아 놓고 훑으면 볼 것이
+    /// 있을 수 없다 — 파일 200개를 열어 보고 0을 더할 뿐이다.
+    /// </summary>
+    [Fact]
+    public void 시작이_훑기를_걸지_않는다()
+    {
+        using var root = new Meters.TempRoot();
+        var time = new Meters.FakeTime(Meters.Origin);
+        var runs = 0;
+        var meter = Meters.Meter(time, root: root.Path,
+            scan: (_, _) => { runs++; return Task.FromResult(Result()); });
+
+        meter.Start();
+
+        Assert.Equal(0, runs);
+        Assert.False(meter.IsScanning);
+    }
+
+    /// <summary>
+    /// 놀고 있으면 훑기가 빈손으로 돌아온다. 그때마다 새 상태를 만들면 **바이트까지 같은
+    /// <c>meter.json</c>** 을 1분에 열두 번 다시 쓰고, 알림이 설정 창 탭을 그만큼 다시 만든다.
+    /// </summary>
+    [Fact]
+    public async Task 아무것도_안_움직인_훑기는_상태를_안_건드린다()
+    {
+        using var root = new Meters.TempRoot();
+        var time = new Meters.FakeTime(Meters.Origin);
+        var idle = new TokenScanResult();     // Moved 가 false 다
+        var meter = Meters.Meter(time, root: root.Path, scan: (_, _) => Task.FromResult(idle));
+
+        meter.Start();
+        var changed = 0;
+        meter.Changed += () => changed++;
+        var before = meter.State;
+
+        await meter.ScanTokensAsync();
+
+        Assert.Same(before, meter.State);
+        Assert.Equal(0, changed);
     }
 
     [Fact]
@@ -872,12 +1027,12 @@ public class UsageMeterScanTests
     {
         using var root = new Meters.TempRoot();
         var time = new Meters.FakeTime(Meters.Origin);
-        var meter = Meters.Meter(time, root: root.Path);
         var runs = 0;
-        meter.ScanRunner = (_, _) => { runs++; return Task.FromResult(Result()); };
+        var meter = Meters.Meter(time, root: root.Path,
+            scan: (_, _) => { runs++; return Task.FromResult(Result()); });
 
         meter.Start();
-        await Meters.Settled(meter);
+        await meter.ScanTokensAsync();
         Assert.Equal(1, runs);
 
         meter.Pause();                       // 세우기 직전 한 번은 돈다
@@ -892,8 +1047,8 @@ public class UsageMeterScanTests
     {
         using var root = new Meters.TempRoot();
         var time = new Meters.FakeTime(Meters.Origin);
-        var meter = Meters.Meter(time, root: root.Path);
-        meter.ScanRunner = (_, _) => throw new IOException("파일이 사라졌다");
+        var meter = Meters.Meter(time, root: root.Path,
+            scan: (_, _) => throw new IOException("파일이 사라졌다"));
 
         meter.Start();
         await meter.ScanTokensAsync();
@@ -906,9 +1061,9 @@ public class UsageMeterScanTests
     public async Task 기록_폴더가_없으면_아예_안_훑는다()
     {
         var time = new Meters.FakeTime(Meters.Origin);
-        var meter = Meters.Meter(time);       // 없는 폴더
         var runs = 0;
-        meter.ScanRunner = (_, _) => { runs++; return Task.FromResult(Result()); };
+        // 없는 폴더
+        var meter = Meters.Meter(time, scan: (_, _) => { runs++; return Task.FromResult(Result()); });
 
         meter.Start();
         await meter.ScanTokensAsync();

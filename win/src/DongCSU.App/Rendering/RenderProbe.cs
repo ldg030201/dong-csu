@@ -6,7 +6,6 @@ using DongCSU.App.Hud;
 using DongCSU.App.Settings;
 using DongCSU.App.Tray;
 using DongCSU.Core;
-using DongCSU.App.Services;
 using DongCSU.Core.Owl;
 using DongCSU.Core.Usage;
 
@@ -161,55 +160,18 @@ internal static class RenderProbe
         var latest = args.Length > 5 ? args[5] : null;
 
         var settings = new AppSettings { Theme = Word(args, 4) == "light" ? HudTheme.Light : HudTheme.Dark };
-        var http = UsageApi.CreateHttpClient();
-        var credentials = new CredentialStore(
-            new FileCredentialSource(fallbackPaths: WslCredentialPaths.All),
-            refreshedTokens: new RefreshedTokenStore());
-        var store = new UsageStore(new UsageApi(http, credentials));
-        var updates = new UpdateService(http);
 
-        // **조회를 한 번도 안 걸어서 화면이 통째로 빈다.** 상태 탭은 플랜·사용률·마지막
-        // 조회가 전부 비고, 계정 탭의 로그인 카드는 스냅샷이 없으면 아예 안 그려진다.
-        // 맥 `writeSettings` 와 **같은 고정값**을 꽂아 사용자가 볼 화면과 맞춘다.
-        var now = DateTimeOffset.Now;
-        store.Preview(
-            new UsageSnapshot
-            {
-                PlanName = "Max",
-                FiveHour = new UsageWindow(34, now.AddHours(3)),
-                SevenDay = new UsageWindow(61, now.AddHours(26)),
-                FetchedAt = now,
-                // 이 둘은 자격 증명에서 온다. 계정 탭이 보여주는 줄이라 같이 꽂는다.
-                RateLimitTier = "default_claude_max_5x",
-                TokenExpiresAt = now.AddHours(6).AddMinutes(41),
-            },
-            // 상태 탭이 조회 카운트다운을 그린다. 예정 시각까지 넣어야 실제와 같아진다.
-            nextPoll: now.AddMinutes(7).AddSeconds(12));
+        // **고정값을 여기서 또 짓지 않는다.** 조회·새 버전·측정을 안 꽂으면 화면이 통째로
+        // 비는데(상태 탭은 플랜·사용률이 비고, 계정 탭의 로그인 카드는 아예 안 그려진다),
+        // 그 한 벌은 `ProbeLayout.ProbeWindow` 한 곳에서만 나와야 한다 —
+        // `--probe-layout` 이 재는 화면과 여기서 그리는 화면이 갈리면 둘 다 못 믿게 된다.
+        // 창을 화면 밖에 두는 것도 저쪽이 한다.
+        var window = ProbeLayout.ProbeWindow(settings, latest);
 
-        // 버전 탭의 "마지막 확인" 줄. 설치본으로 친다 — 폴더에 놓인 exe 로 뽑으면
-        // 늘 "설치본이 아니라 자동 업데이트를 쓸 수 없습니다" 가 나와 실제와 달라진다.
-        updates.Preview(latest, now.AddMinutes(-40));
-
-        // 측정 탭도 꽂아 주지 않으면 통째로 빈다. 고정값은 `MeterPreview` 한 곳에서만
-        // 나온다 — `--probe-layout` 이 재는 화면과 여기서 그리는 화면이 갈리면 둘 다
-        // 못 믿게 된다.
-        //
-        // **반드시 `UsageMeter.Preview` 다.** 보통 생성자는 저장소를 물어서, 문서 그림을
-        // 한 장 뽑을 때마다 사용자의 진짜 meter.json 이 고정값으로 덮인다.
-        var meter = UsageMeter.Preview(MeterPreview.State());
-
-        var window = new SettingsWindow(
-            settings, store, meter, updates,
-            onChanged: () => { }, onResetPosition: () => { },
-            onTogglePet: () => { }, onLogin: () => { })
-        {
-            Width = size.Width,
-            Height = size.Height,
-            // 창을 띄우지 않고 그린다. 화면 밖에 두어 잠깐이라도 안 보이게 한다.
-            Left = -20000,
-            Top = -20000,
-            ShowInTaskbar = false,
-        };
+        // **크기만 여기서 준다.** 재는 쪽은 창 기본 크기와 최소 크기를 쓰지만 그리는 쪽은
+        // 인자로 받은 크기로 뽑는다 — 갈리는 것이 이것 하나뿐이라 창을 만든 뒤에 얹는다.
+        window.Width = size.Width;
+        window.Height = size.Height;
         window.SelectTab(tab);
 
         // **레이아웃을 한 번 돌려야 그릴 것이 생긴다.** 창을 안 띄우면 Measure·Arrange 가

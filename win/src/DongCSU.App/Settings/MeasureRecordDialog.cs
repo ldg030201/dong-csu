@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -10,9 +9,9 @@ namespace DongCSU.App.Settings;
 /// <summary>
 /// 끝난 측정 하나를 펼쳐 보는 창.
 ///
-/// <b>목록 안에서 펼치지 않고 창을 띄우는 이유가 있다.</b> 측정 탭은 재는 동안 1초마다
-/// 통째로 다시 만들어진다 — 펼침 상태와 스크롤 자리를 매초 되돌려야 하고, 펼친 줄이
-/// 목록 높이를 흔들어 그 자리가 계속 어긋난다. 창으로 빼면 그 싸움이 없어진다.
+/// <b>목록 안에서 펼치지 않고 창을 띄우는 이유가 있다.</b> 측정 탭은 재는 동안 훑을
+/// 때마다 통째로 다시 만들어진다 — 펼침 상태와 스크롤 자리를 그때마다 되돌려야 하고,
+/// 펼친 줄이 목록 높이를 흔들어 그 자리가 계속 어긋난다. 창으로 빼면 그 싸움이 없어진다.
 ///
 /// 내용은 측정 탭과 <b>같은 함수</b>(<see cref="SettingsWindow.MeasureLimits"/> ·
 /// <see cref="SettingsWindow.MeasureTokens"/>)를 부른다. 두 화면이 다르게 보이면
@@ -23,7 +22,7 @@ namespace DongCSU.App.Settings;
 /// 뼈대는 <see cref="ConfirmDialog"/> 를 그대로 따른다. XAML 을 쓰지 않는 이유는
 /// <c>CLAUDE.md</c> 에 있다.
 /// </summary>
-internal sealed partial class MeasureRecordDialog : Window
+internal sealed class MeasureRecordDialog : Window
 {
     /// <summary>
     /// 기록 하나를 펼쳐 보인다.
@@ -33,10 +32,9 @@ internal sealed partial class MeasureRecordDialog : Window
     /// 않는다</b> — 기록 하나를 자세히 보려고 잠깐 켠 것이 탭 설정까지 바꾸면,
     /// 창을 닫은 뒤 목록의 숫자가 통째로 달라져 있다.
     /// </param>
-    /// <returns>지웠으면 true.</returns>
-    public static bool Show(
+    public static void Show(
         Window owner, SettingsPalette palette, UsageMeter meter, MeterRecord record, bool includesCache) =>
-        new MeasureRecordDialog(owner, palette, meter, record, includesCache).ShowDialog() == true;
+        new MeasureRecordDialog(owner, palette, meter, record, includesCache).ShowDialog();
 
     private readonly SettingsPalette palette;
     private readonly UsageMeter meter;
@@ -97,7 +95,7 @@ internal sealed partial class MeasureRecordDialog : Window
 
         stack.Children.Add(new TextBlock
         {
-            Text = SettingsWindow.RecordDate(record),
+            Text = MeasureText.RecordDate(record),
             FontSize = 15,
             FontWeight = FontWeights.SemiBold,
             Foreground = palette.Brush(palette.Primary),
@@ -163,42 +161,30 @@ internal sealed partial class MeasureRecordDialog : Window
         // **확인 창의 주인은 설정 창이 아니라 이 창이다.** 아니면 확인 창이 이 창
         // 뒤로 깔려 답을 기다리는 줄도 모르게 된다.
         if (!ConfirmDialog.Ask(this, palette, "이 측정 기록을 지울까요?",
-                $"{SettingsWindow.RecordDate(record)} 기록이 지워집니다. 되돌릴 수 없습니다.", "지우기"))
+                $"{MeasureText.RecordDate(record)} 기록이 지워집니다. 되돌릴 수 없습니다.", "지우기"))
         {
             return;
         }
 
         meter.DeleteRecord(record);
-        // 지운 기록의 창을 띄워 둘 수 없다. 값을 넣는 순간 창이 닫힌다.
+        // 지운 기록의 창을 띄워 둘 수 없다. 값을 넣는 순간 창이 닫힌다 — **닫는 수단이지
+        // 답이 아니다.** 지웠는지는 아무도 안 물어보고, 목록은 창이 닫힌 뒤 늘 다시 그린다.
         DialogResult = true;
     }
 
     // ── 모서리 ──────────────────────────────────────────────────────
 
-    /// <summary>모서리를 둥글게. 자세한 사정은 <see cref="ConfirmDialog"/> 에 적혀 있다.</summary>
-    private const int WindowCornerPreference = 33;
-    private const int BorderColor = 34;
-    private const int RoundCorner = 2;
-
-    [LibraryImport("dwmapi.dll")]
-    private static partial int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
-
     /// <summary>
+    /// 모서리를 둥글게. 깎는 일은 <see cref="RoundedWindow"/> 가 하고 자세한 사정도
+    /// 거기 적혀 있다 — 트레이 메뉴·확인 창과 **같은 것을 부른다.** DWM 상수를 창마다
+    /// 옮겨 적으면 한 곳만 고쳐지고 창끼리 모서리가 달라진다.
+    ///
     /// <c>AllowsTransparency</c> 는 켜지 않는다 — 켜는 순간 레이어드 창이 되어 DWM 이
     /// 모서리를 안 깎고 글자까지 흐려진다.
     /// </summary>
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-
-        var window = new WindowInteropHelper(this).Handle;
-        if (window == IntPtr.Zero) return;
-
-        var corner = RoundCorner;
-        DwmSetWindowAttribute(window, WindowCornerPreference, ref corner, sizeof(int));
-
-        // COLORREF 는 0x00BBGGRR 이다. 어두운 테마에서 밝은 테두리를 쓰면 떠 보인다.
-        var border = palette.IsDark ? 0x003A3A42 : 0x00E0E0E4;
-        DwmSetWindowAttribute(window, BorderColor, ref border, sizeof(int));
+        RoundedWindow.Round(new WindowInteropHelper(this).Handle, palette.IsDark);
     }
 }

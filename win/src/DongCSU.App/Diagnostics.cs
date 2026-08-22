@@ -109,6 +109,9 @@ public static partial class Diagnostics
             // meter.json 도 없어서 늘 1로 떨어진다. `selftest` 만은 어디서나 돌지만
             // 그건 `dotnet test` 가 같은 표(`MeterSelfTest`)를 이미 보고 있어서
             // CI 에 또 걸 이유가 없다 — 여기 있는 것은 사람이 눈으로 볼 통로다.
+            //
+            // **`ui` 만은 CI 가 부른다** — 저장소도 기록 폴더도 임시 자리를 쓰고 기록 한
+            // 줄을 지어내므로, 바깥에 아무것도 없는 빌드 기계에서도 답이 정해져 있다.
             case "--probe-tokens":
                 exitCode = ProbeTokens(args);
                 return true;
@@ -376,8 +379,8 @@ public static partial class Diagnostics
     }
 
     /// <summary>
-    /// <c>--probe-meter [selftest|scan]</c> — 측정 상태를 보거나, 계산을 스스로 검사하거나,
-    /// 실제로 한 번 훑어 얹는다.
+    /// <c>--probe-meter [selftest|scan|ui]</c> — 측정 상태를 보거나, 계산을 스스로 검사하거나,
+    /// 실제로 한 번 훑어 얹거나, 측정 화면의 버튼을 눌러 본다.
     ///
     /// 갈래마다 종료 코드가 다르다. 인자 없이 부르면 기록이 없어도 **0** 이고(볼 것이
     /// 없다는 것이 답이다), <c>scan</c> 은 기록이 없으면 **1** 이다(훑을 것이 없으면
@@ -431,12 +434,22 @@ public static partial class Diagnostics
             Console.WriteLine($"  {track.Title}: {track.Accumulated:0}%p (리셋 {track.Resets}회)");
         }
 
-        var tokens = state.Tokens;
-        Console.WriteLine($"토큰: 응답 {tokens.Responses} output {tokens.Output}"
-            + $" cache_read {tokens.CacheRead}");
+        Console.WriteLine($"토큰: {TallyLine(state.Tokens)}");
         Console.WriteLine($"기록: {state.History.Count}건");
         return 0;
     }
+
+    /// <summary>
+    /// 토큰 묶음 한 줄.
+    ///
+    /// **한 곳에 둔다.** 이 줄은 <c>--probe-meter</c> 와 <c>--probe-meter scan</c> 이 각각
+    /// 찍고 사람이 그 둘을 눈으로 맞대 보는 자리라, 글자가 갈리면 대조가 안 된다.
+    /// 세 자리에 그대로 베껴 두면 찍는 칸을 하나 더할 때 하나를 빠뜨린다.
+    ///
+    /// 화면과 달리 숫자를 억·만으로 줄이지 않는다. 견주는 자리라 원래 값이 필요하다.
+    /// </summary>
+    private static string TallyLine(TokenTally tally) =>
+        $"응답 {tally.Responses} output {tally.Output} cache_read {tally.CacheRead}";
 
     /// <summary>
     /// 표를 <see cref="MeterSelfTest"/> 에서 받아 찍기만 한다.
@@ -467,29 +480,47 @@ public static partial class Diagnostics
     /// <summary>
     /// 앱이 1분마다 하는 것과 **같은 일**을 한 번 한다 — 훑고, 얹고, 저장까지.
     ///
+    /// **<see cref="UsageMeter.ScanTokensAsync"/> 를 그대로 부른다.** 훑기 조각
+    /// (<c>TokenScan</c> · <c>UsageMeter.Applying</c>)만 빌려 오케스트레이션을 여기서 다시
+    /// 짜면, 그 둘 주위에 둘러 있는 판단이 통째로 빠진다 — 일시정지 가드 · 기록 폴더
+    /// 유무 · 겹침 가드 · 표식 대조, 그리고 **중지 뒤 기록 목록 갱신(<c>SyncArchived</c>)**.
+    /// 마지막 것이 빠지면 이 통로만 토큰을 얹고 측정 탭의 그 줄은 안 고쳐서, 진단이 찍는
+    /// 숫자와 사용자가 보는 숫자가 갈린다.
+    ///
     /// **사용자의 진짜 <c>meter.json</c> 에 쓴다.** 그게 목적이다: 두 번 연달아 부르면
     /// 두 번째는 0 이 더해져야 하고, 그게 증분 읽기가 맞다는 조건이다. 쓰지 않으면
     /// 오프셋이 안 옮겨져 늘 같은 값이 나와 아무것도 확인하지 못한다.
     /// </summary>
     private static int MeterScan()
     {
-        var store = new MeterStore();
-        if (store.Read() is not { StartedAt: { } startedAt } state)
+        var meter = new UsageMeter(new MeterStore());
+        if (meter.State.StartedAt is null)
         {
             Console.WriteLine("기록 없음");
             return 1;
         }
 
-        var result = new TokenScan(startedAt, state.Offsets, state.SeenIds).Run();
-        // 실제 동작과 같은 코드를 탄다. 여기서 손으로 더하면 확인 통로와 앱이 갈라진다.
-        var updated = UsageMeter.Applying(result, state);
-        store.Write(updated);
+        // **더한 몫을 훑기 결과에서 받지 않고 앞뒤 차로 낸다.** 결과에 실린 `Added` 는
+        // 파일에서 읽어낸 것이고, 그중 이미 본 응답은 얹히는 자리에서 걸러진다 —
+        // 상태를 앞뒤로 재면 **실제로 쌓인 값**이 나오고 가드에 걸려 아예 안 훑은
+        // 경우까지 0 으로 정직하게 나온다.
+        var before = meter.State.Tokens;
+        meter.ScanTokensAsync().GetAwaiter().GetResult();
+        var after = meter.State.Tokens;
 
-        Console.WriteLine($"더함: 응답 {result.Added.Responses} output {result.Added.Output}"
-            + $" cache_read {result.Added.CacheRead}");
-        Console.WriteLine($"누적: 응답 {updated.Tokens.Responses} output {updated.Tokens.Output}"
-            + $" cache_read {updated.Tokens.CacheRead}");
+        Console.WriteLine($"더함: {TallyLine(Added(before, after))}");
+        Console.WriteLine($"누적: {TallyLine(after)}");
         return 0;
+
+        // `TokenTally` 에는 뺄셈이 없다(더하기만 쓰는 값이라 안 만들어 뒀다). 찍을
+        // 세 칸만 필요하지만 칸을 빠뜨리면 `TallyLine` 을 넓힐 때 조용히 0 이 나오므로
+        // 다섯 칸을 다 뺀다.
+        static TokenTally Added(TokenTally from, TokenTally to) => new(
+            to.Responses - from.Responses,
+            to.Input - from.Input,
+            to.Output - from.Output,
+            to.CacheCreation - from.CacheCreation,
+            to.CacheRead - from.CacheRead);
     }
 
     /// <summary>부엉이를 글자로 찍는다. 그림을 못 보는 자리에서 자세를 확인한다.</summary>

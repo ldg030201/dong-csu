@@ -49,20 +49,21 @@ internal static class ProbeLayout
     /// <summary>탭을 차례로 열어 보며 잰다. 잘리는 탭이 없으면 true.</summary>
     private static bool Measure(string label, bool minimum)
     {
-        var printedHeader = false;
         var passed = true;
 
         // **탭 목록을 그대로 돈다.** 탭이 하나 늘면 여기 손대지 않아도 저절로 걸린다.
         var all = SettingsWindow.TabList.Select(tab => (tab.Key, Label: tab.Key)).ToArray();
-        passed &= Sweep(ProbeWindow(new AppSettings()), label, minimum, all, ref printedHeader);
+        passed &= Sweep(ProbeWindow(new AppSettings()), label, minimum, all, printHeader: true);
 
         // **측정 탭만 한 번 더 잰다.** 재는 중이냐에 따라 화면이 통째로 다르다 — 멈추면
         // 머리·한도·토큰 카드가 통째로 빠지고 기록 목록만 남아서, 재는 중인 모습만 재면
         // 멈춘 쪽이 잘리는 것을 영영 못 본다. 고정값은 창을 만들 때 물리므로 한 창에서
         // 갈아 끼울 수 없어 창을 하나 더 만든다 — `Sweep` 이 제 창을 반드시 닫는다.
         passed &= Sweep(
-            ProbeWindow(new AppSettings(), meterState: MeterPreview.State(running: false)),
-            label, minimum, [("measure", "measure(멈춤)")], ref printedHeader);
+            ProbeWindow(
+                new AppSettings(),
+                meter: UsageMeter.Preview(MeterPreview.State(running: false))),
+            label, minimum, [("measure", "measure(멈춤)")], printHeader: false);
 
         return passed;
     }
@@ -71,13 +72,17 @@ internal static class ProbeLayout
     /// 창 하나로 탭 몇 개를 재고 <b>반드시 닫는다.</b>
     /// </summary>
     /// <param name="tabs">열 탭과 찍을 이름. 같은 탭을 다른 고정값으로 두 번 재려고 갈랐다.</param>
-    /// <param name="printedHeader">머리줄은 창을 몇 개 만들든 한 번만 찍는다.</param>
+    /// <param name="printHeader">
+    /// 머리줄(창 안쪽 크기)을 이 훑기가 찍는지. <b>창을 몇 개 만들든 한 번만 찍으므로
+    /// 첫 훑기에만 참을 준다.</b> 어느 훑기가 찍는지를 호출 자리에 드러내 둔다 — 훑기를
+    /// 하나 더 붙이는 날 머리줄이 두 번 나오는 것을 부르는 쪽에서 바로 본다.
+    /// </param>
     private static bool Sweep(
         SettingsWindow window,
         string label,
         bool minimum,
         IReadOnlyList<(string Key, string Label)> tabs,
-        ref bool printedHeader)
+        bool printHeader)
     {
         if (minimum)
         {
@@ -97,11 +102,8 @@ internal static class ProbeLayout
             {
                 window.SelectTab(key);
 
-                // **한 번으로는 안 가라앉는다.** ShowTab 이 스크롤 위치 되돌리기를
-                // Loaded 순위로 미뤄 두므로, 그 큐를 비워 준 다음 다시 재야 실제로
-                // 보게 될 배치가 나온다. 맥이 런루프를 여덟 번 돌리는 것과 같은 이유다.
-                window.Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
-                window.UpdateLayout();
+                // 탭을 고른 직후에 재면 낡은 배치가 나온다. 왜인지는 Settle 에 적혀 있다.
+                Settle(window);
 
                 if (window.ContentScroller is not { } scroll)
                 {
@@ -110,12 +112,12 @@ internal static class ProbeLayout
                     continue;
                 }
 
-                if (!printedHeader)
+                if (printHeader)
                 {
                     Console.WriteLine(
                         $"창 안쪽 {scroll.ViewportWidth:0}×{scroll.ViewportHeight:0}pt 기준"
                         + $" ({label} {window.Width:0}×{window.Height:0})");
-                    printedHeader = true;
+                    printHeader = false;
                 }
 
                 var notes = new List<string>();
@@ -199,16 +201,16 @@ internal static class ProbeLayout
     ///
     /// 값이 갈리면 잰 것과 그린 것이 다른 화면이 되어 둘 다 못 믿는다. 조회를 안 걸면
     /// 상태 탭은 통째로 비고 계정 탭의 로그인 카드는 아예 안 그려져서, 정작 자리를
-    /// 제일 많이 먹는 부분이 빠진 채로 재게 된다.
+    /// 제일 많이 먹는 부분이 빠진 채로 재게 된다. <c>--probe-layout</c> ·
+    /// <c>--render-settings</c> · <c>--probe-meter ui</c> 가 모두 여기를 부른다.
     /// </summary>
-    /// <param name="meterState">
-    /// 측정 탭의 고정값. 안 주면 재는 중인 모습(<c>MeterPreview.State()</c>)이다.
-    /// <b>여기서 새 고정값을 지어내지 않는다</b> — <c>--render-settings</c> 와 같은
-    /// 곳에서 나와야 잰 화면과 그린 화면이 같다.
+    /// <param name="meter">
+    /// 측정 탭이 볼 것. 안 주면 <b>재는 중인 고정값</b>(<c>MeterPreview.State()</c>)이다.
+    /// <b>여기서 새 고정값을 지어내지 않는다</b> — 다른 모습이 필요하면 부르는 쪽이
+    /// <c>MeterPreview</c> 에서 뽑아 넘긴다. 두 곳에서 지으면 잰 화면과 그린 화면이 갈린다.
     /// </param>
     internal static SettingsWindow ProbeWindow(
-        AppSettings settings, string? latestVersion = null, MeterState? meterState = null,
-        UsageMeter? meter = null)
+        AppSettings settings, string? latestVersion = null, UsageMeter? meter = null)
     {
         // 테스트 바이너리로 돌려도 정식판 색으로 본다. 렌더 통로와 같은 판단이다.
         MascotRenderer.TestLook = false;
@@ -244,7 +246,7 @@ internal static class ProbeLayout
         // **버튼을 눌러 보는 검사만 진짜 엔진을 꽂는다**(`--probe-meter ui`). 재는 것이
         // 실제로 시작되는지는 고정값으로 알 수 없다. 나머지는 전부 고정값이라 사용자의
         // `meter.json` 을 건드리지 않는다.
-        meter ??= UsageMeter.Preview(meterState ?? MeterPreview.State());
+        meter ??= UsageMeter.Preview(MeterPreview.State());
 
         return new SettingsWindow(
             settings, store, meter, updates,
@@ -260,5 +262,27 @@ internal static class ProbeLayout
             Top = -20000,
             ShowInTaskbar = false,
         };
+    }
+
+    /// <summary>
+    /// 미뤄 둔 일을 다 비우고 배치를 확정한다. <b>한 번으로는 안 가라앉는다.</b>
+    ///
+    /// <c>ShowTab</c> 이 스크롤 자리 되돌리기와 다시 그리기를
+    /// <see cref="DispatcherPriority.Loaded"/> 로 미뤄 두므로, 큐를 안 비우고 들여다보면
+    /// <b>바뀌기 전 화면</b>이 나온다 — 재는 쪽은 낡은 크기를 재고, 눌러 보는 쪽은
+    /// 누르기 전 상태를 본다. 맥이 런루프를 여덟 번 돌리는 것과 같은 이유다.
+    ///
+    /// <b>재는 통로와 눌러 보는 통로가 같은 것을 쓴다.</b> 각자 갖고 있으면 화면이 무엇을
+    /// 어느 순위로 미루는지 바뀐 날 한쪽만 고치게 되고, 안 고친 쪽은 실패하지도 않으면서
+    /// 조용히 낡은 화면을 본다.
+    ///
+    /// 배치를 <b>맨 뒤에</b> 확정한다. 순위가 Loaded 보다 낮은 일이 배치를 더럽혀 놓고
+    /// 끝나면, 중간에 재 둔 값은 그 자리에서 낡는다.
+    /// </summary>
+    internal static void Settle(SettingsWindow window)
+    {
+        window.Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
+        window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
+        window.UpdateLayout();
     }
 }

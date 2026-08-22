@@ -27,11 +27,27 @@ public sealed partial class SettingsWindow
     /// **앱이 평소 도는 주기(<see cref="UsageMeter.ScanInterval"/> · 60초)는 창을 안 볼
     /// 때 기준이다.** 보고 있는 동안 그 주기로 두면 숫자가 멈춘 것처럼 보인다. 덧붙은
     /// 부분만 읽어서 값이 싸기 때문에 5초로 조여도 된다.
+    ///
+    /// <b>훑기 주기가 두 곳에 적혀 있다</b> — 60초는 <c>Core</c> 의 상수이고 이 5초는
+    /// 뷰 안의 숫자다. 언제 훑을지를 정하는 값이니 둘 다 <see cref="UsageMeter"/> 옆에
+    /// 있는 편이 맞다.
     /// </summary>
     private readonly DispatcherTimer scanTick = new() { Interval = TimeSpan.FromSeconds(5) };
 
-    /// <summary>기록 목록에서 읽던 자리. 1초마다 탭을 다시 만들어도 여기로 되돌린다.</summary>
+    /// <summary>기록 목록에서 읽던 자리. 훑을 때마다 탭을 다시 만들어도 여기로 되돌린다.</summary>
     private double measureHistoryOffset;
+
+    /// <summary>
+    /// 1초 티커가 갈아 끼우는 글자 둘 — 경과 시간과 표본 문구.
+    ///
+    /// **탭을 다시 만들 때마다 새로 잡는다.** 옛 참조에 쓰면 화면에서 떨어져 나간
+    /// <c>TextBlock</c> 을 고치게 되어 숫자가 그대로 멈춘다. 재고 있지 않으면 둘 다
+    /// 안 그려지므로 null 이다.
+    /// </summary>
+    private TextBlock? elapsedText;
+
+    /// <inheritdoc cref="elapsedText"/>
+    private TextBlock? sampleText;
 
     // ── 배선 ────────────────────────────────────────────────────────
 
@@ -64,6 +80,10 @@ public sealed partial class SettingsWindow
     {
         // **중지 직후의 마지막 표본과 마지막 훑기가 여기로 들어온다.** 이 배선이 없으면
         // 중지한 기록이 늘 0%p 로 보인다 — `Stop()` 한 순간에는 아직 값이 안 왔다.
+        //
+        // **숫자가 실제로 바뀌는 자리도 여기 하나뿐이다.** 1초 티커는 글자 둘만 갈아
+        // 끼우므로(`TickMeasure`), 한도·토큰·모델별 표는 훑기나 표본이 들어온 이때
+        // 다시 그려진다.
         if (TabList[Selected].Key == "measure") ShowTab();
     }));
 
@@ -71,11 +91,15 @@ public sealed partial class SettingsWindow
     /// 5초 재훑기를 지금 탭에 맞춘다. <see cref="SyncTicker"/> 가 부른다.
     ///
     /// 켜지는 순간 한 번 훑는 것이 맥의 <c>onAppear</c> 자리다. **<see cref="ShowTab"/>
-    /// 안에서 훑지 않는다** — 재는 동안에는 그게 1초마다 부르는 자리가 된다.
+    /// 안에서 훑지 않는다** — 재는 동안에는 그게 훑을 때마다 다시 부르는 자리가 된다.
+    ///
+    /// <b>언제 훑을지는 <see cref="UsageMeter.WantsScanning"/> 이 정한다.</b> 여기서
+    /// <c>IsRunning</c> 으로 따로 판단하면 일시정지로 탭을 열어 둔 동안 타이머가 계속
+    /// 돌고, <see cref="UsageMeter.ScanTokensAsync"/> 는 매번 첫 가드에서 되돌아온다.
     /// </summary>
     private void SyncMeasureScan(string key)
     {
-        var needed = key == "measure" && meter.IsRunning;
+        var needed = key == "measure" && meter.WantsScanning;
         if (needed && !scanTick.IsEnabled)
         {
             scanTick.Start();
@@ -94,17 +118,31 @@ public sealed partial class SettingsWindow
     ///
     /// **중지하면 위쪽 셋이 통째로 사라진다.** 멈춘 값을 계속 펼쳐 두면 아직 재는 중으로
     /// 읽히고, 같은 값이 아래 기록에도 있어서 두 번 잰 것으로 보인다. 끝난 것은 기록에서 본다.
+    ///
+    /// <b>상태를 한 번만 뜨고 아래로 넘긴다.</b> <c>meter</c> 의 <c>IsRunning</c>·
+    /// <c>TracksInOrder</c> 는 전부 락을 잡고 <see cref="UsageMeter.State"/> 를 거치는
+    /// 통과 속성이라, 그리는 도중에 또 읽으면 <b>한 프레임 안에서 앞줄과 뒷줄이 다른
+    /// 상태를 볼 수 있다</b> — 머리는 "재는 중"인데 한도 카드는 멈춘 뒤의 값인 식이다.
+    /// 복사본을 통째로 갈아 끼우는 <see cref="MeterState"/> 의 설계가 화면에서 무효가
+    /// 된다. <c>meter</c> 는 버튼이 부르는 명령에만 남긴다.
     /// </summary>
     private UIElement MeasureTab(SettingsPalette palette)
     {
         var state = meter.State;
+        var now = DateTimeOffset.Now;
+
+        // 매초 갈아 끼울 글자는 이 판에서 새로 잡는다. 안 그려지는 판에서는 null 로 남아
+        // 티커가 옛 줄을 고치지 않는다.
+        elapsedText = null;
+        sampleText = null;
+
         var panel = Stack();
         panel.Children.Add(MeasureTitle(palette));
 
-        if (meter.IsRunning)
+        if (state.IsRunning)
         {
-            panel.Children.Add(MeasureHeader(palette));
-            panel.Children.Add(MeasureLimits(palette, meter.TracksInOrder, store.ErrorText));
+            panel.Children.Add(MeasureHeader(palette, state, now));
+            panel.Children.Add(MeasureLimits(palette, state.TracksInOrder, store.ErrorText));
             panel.Children.Add(MeasureTokens(
                 palette,
                 state.Tokens,
@@ -115,11 +153,40 @@ public sealed partial class SettingsWindow
                 value => { settings.MeasureIncludesCache = value; ApplyAndRedraw(); }));
         }
 
-        panel.Children.Add(MeasureControls(palette));
+        panel.Children.Add(MeasureControls(palette, state, now));
 
-        if (state.History.Count > 0) panel.Children.Add(MeasureHistory(palette));
+        if (state.History.Count > 0) panel.Children.Add(MeasureHistory(palette, state));
 
         return panel;
+    }
+
+    /// <summary>
+    /// 1초 티커가 부르는 자리. **탭을 다시 만들지 않는다.**
+    ///
+    /// 재는 동안 매초 달라지는 것은 <b>글자 둘</b>뿐이다 — 경과 시간과 표본 나이.
+    /// 기록 목록은 재는 동안 아예 안 움직이고(<c>UsageMeter.SyncArchived</c> 가 재는
+    /// 중이면 그대로 되돌아간다), 한도·토큰은 훑기나 표본이 들어올 때 바뀐다.
+    ///
+    /// <b>여기서 <see cref="ShowTab"/> 을 부르면 1분에 60번 탭을 새로 짓는다.</b> 한 번에
+    /// 기록 50줄이 딸려 오는데 <see cref="Ui.Scroller"/> 에는 가상화가 없어서, 안 보이는
+    /// 줄까지 전부 measure·arrange 를 탄다.
+    /// </summary>
+    private void TickMeasure()
+    {
+        // **여기서도 상태는 한 번만 뜬다.** 두 글자가 서로 다른 순간을 보면 표본 나이가
+        // 경과 시간보다 나중 것이 될 수 있다.
+        var state = meter.State;
+        if (!state.IsRunning) return;
+
+        var now = DateTimeOffset.Now;
+        if (elapsedText is { } elapsed)
+        {
+            elapsed.Text = RemainingTime.ElapsedText(state.Elapsed(now) ?? TimeSpan.Zero);
+        }
+        if (sampleText is { } sample)
+        {
+            sample.Text = MeasureText.SampleText(state.Samples, state.LastSampledAt, now);
+        }
     }
 
     /// <summary>
@@ -150,23 +217,25 @@ public sealed partial class SettingsWindow
     /// "재로그인 필요·오래된 값"을 알약으로 내는 것과 생김새가 같아진다 — 설정 창 안에서
     /// 상태 표시가 한 가지 모양으로 통일된다.
     /// </summary>
-    private UIElement MeasureHeader(SettingsPalette palette)
+    private UIElement MeasureHeader(SettingsPalette palette, MeterState state, DateTimeOffset now)
     {
         var elapsed = new TextBlock
         {
-            Text = RemainingTime.ElapsedText(meter.Elapsed(DateTimeOffset.Now) ?? TimeSpan.Zero),
+            Text = RemainingTime.ElapsedText(state.Elapsed(now) ?? TimeSpan.Zero),
             FontSize = 21,
             FontWeight = FontWeights.Bold,
             Foreground = palette.Brush(palette.Primary),
             VerticalAlignment = VerticalAlignment.Center,
         };
-        // **매초 다시 그리는 줄이다.** 자릿수 폭이 흔들리면 옆의 알약이 좌우로 떤다.
+        // **매초 글자만 갈아 끼우는 줄이다**(`TickMeasure`). 자릿수 폭이 흔들리면 옆의
+        // 알약이 좌우로 떤다.
         Tabular(elapsed);
+        elapsedText = elapsed;
 
         var pill = Ui.Pill(
             palette,
-            meter.IsPaused ? "일시정지" : "재는 중",
-            meter.IsPaused ? palette.Warning : palette.Danger);
+            state.IsPaused ? "일시정지" : "재는 중",
+            state.IsPaused ? palette.Warning : palette.Danger);
         pill.Margin = new Thickness(10, 0, 0, 0);
 
         var row = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 4) };
@@ -338,15 +407,15 @@ public sealed partial class SettingsWindow
     /// **한 번에 최대 둘만 뜬다.** 상황에 안 맞는 버튼은 흐려 두지 않고 아예 안 그린다 —
     /// 흐린 버튼은 왜 못 누르는지 화면이 답해 주지 못한다.
     /// </summary>
-    private UIElement MeasureControls(SettingsPalette palette)
+    private UIElement MeasureControls(SettingsPalette palette, MeterState state, DateTimeOffset now)
     {
         var buttons = new List<UIElement>();
-        if (meter.IsPaused)
+        if (state.IsPaused)
         {
             buttons.Add(Ui.Button(palette, "계속", () => { meter.Resume(); AfterMeterAction(); }, Ui.ButtonKind.Accent));
             buttons.Add(Ui.Button(palette, "중지", () => { meter.Stop(); AfterMeterAction(); }));
         }
-        else if (meter.IsRunning)
+        else if (state.IsRunning)
         {
             buttons.Add(Ui.Button(palette, "일시정지", () => { meter.Pause(); AfterMeterAction(); }));
             buttons.Add(Ui.Button(palette, "중지", () => { meter.Stop(); AfterMeterAction(); }));
@@ -357,16 +426,11 @@ public sealed partial class SettingsWindow
             buttons.Add(Ui.Button(palette, "시작", () => { meter.Start(); AfterMeterAction(); }, Ui.ButtonKind.Accent));
         }
 
-        var group = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            HorizontalAlignment = HorizontalAlignment.Left,
-        };
-        foreach (var button in buttons)
-        {
-            button.SetValue(FrameworkElement.MarginProperty, new Thickness(0, 0, 8, 0));
-            group.Children.Add(button);
-        }
+        // 버튼 사이 여백은 다른 탭과 같은 자리에서 나온다. **위 여백만 걷어낸다** —
+        // 아래 DockPanel 이 이미 그만큼 띄우고 있어서 두 번 들어간다.
+        var group = Ui.ButtonRow([.. buttons]);
+        group.SetValue(FrameworkElement.MarginProperty, new Thickness(0));
+        group.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
 
         // **버튼을 먼저 붙이고 표본 문구를 마지막 자식으로 둔다.** 문구를 `Dock.Right` 로
         // 먼저 붙이면 좁은 창에서 버튼이 잘린다 — 잘려도 되는 쪽은 문구다.
@@ -374,32 +438,35 @@ public sealed partial class SettingsWindow
         DockPanel.SetDock(group, Dock.Left);
         row.Children.Add(group);
 
-        if (meter.IsRunning)
+        if (state.IsRunning)
         {
-            var state = meter.State;
-            row.Children.Add(new TextBlock
+            // 매초 갈아 끼우는 둘 중 하나다(`TickMeasure`). 나이가 늘어나는 것뿐이라
+            // 탭을 새로 지을 이유가 없다.
+            var sample = new TextBlock
             {
-                Text = MeasureText.SampleText(state.Samples, state.LastSampledAt, DateTimeOffset.Now),
+                Text = MeasureText.SampleText(state.Samples, state.LastSampledAt, now),
                 FontSize = 11.5,
                 Foreground = palette.Brush(palette.Tertiary),
                 TextAlignment = TextAlignment.Right,
                 TextTrimming = TextTrimming.CharacterEllipsis,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(8, 0, 0, 0),
-            });
+            };
+            sampleText = sample;
+            row.Children.Add(sample);
         }
 
         var stack = new StackPanel();
         stack.Children.Add(row);
         // **시작을 눌렀을 때 성공·실패를 따로 내지 않는다.** 한도 카드의
         // "기준점을 잡는 중…" / "조회 실패: …" 가 그 자리다.
-        stack.Children.Add(Ui.Hint(palette, MeasureText.Guide(PollTitle(settings.PollIntervalSeconds))));
+        stack.Children.Add(Ui.Hint(palette, MeasureText.Guide(CurrentPollTitle())));
         return stack;
     }
 
     /// <summary>
     /// 재기 상태를 바꾼 뒤. **<see cref="SyncTicker"/> 를 꼭 같이 부른다** —
-    /// 재는 중이냐에 따라 1초 다시 그리기와 5초 재훑기가 켜졌다 꺼진다.
+    /// 재는 중이냐에 따라 1초 티커와 5초 재훑기가 켜졌다 꺼진다.
     /// </summary>
     private void AfterMeterAction()
     {
@@ -415,7 +482,7 @@ public sealed partial class SettingsWindow
     /// 50개(<see cref="UsageMeter.HistoryLimit"/>)까지 쌓이므로 <b>탭 안에서 따로
     /// 넘겨본다.</b> 그대로 늘어놓으면 탭이 그만큼 길어져서 시작 버튼이 위로 밀려난다.
     /// </summary>
-    private UIElement MeasureHistory(SettingsPalette palette)
+    private UIElement MeasureHistory(SettingsPalette palette, MeterState state)
     {
         var panel = new StackPanel();
 
@@ -434,14 +501,14 @@ public sealed partial class SettingsWindow
         var list = Stack();
         // 오른쪽은 이 목록의 스크롤 막대 자리다. 안 비우면 줄이 막대에 깔린다.
         list.Margin = new Thickness(0, 0, 12, 0);
-        foreach (var record in meter.State.History)
+        foreach (var record in state.History)
         {
             list.Children.Add(MeasureHistoryRow(palette, record));
         }
 
         var (listHost, listScroll) = Ui.Scroller(palette, list);
 
-        // 읽던 자리를 지킨다. 재는 동안에는 1초마다 이 탭이 통째로 다시 만들어지는데,
+        // 읽던 자리를 지킨다. 재는 동안에는 훑을 때마다 이 탭이 통째로 다시 만들어지는데,
         // 그때마다 맨 위로 튀면 목록을 읽을 수가 없다.
         // **값을 먼저 챙겨 둔다** — 새 스크롤이 자리를 잡으면서 필드를 0 으로 덮어쓴다.
         var readAt = measureHistoryOffset;
@@ -460,16 +527,20 @@ public sealed partial class SettingsWindow
         // `MaxHeight` 만 걸면 맥의 "짧으면 그냥 늘어놓는다"가 공짜로 따라온다 —
         // ScrollViewer 의 DesiredSize 는 내용 크기라 짧으면 그만큼만 차지하고,
         // `Ui.Scroller` 의 막대도 내용이 뷰포트 안에 들어가면 스스로 숨는다.
-        if (scroller is { } view)
+        //
+        // **재는 중이면 뷰포트를 아예 안 본다.** 답이 상수 하나라 바인딩할 것이 없다 —
+        // 갈래를 컨버터 안에 두면 `ConverterParameter` 로 넘겨야 하는데, 그 값은 걸 때
+        // 한 번 정해지고 다시는 갱신되지 않아서 굳는다.
+        if (state.IsRunning)
         {
-            // `ConverterParameter` 는 걸 때 한 번 정해지고 갱신되지 않는다. 재는 중↔멈춤이
-            // 바뀌면 `ShowTab()` 이 목록을 통째로 다시 만들므로 문제가 없다 —
-            // **목록만 갱신하는 길로 바꾸면 이 값이 굳는다.**
+            listHost.MaxHeight = RunningHistoryHeight;
+        }
+        else if (scroller is { } view)
+        {
             listHost.SetBinding(FrameworkElement.MaxHeightProperty, new System.Windows.Data.Binding(nameof(ScrollViewer.ViewportHeight))
             {
                 Source = view,
                 Converter = HistoryHeight.Instance,
-                ConverterParameter = meter.IsRunning,
             });
         }
         panel.Children.Add(listHost);
@@ -477,18 +548,18 @@ public sealed partial class SettingsWindow
         return panel;
     }
 
-    /// <summary>바깥 스크롤의 뷰포트 높이 → 기록 목록에 줄 높이.</summary>
+    /// <summary>
+    /// 재는 중에 기록 목록에 주는 높이.
+    ///
+    /// 위쪽 살아 있는 값(경과 시간·한도·토큰)이 자리를 거의 다 써서 "남는 만큼"이
+    /// 음수가 된다. 정해진 만큼만 주고 넘치는 것은 바깥 스크롤이 받는다. 맥과 같은 값이다.
+    /// </summary>
+    private const double RunningHistoryHeight = 168;
+
+    /// <summary>바깥 스크롤의 뷰포트 높이 → 기록 목록에 줄 높이. **멈췄을 때만 건다.**</summary>
     private sealed class HistoryHeight : IValueConverter
     {
         public static readonly HistoryHeight Instance = new();
-
-        /// <summary>
-        /// 재는 중에 줄 높이.
-        ///
-        /// 위쪽 살아 있는 값(경과 시간·한도·토큰)이 자리를 거의 다 써서 "남는 만큼"이
-        /// 음수가 된다. 정해진 만큼만 주고 넘치는 것은 바깥 스크롤이 받는다. 맥과 같은 값이다.
-        /// </summary>
-        private const double RunningHeight = 168;
 
         /// <summary>
         /// 멈췄을 때 목록 위에 있는 것들(제목·시작 버튼·안내 문구·머리줄)이 쓰는 자리.
@@ -503,8 +574,6 @@ public sealed partial class SettingsWindow
 
         public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
         {
-            if (parameter is bool running && running) return RunningHeight;
-
             // 처음 한 판은 뷰포트가 아직 0 이다. 배치가 끝나 값이 들어오면 다시 걸린다.
             var viewport = value is double height ? height : 0;
             var room = viewport - BodyPadding.Top - BodyPadding.Bottom - HeadAllowance;
@@ -518,8 +587,8 @@ public sealed partial class SettingsWindow
     /// <summary>
     /// 기록 한 줄.
     ///
-    /// **목록에는 캐시를 절대 안 넣는다.** 캐시가 다 먹어서 어느 기록이나 억 단위로
-    /// 보이면 서로 견줄 수가 없다. 캐시까지 보려면 눌러서 펼친다.
+    /// **목록에는 캐시를 절대 안 넣는다.** 그 판단은 <see cref="MeasureText.RecordTokens"/>
+    /// 안에 있다 — 여기서 손으로 만들면 캐시를 넣을지 정하는 자리가 둘이 된다.
     /// </summary>
     private UIElement MeasureHistoryRow(SettingsPalette palette, MeterRecord record)
     {
@@ -536,7 +605,7 @@ public sealed partial class SettingsWindow
 
         var tokens = new TextBlock
         {
-            Text = $"{TokenFormat.Short(record.Tokens.WithoutCache)} 토큰",
+            Text = MeasureText.RecordTokens(record),
             FontSize = 11.5,
             Foreground = palette.Brush(palette.Tertiary),
             TextAlignment = TextAlignment.Right,
@@ -551,7 +620,7 @@ public sealed partial class SettingsWindow
         var left = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         left.Children.Add(new TextBlock
         {
-            Text = RecordDate(record),
+            Text = MeasureText.RecordDate(record),
             FontSize = 13,
             Foreground = palette.Brush(palette.Primary),
             // **줄어드는 쪽은 날짜다.** 최소 폭에서는 날짜와 요약이 한 줄에 못 서는데,
@@ -570,7 +639,7 @@ public sealed partial class SettingsWindow
         {
             // 눌러서 펼쳐 볼 것이 있다는 표시. 없으면 이 줄이 눌리는 줄 모른다.
             Text = "",   // ChevronRight
-            FontFamily = IconFont,
+            FontFamily = TabIcon.Font,
             FontSize = 11,
             Foreground = palette.Brush(palette.Faint),
             VerticalAlignment = VerticalAlignment.Center,
@@ -600,8 +669,8 @@ public sealed partial class SettingsWindow
         row.MouseLeftButtonUp += (_, _) =>
         {
             MeasureRecordDialog.Show(this, palette, meter, record, settings.MeasureIncludesCache);
-            // 지웠든 아니든 다시 그린다 — 멈춰 있으면 1초 티커가 안 돌아서,
-            // 여기서 안 그리면 지운 줄이 화면에 그대로 남는다.
+            // 지웠든 아니든 다시 그린다 — 목록은 여기서 그리지 않으면 안 바뀐다.
+            // 1초 티커는 글자 둘만 갈아 끼우고, 멈춰 있으면 그마저도 안 돈다.
             ShowTab();
         };
         return row;
@@ -643,27 +712,7 @@ public sealed partial class SettingsWindow
     }
 
     /// <summary>
-    /// 기록의 날짜. **목록·상세·확인 창 셋이 같은 글자를 써야 한다** — 지운다고 물을 때
-    /// 나오는 날짜가 목록에 보이던 것과 다르면 엉뚱한 것을 지우는 줄 안다.
-    /// </summary>
-    internal static string RecordDate(MeterRecord record) =>
-        record.StoppedAt.ToString("M월 d일 (ddd) HH:mm", RecordCulture);
-
-    /// <summary>
-    /// 요일 이름은 **한국어로 못 박는다.** 기계 로캘을 따르면 영어 윈도우에서 요일만
-    /// `Fri` 로 나와 한 줄 안에 두 나라 말이 섞인다.
-    /// </summary>
-    private static readonly CultureInfo RecordCulture = new("ko-KR");
-
-    /// <summary>
-    /// 아이콘 글꼴. <see cref="TabIcon"/> 과 같은 사슬이다 — 11 은 Segoe Fluent Icons,
-    /// 10 은 Segoe MDL2 Assets 이고 여기 쓰는 글리프는 두 글꼴에 다 있다.
-    /// </summary>
-    private static readonly FontFamily IconFont =
-        new("Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol");
-
-    /// <summary>
-    /// 자릿수를 고정한다. **1초마다 다시 그리는 화면이라** 숫자 폭이 흔들리면 옆에
+    /// 자릿수를 고정한다. **매초 글자가 갈리는 화면이라** 숫자 폭이 흔들리면 옆에
     /// 붙은 것이 좌우로 떨고, 세로로 늘어선 값들의 자릿점도 어긋난다.
     ///
     /// <c>System.Windows.Documents</c> 를 통째로 끌어오지 않는 것은 거기 <c>List</c> ·

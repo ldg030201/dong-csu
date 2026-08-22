@@ -87,9 +87,19 @@ public readonly record struct SessionStamp(DateTimeOffset? StartedAt, TimeSpan P
 ///
 /// 고치는 자리는 <see cref="UsageMeter"/> 하나뿐이고, 거기서도 **복사본을 고쳐 통째로
 /// 갈아 끼운다**(<see cref="Copy"/>). 그래서 밖으로 나간 상태는 다시는 안 움직이고,
-/// 화면이 배경 훑기와 부딪치지 않는다.
+/// 화면이 배경 훑기와 부딪치지 않는다. 사전·집합 칸도 **그 자리에서 고치는 사람이 없다** —
+/// 배경 훑기가 그 참조를 들고 나가도 안전한 것이 그 약속 덕이다.
+///
+/// <para>
+/// <b><c>class</c> 가 아니라 <c>record</c> 인 것은 <see cref="Copy"/> 때문이다.</b> 칸을
+/// 손으로 열셋 옮겨 적던 시절에는 칸을 하나 더하면서 <c>Copy</c> 에 적는 것을 잊는 순간
+/// 그 값이 **모든 상태 변화에서 조용히 초기화됐다.** <c>with</c> 는 안 적은 칸을 그대로
+/// 가져오므로 적어야 하는 것이 "참조를 나눠 쓰면 안 되는 칸" 으로 줄어든다.
+/// 직렬화는 달라지지 않는다 — <c>record</c> 가 더하는 <c>EqualityContract</c> 는
+/// <c>protected</c> 라 System.Text.Json 이 보지 않는다.
+/// </para>
 /// </summary>
-public sealed class MeterState
+public sealed record MeterState
 {
     public DateTimeOffset? StartedAt { get; set; }
 
@@ -187,24 +197,34 @@ public sealed class MeterState
     /// **사전 비교자도 여기서 되살린다** — 직렬화를 건너온 사전은 기본 비교자를 달고 온다.
     /// </summary>
     public MeterState Copy()
+        => CopyAdopting(CopiedOffsets(Offsets), new HashSet<string>(SeenIds, StringComparer.Ordinal));
+
+    /// <summary>
+    /// 훑기 결과를 얹을 때 쓰는 복사. 오프셋과 본 id 는 베끼지 않고 **넘겨받은 것을 그대로
+    /// 들인다**(<see cref="UsageMeter.Applying"/>).
+    ///
+    /// **베껴 봐야 그 자리에서 버려진다.** 얹기는 그 둘을 통째로 갈아 끼우는 일이라
+    /// (<see cref="TokenScanResult"/> 가 델타가 아니라 전체를 담는다) 깊은 복사가 곧바로
+    /// 쓰레기가 된다 — 파일 200개·id 수천 개면 훑기 한 번에 0.5ms 와 수십 MB 를 그렇게 버렸다.
+    ///
+    /// <b>넘긴 사전과 집합의 소유권도 함께 넘어간다.</b> 부르는 쪽이 그 뒤로 손대면
+    /// 살아 있는 상태를 직접 고치는 셈이 된다. 오프셋 사전의 비교자는
+    /// <see cref="ClaudeCodeUsage.PathComparer"/> 여야 한다.
+    /// </summary>
+    public MeterState CopyAdopting(Dictionary<string, long> offsets, HashSet<string> seenIds)
     {
         var tracks = new Dictionary<string, LimitTrack>(Tracks.Count, StringComparer.Ordinal);
         foreach (var (id, track) in Tracks) tracks[id] = track.Clone();
 
-        return new MeterState
+        // **`with` 는 안 적은 칸을 그대로 가져온다.** 그래서 여기 적을 것은 참조를
+        // 나눠 쓰면 안 되는 칸뿐이고, 칸이 새로 늘어도 저절로 따라온다.
+        return this with
         {
-            StartedAt = StartedAt,
-            StoppedAt = StoppedAt,
             Tracks = tracks,
             Order = [.. Order],
-            Tokens = Tokens,
             TokensByModel = new Dictionary<string, TokenTally>(TokensByModel, StringComparer.Ordinal),
-            Offsets = CopiedOffsets(Offsets),
-            SeenIds = new HashSet<string>(SeenIds, StringComparer.Ordinal),
-            Samples = Samples,
-            LastSampledAt = LastSampledAt,
-            PausedAt = PausedAt,
-            PausedTotal = PausedTotal,
+            Offsets = offsets,
+            SeenIds = seenIds,
             // 기록은 만든 뒤 아무도 안 고치므로 목록만 새로 든다. 안쪽까지 베끼면
             // 기록 50개 × 한도 몇 개를 표본마다 다시 만들게 된다.
             History = [.. History],
@@ -217,8 +237,11 @@ public sealed class MeterState
     /// **생성자로 한 번에 옮기지 않는다.** 손으로 고친 <c>meter.json</c> 이나 옛 판이 남긴
     /// 파일에 대소문자만 다른 두 경로가 들어 있으면 그 자리에서 던진다. 그때는 **큰 쪽을
     /// 남긴다** — 작은 쪽을 남기면 그 구간을 다시 읽어 토큰이 두 배가 된다.
+    ///
+    /// **오프셋 사전을 다시 싸는 자리는 여기 하나다.** <see cref="TokenScan.Run"/> 도 이걸
+    /// 부른다 — 던지는 판과 안 던지는 판이 나란히 있으면 어느 쪽을 탔느냐로 답이 갈린다.
     /// </summary>
-    private static Dictionary<string, long> CopiedOffsets(IReadOnlyDictionary<string, long>? source)
+    public static Dictionary<string, long> CopiedOffsets(IReadOnlyDictionary<string, long>? source)
     {
         var copy = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer);
         if (source is null) return copy;

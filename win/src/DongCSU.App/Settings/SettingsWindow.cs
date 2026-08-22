@@ -156,7 +156,15 @@ public sealed partial class SettingsWindow : Window
         Content = root;
 
         // 측정 탭도 초가 움직인다(경과 시간·표본 나이). 언제 도는지는 `SyncTicker` 가 정한다.
-        tick.Tick += (_, _) => { if (TabList[Selected].Key is "status" or "measure") ShowTab(); };
+        //
+        // **측정은 탭을 다시 만들지 않는다.** 매초 달라지는 것은 글자 둘뿐이라
+        // `TickMeasure` 가 그것만 갈아 끼운다 — 상태 탭과 갈리는 자리다.
+        tick.Tick += (_, _) =>
+        {
+            var key = TabList[Selected].Key;
+            if (key == "status") ShowTab();
+            else if (key == "measure") TickMeasure();
+        };
 
         HookMeasure();
         Rebuild();
@@ -383,8 +391,8 @@ public sealed partial class SettingsWindow : Window
     {
         var key = TabList[Selected].Key;
 
-        // **재고 있지 않은 측정 탭에서는 안 돈다.** 움직이는 숫자가 하나도 없는데
-        // 1초마다 기록 목록을 통째로 다시 만드는 것은 그냥 낭비다.
+        // **재고 있지 않은 측정 탭에서는 안 돈다.** 경과 시간도 표본 문구도 안 그려져
+        // 있는데 1초마다 깨우는 것은 그냥 낭비다.
         var needed = key == "status" || (key == "measure" && meter.IsRunning);
         if (needed && !tick.IsEnabled) tick.Start();
         else if (!needed && tick.IsEnabled) tick.Stop();
@@ -484,8 +492,7 @@ public sealed partial class SettingsWindow : Window
             Ui.Divider(palette),
             InfoRow(palette, "다음 조회", RemainingTime.CountdownText(store.NextPollAt, now)),
             Ui.Divider(palette),
-            InfoRow(palette, "조회 주기",
-                PollTitle(PollChoices[PollIndex(settings.PollIntervalSeconds)]))));
+            InfoRow(palette, "조회 주기", CurrentPollTitle())));
 
         if (store.ErrorText is { } error) panel.Children.Add(Ui.Hint(palette, $"마지막 조회 실패: {error}"));
 
@@ -578,6 +585,20 @@ public sealed partial class SettingsWindow : Window
         var found = Array.IndexOf(PollChoices, seconds);
         return found >= 0 ? found : Array.IndexOf(PollChoices, 600);
     }
+
+    /// <summary>
+    /// 지금 조회 주기를 글로 읽는 자리에 낸다. **상태 탭과 측정 안내가 같이 쓴다.**
+    ///
+    /// <b>반드시 <see cref="PollIndex"/> 를 거친다.</b> 설정 파일에 목록에 없는 값(손으로
+    /// 고친 <c>120</c> 같은 것)이 들어 있으면 분절 컨트롤은 기본값(10분) 칸이 고른 것으로
+    /// 보여주는데, 날것을 그대로 문구로 만드는 자리만 "2분마다" 라고 적는다. 한 창 안에서
+    /// 같은 설정을 두 가지로 읽어 주는 셈이다.
+    ///
+    /// 정작 **실제로 도는 주기는 <c>AppSettings.PollInterval</c>**(날것을 60~1800 으로
+    /// 자른 값)이라, 목록 밖의 값이 들어 있으면 화면 셋이 다 조금씩 틀린 말을 한다.
+    /// 그건 설정을 읽는 자리에서 목록의 값으로 떨어뜨려야 풀리는 것이라 여기 두지 않는다.
+    /// </summary>
+    private string CurrentPollTitle() => PollTitle(PollChoices[PollIndex(settings.PollIntervalSeconds)]);
 
     // ── 표시 ────────────────────────────────────────────────────────
 

@@ -2,7 +2,6 @@ using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Threading;
 using DongCSU.App.Hud;
 using DongCSU.Core;
 using DongCSU.Core.Usage;
@@ -118,7 +117,7 @@ internal static class ProbeMeasureUi
         {
             window.Show();
             window.SelectTab("measure");
-            Settle(window);
+            ProbeLayout.Settle(window);
 
             Step(failures, window, "시작", () => meter.IsRunning, "재는 중이 아니다");
 
@@ -129,7 +128,7 @@ internal static class ProbeMeasureUi
             WriteFakeTranscript(records);
             meter.ScanTokensAsync().GetAwaiter().GetResult();
             window.SelectTab("measure");
-            Settle(window);
+            ProbeLayout.Settle(window);
 
             var tokens = meter.State.Tokens;
             Console.WriteLine($"  훑기          응답 {tokens.Responses} · 캐시 제외 {tokens.WithoutCache} 토큰");
@@ -213,7 +212,7 @@ internal static class ProbeMeasureUi
         }
 
         found();
-        Settle(window);
+        ProbeLayout.Settle(window);
 
         var ok = expectation();
         Console.WriteLine($"  {label,-12} {(ok ? "먹는다" : "안 먹는다")}");
@@ -263,19 +262,6 @@ internal static class ProbeMeasureUi
         => target.RaiseEvent(new System.Windows.Input.MouseButtonEventArgs(
             System.Windows.Input.Mouse.PrimaryDevice, 0, System.Windows.Input.MouseButton.Left)
         { RoutedEvent = UIElement.MouseLeftButtonUpEvent });
-
-    /// <summary>
-    /// 미뤄 둔 일을 다 비운다.
-    ///
-    /// 우리 화면은 스크롤 자리 되돌리기와 다시 그리기를 <see cref="DispatcherPriority.Loaded"/>
-    /// 로 미뤄 두므로, 큐를 안 비우고 상태를 보면 <b>누르기 전 화면</b>을 보게 된다.
-    /// </summary>
-    private static void Settle(SettingsWindow window)
-    {
-        window.Dispatcher.Invoke(() => { }, DispatcherPriority.Loaded);
-        window.UpdateLayout();
-        window.Dispatcher.Invoke(() => { }, DispatcherPriority.Background);
-    }
 
     private static IEnumerable<DependencyObject> Descendants(DependencyObject root)
     {

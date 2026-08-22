@@ -1,9 +1,7 @@
-using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Interop;
-using System.Windows.Media;
 
 namespace DongCSU.App.Settings;
 
@@ -21,7 +19,7 @@ namespace DongCSU.App.Settings;
 ///
 /// XAML 을 쓰지 않는 이유는 <c>CLAUDE.md</c> 에 있다.
 /// </summary>
-internal sealed partial class ConfirmDialog : Window
+internal sealed class ConfirmDialog : Window
 {
     /// <summary>물어보고 답을 받는다. 밖으로 나가는 것은 이것 하나뿐이다.</summary>
     /// <param name="confirm">파란 버튼에 적을 **할 일**. "확인"이 아니라 "종료"·"초기화"다.</param>
@@ -48,8 +46,11 @@ internal sealed partial class ConfirmDialog : Window
         Owner = owner;
         Background = palette.Brush(palette.Window);
 
-        var confirmButton = FocusableButton(palette, confirm, () => Finish(true), Ui.ButtonKind.Accent);
-        var cancelButton = FocusableButton(palette, "취소", () => Finish(false));
+        // **`focusable` 을 켠다.** 마우스 없이도 답할 수 있어야 하는 창인데, 단추가
+        // `Border` 라 그냥 두면 Tab 도 Enter 도 안 먹는다. 초점 고리는 `Ui` 가 씌운다.
+        var confirmButton = Ui.Button(
+            palette, confirm, () => Finish(true), Ui.ButtonKind.Accent, focusable: true);
+        var cancelButton = Ui.Button(palette, "취소", () => Finish(false), focusable: true);
 
         // **할 일이 왼쪽, 취소가 오른쪽이다.** 맥과 같은 차례다 — 눈이 파란 버튼에
         // 먼저 닿고, 거기 할 일이 적혀 있다.
@@ -113,54 +114,12 @@ internal sealed partial class ConfirmDialog : Window
         DialogResult = confirmed;
     }
 
-    // ── 초점을 받는 단추 ────────────────────────────────────────────
-
-    /// <summary>
-    /// <see cref="Ui.Button"/> 이 돌려주는 <c>Border</c> 는 초점을 못 받는다. 마우스로만
-    /// 누를 수 있는 확인 창은 키보드로 답할 방법이 없으므로, 초점을 받는 테두리를
-    /// 한 겹 덧씌워 Tab 으로 오가고 Enter·Space 로 누를 수 있게 한다.
-    /// </summary>
-    private static Border FocusableButton(
-        SettingsPalette palette, string text, Action onClick, Ui.ButtonKind kind = Ui.ButtonKind.Normal)
-    {
-        // **파란 버튼 위에서는 강조색 고리가 안 보인다.** 바탕이 같은 파랑이라 고리가
-        // 녹아 없어져서, 초점이 어디 있는지 알 수 없게 된다. 그때만 글자색을 쓴다.
-        var ring = kind == Ui.ButtonKind.Accent ? palette.Primary : palette.Accent;
-
-        var ringed = new Border
-        {
-            Focusable = true,
-            BorderThickness = new Thickness(1),
-            BorderBrush = palette.Brush(Colors.Transparent),
-            CornerRadius = new CornerRadius(Ui.Radius),
-            Padding = new Thickness(2),
-            Child = Ui.Button(palette, text, onClick, kind),
-        };
-
-        ringed.GotKeyboardFocus += (_, _) => ringed.BorderBrush = palette.Brush(ring);
-        ringed.LostKeyboardFocus += (_, _) => ringed.BorderBrush = palette.Brush(Colors.Transparent);
-        ringed.KeyDown += (_, e) =>
-        {
-            if (e.Key is not (Key.Enter or Key.Space)) return;
-            onClick();
-            e.Handled = true;
-        };
-        return ringed;
-    }
-
     // ── 모서리 ──────────────────────────────────────────────────────
-
-    /// <summary>모서리를 둥글게. 윈도우 11 부터 창 관리자가 직접 깎아 준다.</summary>
-    private const int WindowCornerPreference = 33;
-    private const int BorderColor = 34;
-    private const int RoundCorner = 2;
-
-    [LibraryImport("dwmapi.dll")]
-    private static partial int DwmSetWindowAttribute(IntPtr window, int attribute, ref int value, int size);
 
     /// <summary>
     /// 창틀을 없앤 창은 각지게 뜬다. 깎는 일은 우리가 하지 않고 창 관리자에게 맡긴다 —
-    /// 트레이 메뉴(<c>TrayMenuStyle</c>)와 같은 방식이다.
+    /// 트레이 메뉴와 같은 <see cref="RoundedWindow"/> 를 부른다. DWM 상수와 테두리
+    /// COLORREF 를 여기 또 적지 않는 이유가 그것이다. 사정은 거기 적혀 있다.
     ///
     /// **<c>AllowsTransparency</c> 는 켜지 않는다.** 켜는 순간 레이어드 창이 되어 DWM 이
     /// 모서리를 안 깎고, 덤으로 글자 렌더링까지 흐려진다.
@@ -168,15 +127,6 @@ internal sealed partial class ConfirmDialog : Window
     protected override void OnSourceInitialized(EventArgs e)
     {
         base.OnSourceInitialized(e);
-
-        var window = new WindowInteropHelper(this).Handle;
-        if (window == IntPtr.Zero) return;
-
-        var corner = RoundCorner;
-        DwmSetWindowAttribute(window, WindowCornerPreference, ref corner, sizeof(int));
-
-        // COLORREF 는 0x00BBGGRR 이다. 어두운 테마에서 밝은 테두리를 쓰면 떠 보인다.
-        var border = isDark ? 0x003A3A42 : 0x00E0E0E4;
-        DwmSetWindowAttribute(window, BorderColor, ref border, sizeof(int));
+        RoundedWindow.Round(new WindowInteropHelper(this).Handle, isDark);
     }
 }

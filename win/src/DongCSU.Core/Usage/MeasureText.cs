@@ -62,8 +62,8 @@ public static class MeasureText
     /// 뭔가 더 있는 줄 알고 읽었다가 같은 숫자를 두 번 보게 된다.
     ///
     /// 같은 값일 때 이름으로 한 번 더 가르는 것은 **차례가 흔들리지 않게** 하려는
-    /// 것이다 — 사전을 도는 차례는 보장이 없어서, 1초마다 다시 그리는 화면에서 줄이
-    /// 자리를 바꿔 가며 깜빡인다.
+    /// 것이다 — 사전을 도는 차례는 보장이 없어서, 훑을 때마다 다시 그리는 화면에서
+    /// 줄이 자리를 바꿔 가며 깜빡인다.
     /// </summary>
     public static IReadOnlyList<(string Model, string Value)> ModelRows(
         IReadOnlyDictionary<string, TokenTally> byModel, bool includesCache)
@@ -89,6 +89,30 @@ public static class MeasureText
     /// </summary>
     public static string Headline(MeterRecord record) =>
         record.Tracks.Count == 0 ? "—" : $"{record.Tracks[0].Title} {LimitValue(record.Tracks[0])}";
+
+    /// <summary>
+    /// 기록 목록 한 줄의 토큰. **목록에는 캐시를 절대 안 넣는다** — 캐시가 다 먹어서
+    /// 어느 기록이나 억 단위로 보이면 서로 견줄 수가 없다. 캐시까지는 눌러서 펼쳐 본다.
+    ///
+    /// 그 판단을 화면에 두지 않는 이유는 <see cref="Total"/> 과 같다. 목록만 밖에서
+    /// 만들면 <b>캐시를 넣을지 정하는 자리가 둘</b>이 되고, 그때부터 목록과 상세가
+    /// 소리 없이 갈린다.
+    /// </summary>
+    public static string RecordTokens(MeterRecord record) =>
+        $"{TokenFormat.Short(Total(record.Tokens, includesCache: false))} 토큰";
+
+    /// <summary>
+    /// 기록의 날짜. **목록·상세·확인 창 셋이 같은 글자를 써야 한다** — 지운다고 물을 때
+    /// 나오는 날짜가 목록에 보이던 것과 다르면 엉뚱한 것을 지우는 줄 안다.
+    /// </summary>
+    public static string RecordDate(MeterRecord record) =>
+        record.StoppedAt.ToString("M월 d일 (ddd) HH:mm", RecordCulture);
+
+    /// <summary>
+    /// 요일 이름은 **한국어로 못 박는다.** 기계 로캘을 따르면 영어 윈도우에서 요일만
+    /// <c>Fri</c> 로 나와 한 줄 안에 두 나라 말이 섞인다.
+    /// </summary>
+    private static readonly CultureInfo RecordCulture = new("ko-KR");
 
     /// <summary>
     /// 표본을 몇 번 잡았고 마지막 것이 언제 것인지.

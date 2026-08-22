@@ -191,7 +191,12 @@ public sealed class HudView : FrameworkElement
 
     /// <summary>
     /// 스톱워치. 설정 창의 측정 탭 아이콘(<c>TabIcon</c> 의 <c>"measure"</c>)과 **같은
-    /// 코드포인트**다 — HUD 버튼과 탭이 다른 그림이면 어디로 가는 버튼인지 알 수 없다.
+    /// 코드포인트여야 한다**(<c>U+E916</c>) — 이 버튼이 여는 것이 그 탭이라, 그림이
+    /// 다르면 어디로 가는 버튼인지 알 수 없다. **한쪽을 바꾸면 다른 쪽도 바꾼다.**
+    ///
+    /// 여기서 <c>TabIcon</c> 을 부르지 않는 것은 <c>Hud</c> 가 <c>Settings</c> 를
+    /// 참조하게 되기 때문이다. 이웃 글리프들도 전부 지역 상수라 관례도 그쪽이다 —
+    /// 대신 **어긋나도 잡아 주는 것이 없으니 손으로 맞춰야 한다.**
     ///
     /// 맥은 재는 동안 <c>stopwatch.fill</c> 로 갈아 끼우지만 Segoe MDL2 에는 채운
     /// 스톱워치가 없다. **모양이 아니라 색이 상태를 말한다** — 같은 글리프를 빨갛게 칠한다.
@@ -368,49 +373,41 @@ public sealed class HudView : FrameworkElement
 
     // ── 자리 재기 (그리는 쪽과 누르는 쪽이 같은 것을 본다) ──────────────
 
-    /// <summary>
-    /// <see cref="ButtonRects"/> 배열의 자리 이름.
-    ///
-    /// **인덱스를 숫자로 적지 않는다.** 재는 곳(<see cref="ButtonRects"/>)과 누르는 곳
-    /// (<see cref="HitTest"/>), 그리는 두 곳이 같은 배열을 각자 뒤지는데, 칸이 하나
-    /// 늘면서 한 곳만 밀리면 **엉뚱한 버튼이 눌린다.** 이름으로 적어 두면 안 밀린다.
-    /// </summary>
-    private static class Slot
-    {
-        public const int Collapse = 0;
-        public const int Measure = 1;
-        public const int Settings = 2;
-        public const int Refresh = 3;
-
-        /// <summary>펼침·접힘의 칸 수. 맥의 <c>controlButtonCount</c> 와 같은 값이다.</summary>
-        public const int Count = 4;
-    }
+    /// <summary>펼침·접힘의 버튼 칸 수. 맥의 <c>controlButtonCount</c> 와 같은 값이다.</summary>
+    private const int ControlButtonCount = 4;
 
     /// <summary>
-    /// 그 버튼 자리의 한가운데. 없는 자리(펫의 접기)면 null.
+    /// 그 버튼 자리의 한가운데. 이 보기에 없는 자리(펫의 접기)면 null.
     ///
-    /// <b><c>--probe-meter ui</c> 가 쓴다.</b> 자리를 재는 곳과 누른 것을 판정하는 곳이
-    /// 갈려 있어서, 칸이 하나 늘면서 한쪽만 밀리면 <b>엉뚱한 버튼이 눌린다</b> —
-    /// 화면은 멀쩡해 보인다. 그래서 검사가 "여기를 누르면 무엇으로 잡히나" 를 물어본다.
+    /// <b><c>--probe-meter ui</c> 가 쓴다.</b> 그 검사는 "여기를 누르면 무엇으로 잡히나"
+    /// 를 물어보고, <b>null 로 없는 칸을 세어 보기마다 몇 칸인지도 본다</b>(펼침·접힘 4,
+    /// 펫 3). 그러니 없는 자리에 아무 점이나 돌려주면 안 된다.
+    ///
+    /// <b>제 자리표를 따로 두지 않는다.</b> 예전에는 여기서 switch 로 자리를 골랐는데,
+    /// 그러면 <see cref="HitTest"/> 와 <b>같이 밀려서 검사도 통과한다</b> — 이 검사가
+    /// 막으려던 바로 그 실패 모양이다. 지금은 둘 다 <see cref="ButtonRects"/> 가
+    /// 붙여 준 <c>Target</c> 만 본다.
     /// </summary>
     internal Point? ProbeButtonCenter(HudHit hit)
     {
-        var slot = hit switch
+        foreach (var (target, rect) in ButtonRects())
         {
-            HudHit.Collapse => Slot.Collapse,
-            HudHit.Measure => Slot.Measure,
-            HudHit.Settings => Slot.Settings,
-            HudHit.Refresh => Slot.Refresh,
-            _ => -1,
-        };
-        if (slot < 0) return null;
-
-        var rect = ButtonRects()[slot];
-        return rect.IsEmpty ? null : new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
+            if (target == hit) return new Point(rect.X + rect.Width / 2, rect.Y + rect.Height / 2);
+        }
+        return null;
     }
 
-    /// <summary>버튼 네 칸. 차례는 접기 · 측정 · 설정 · 새로고침이다.</summary>
-    private Rect[] ButtonRects()
+    /// <summary>
+    /// 버튼 자리 — **어느 자리가 어느 버튼인지 여기 한 곳에만 적는다.**
+    ///
+    /// 누르는 곳(<see cref="HitTest"/>)·진단 통로(<see cref="ProbeButtonCenter"/>)·그리는
+    /// 두 곳이 전부 이 배열을 돌며 <c>Target</c> 으로 찾는다. 넷이 각자 인덱스로 짚던
+    /// 때에는 칸이 하나 늘면서 한 곳만 밀리면 **엉뚱한 버튼이 눌렸고, 화면은 멀쩡해
+    /// 보였다.** 자리와 버튼을 짝지어 들고 다니면 밀릴 자리가 없다.
+    ///
+    /// 차례는 접기 · 측정 · 설정 · 새로고침이다.
+    /// </summary>
+    private (HudHit Target, Rect Rect)[] ButtonRects()
     {
         var size = DesiredHudSize;
         var button = BaseButton * Scale;
@@ -427,14 +424,14 @@ public sealed class HudView : FrameworkElement
             var petTop = size.Height - row + (row - petButton) / 2;
             var step = petButton + gap;
 
-            // 접기 자리는 **빈 사각형**으로 채워 둔다. `Rect.Empty.Contains` 는 늘 false 라
-            // 히트 테스트가 그냥 지나간다 — 펫만 인덱스가 밀리는 것보다 훨씬 안전하다.
+            // 접기 자리는 **아예 빼 둔다.** 자리마다 버튼 이름이 붙어 다니므로 칸이
+            // 하나 없어도 다른 칸이 밀리지 않는다 — 예전처럼 빈 사각형으로 인덱스를
+            // 맞춰 둘 이유가 없다. 없는 자리를 물어보면 null 이 나가는 것이 계약이다.
             return
             [
-                Rect.Empty,
-                new Rect(petLeft, petTop, petButton, petButton),
-                new Rect(petLeft + step, petTop, petButton, petButton),
-                new Rect(petLeft + step * 2, petTop, petButton, petButton),
+                (HudHit.Measure, new Rect(petLeft, petTop, petButton, petButton)),
+                (HudHit.Settings, new Rect(petLeft + step, petTop, petButton, petButton)),
+                (HudHit.Refresh, new Rect(petLeft + step * 2, petTop, petButton, petButton)),
             ];
         }
 
@@ -444,24 +441,24 @@ public sealed class HudView : FrameworkElement
             var x = ToRight ? size.Width - trailing - button : trailing;
             // **칸이 셋에서 넷으로 늘면서 세로 가운데가 10 위로 올라갔다**(배율 1 에서 14 → 4).
             // 20×4 = 80 이 접힌 높이 88 안에 겨우 들어간다.
-            var top = (size.Height - button * Slot.Count) / 2;
+            var top = (size.Height - button * ControlButtonCount) / 2;
             return
             [
-                new Rect(x, top, button, button),
-                new Rect(x, top + button, button, button),
-                new Rect(x, top + button * 2, button, button),
-                new Rect(x, top + button * 3, button, button),
+                (HudHit.Collapse, new Rect(x, top, button, button)),
+                (HudHit.Measure, new Rect(x, top + button, button, button)),
+                (HudHit.Settings, new Rect(x, top + button * 2, button, button)),
+                (HudHit.Refresh, new Rect(x, top + button * 3, button, button)),
             ];
         }
 
         var inset = BaseInset * Scale;
-        var left = ToRight ? size.Width - inset - button * Slot.Count : inset;
+        var left = ToRight ? size.Width - inset - button * ControlButtonCount : inset;
         return
         [
-            new Rect(left, inset, button, button),
-            new Rect(left + button, inset, button, button),
-            new Rect(left + button * 2, inset, button, button),
-            new Rect(left + button * 3, inset, button, button),
+            (HudHit.Collapse, new Rect(left, inset, button, button)),
+            (HudHit.Measure, new Rect(left + button, inset, button, button)),
+            (HudHit.Settings, new Rect(left + button * 2, inset, button, button)),
+            (HudHit.Refresh, new Rect(left + button * 3, inset, button, button)),
         ];
     }
 
@@ -553,11 +550,12 @@ public sealed class HudView : FrameworkElement
     {
         if (HasUpdate && UpdateBadgeRect().Contains(point)) return HudHit.UpdateBadge;
 
-        var buttons = ButtonRects();
-        if (buttons[Slot.Collapse].Contains(point)) return HudHit.Collapse;
-        if (buttons[Slot.Measure].Contains(point)) return HudHit.Measure;
-        if (buttons[Slot.Settings].Contains(point)) return HudHit.Settings;
-        if (buttons[Slot.Refresh].Contains(point)) return HudHit.Refresh;
+        // 버튼은 서로 겹치지 않으므로 차례는 상관없다. 자리에 붙어 온 이름을 그대로
+        // 돌려준다 — 여기서 다시 고르면 그게 곧 두 벌째 자리표가 된다.
+        foreach (var (target, rect) in ButtonRects())
+        {
+            if (rect.Contains(point)) return target;
+        }
 
         // 마스코트는 **버튼 다음**이다. 펫에서는 링이 창의 거의 전부라 먼저 보면
         // 다른 것을 다 덮는다. 링과 마스코트가 겹쳐 있으므로 링 전체를 잡는다.
@@ -1183,13 +1181,13 @@ public sealed class HudView : FrameworkElement
         if (PetRingFade <= 0) return;
         if (PetRingFade < 1) context.PushOpacity(PetRingFade);
 
-        var rects = ButtonRects();
-        DrawPetButton(
-            context, rects[Slot.Measure], GlyphStopwatch, HudHit.Measure, MeasureTint(palette), palette, s);
-        DrawPetButton(
-            context, rects[Slot.Settings], GlyphSettings, HudHit.Settings, palette.ControlIdle, palette, s);
-        DrawPetButton(
-            context, rects[Slot.Refresh], GlyphRefresh, HudHit.Refresh, palette.ControlIdle, palette, s);
+        // 자리에 붙어 온 이름으로 무엇을 그릴지 고른다. 펫에 접기 칸이 없다는 것도
+        // 배열이 알고 있으므로 여기서 따로 뺄 것이 없다.
+        foreach (var (target, rect) in ButtonRects())
+        {
+            if (ButtonLook(target, palette) is not { } look) continue;
+            DrawPetButton(context, rect, look.Glyph, target, look.Idle, palette, s);
+        }
 
         if (PetRingFade < 1) context.Pop();
     }
@@ -1211,38 +1209,69 @@ public sealed class HudView : FrameworkElement
         var border = Paint.Pen(palette.RingTrack, Math.Max(1, s));
         context.DrawEllipse(fill, border, center, rect.Width / 2, rect.Height / 2);
 
-        var color = Hover == target && idle != palette.Measuring ? palette.ControlActive : idle;
-        if (target == HudHit.Refresh && IsRefreshing)
-        {
-            color = Color.FromArgb((byte)(color.A * 0.35), color.R, color.G, color.B);
-        }
-
-        var text = Text(glyph, 11 * s, Icons, color);
+        var text = Text(glyph, 11 * s, Icons, GlyphColor(target, idle, palette));
         context.DrawText(text, new Point(center.X - text.Width / 2, center.Y - text.Height / 2));
     }
 
     /// <summary>
-    /// 측정 버튼 색. **재는 중이면 빨강 고정이고 호버보다 세다** — 호버색으로 덮이면
-    /// 커서를 올린 동안 재는 중인지 알 수 없다(맥의 <c>measureTint</c> 도 그 순서다).
+    /// 그 버튼에 무엇을 그리나 — 글리프와 **유휴색**. 이 보기에 없는 자리면 null.
+    ///
+    /// **펫과 카드가 같은 표를 본다.** 자리마다 따로 적으면 한쪽만 고쳐져서 같은
+    /// 버튼이 두 보기에서 다른 그림·다른 색이 된다.
     /// </summary>
-    private Color MeasureTint(HudPalette palette) =>
-        IsMeasuring ? palette.Measuring : palette.ControlIdle;
+    private (string Glyph, Color Idle)? ButtonLook(HudHit target, HudPalette palette) => target switch
+    {
+        // 눌렀을 때 창이 움직일 방향을 가리킨다.
+        HudHit.Collapse => (
+            (Mode == HudMode.Collapsed) == ToRight ? GlyphChevronRight : GlyphChevronLeft,
+            palette.ControlIdle),
+
+        // 재는 중이면 빨강. **호버보다 세다** — 호버색으로 덮이면 커서를 올린 동안
+        // 재는 중인지 알 수 없다(맥의 `measureTint` 도 그 순서다). 그 순서를 지키는
+        // 것은 `GlyphColor` 이고, 여기서는 유휴색만 고른다.
+        HudHit.Measure => (GlyphStopwatch, IsMeasuring ? palette.Measuring : palette.ControlIdle),
+
+        HudHit.Settings => (GlyphSettings, palette.ControlIdle),
+
+        // 갱신에 실패해 화면 숫자가 낡았으면 버튼 자체를 경고색으로 물들인다.
+        // **펫에서는 안 물들인다** — 맥도 펫의 새로고침에는 tint 를 안 준다. 펫은
+        // 숫자를 아예 안 그려서 "지금 보이는 값이 낡았다" 고 할 것이 없다.
+        HudHit.Refresh => (
+            GlyphRefresh,
+            Mode != HudMode.Pet && ErrorText is not null ? palette.Warning : palette.ControlIdle),
+
+        _ => null,
+    };
+
+    /// <summary>
+    /// 글리프에 실제로 칠할 색.
+    ///
+    /// **상태를 말하는 색은 호버가 못 덮는다.** 경고(주황)는 값이 낡았다는 뜻이고
+    /// 재는 중(빨강)은 지금 재고 있다는 뜻이라, 커서를 올린 동안 그 사실이 사라지면
+    /// 안 된다. 그래서 조건을 **유휴색 쪽으로** 적는다 — "유휴색일 때만 밝아진다".
+    /// 덮으면 안 되는 색을 하나하나 세면 상태색이 늘 때마다 여기를 고쳐야 하고,
+    /// 실제로 카드 쪽과 펫 쪽이 서로 다른 목록을 들고 있었다.
+    ///
+    /// 갱신 중에는 새로고침을 흐리게. 돌아가는 애니메이션은 유휴 상태에서 계속 도는
+    /// 위험이 있어 쓰지 않는다.
+    /// </summary>
+    private Color GlyphColor(HudHit target, Color idle, HudPalette palette)
+    {
+        var color = Hover == target && idle == palette.ControlIdle ? palette.ControlActive : idle;
+        if (target == HudHit.Refresh && IsRefreshing)
+        {
+            color = Color.FromArgb((byte)(color.A * 0.35), color.R, color.G, color.B);
+        }
+        return color;
+    }
 
     private void DrawButtons(DrawingContext context, HudPalette palette, double s)
     {
-        var rects = ButtonRects();
-
-        // 눌렀을 때 창이 움직일 방향을 가리킨다.
-        var chevron = (Mode == HudMode.Collapsed) == ToRight ? GlyphChevronRight : GlyphChevronLeft;
-
-        DrawButton(context, rects[Slot.Collapse], chevron, HudHit.Collapse, palette.ControlIdle, palette, s);
-        DrawButton(
-            context, rects[Slot.Measure], GlyphStopwatch, HudHit.Measure, MeasureTint(palette), palette, s);
-        DrawButton(context, rects[Slot.Settings], GlyphSettings, HudHit.Settings, palette.ControlIdle, palette, s);
-
-        // 갱신에 실패해 화면 숫자가 낡았으면 버튼 자체를 경고색으로 물들인다.
-        var refreshTint = ErrorText is null ? palette.ControlIdle : palette.Warning;
-        DrawButton(context, rects[Slot.Refresh], GlyphRefresh, HudHit.Refresh, refreshTint, palette, s);
+        foreach (var (target, rect) in ButtonRects())
+        {
+            if (ButtonLook(target, palette) is not { } look) continue;
+            DrawButton(context, rect, look.Glyph, target, look.Idle, palette, s);
+        }
     }
 
     private void DrawButton(
@@ -1263,19 +1292,7 @@ public sealed class HudView : FrameworkElement
                 rect.Width / 2, rect.Height / 2);
         }
 
-        // **상태를 말하는 색은 호버가 못 덮는다.** 경고(주황)는 값이 낡았다는 뜻이고
-        // 재는 중(빨강)은 지금 재고 있다는 뜻이라, 커서를 올린 동안 그 사실이 사라지면
-        // 안 된다. 나머지 유휴색만 밝아진다.
-        var color = hovering && idle != palette.Warning && idle != palette.Measuring
-            ? palette.ControlActive
-            : idle;
-        // 갱신 중에는 흐리게. 돌아가는 애니메이션은 유휴 상태에서 계속 도는 위험이 있어 쓰지 않는다.
-        if (target == HudHit.Refresh && IsRefreshing)
-        {
-            color = Color.FromArgb((byte)(color.A * 0.35), color.R, color.G, color.B);
-        }
-
-        var text = Text(glyph, 9.5 * s, Icons, color);
+        var text = Text(glyph, 9.5 * s, Icons, GlyphColor(target, idle, palette));
         context.DrawText(text, new Point(
             rect.Left + (rect.Width - text.Width) / 2,
             rect.Top + (rect.Height - text.Height) / 2));

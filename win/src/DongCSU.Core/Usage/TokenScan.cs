@@ -20,9 +20,25 @@ public sealed record TokenScanResult
     /// <summary>모델 이름(<see cref="ClaudeCodeUsage.DisplayName"/> 를 태운 것) → 더한 몫.</summary>
     public Dictionary<string, TokenTally> AddedByModel { get; init; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// 파일마다 어디까지 읽었는지. **비교자가 <see cref="ClaudeCodeUsage.PathComparer"/>
+    /// 여야 한다** — 얹는 쪽이 베끼지 않고 그대로 들인다(<see cref="MeterState.CopyAdopting"/>).
+    /// </summary>
     public Dictionary<string, long> Offsets { get; init; } = new(ClaudeCodeUsage.PathComparer);
 
     public HashSet<string> SeenIds { get; init; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 이번 훑기가 **무언가를 움직였는지.** 오프셋이 옮겨졌거나 합계에 더한 것이 있으면 참이다.
+    ///
+    /// <b>놀고 있을 때가 대부분이다.</b> 재는 동안 훑기는 5초·60초마다 도는데 그 사이에
+    /// 기록이 안 늘면 파일 200개를 전부 <c>file.Length &lt;= offset</c> 으로 건너뛰고 빈손으로
+    /// 돌아온다. 그걸 그대로 얹으면 **바이트까지 같은 <c>meter.json</c> 을 1분에 열두 번**
+    /// 다시 쓰게 되므로(<c>SeenIds</c> 가 5천이면 4.7MB/분), 얹는 쪽이 이 값을 보고 건너뛴다.
+    ///
+    /// 손으로 지어낸 결과는 기본값이 <c>false</c> 다 — 얹히기를 바라면 참으로 세워야 한다.
+    /// </summary>
+    public bool Moved { get; init; }
 }
 
 /// <summary>
@@ -47,8 +63,8 @@ public sealed class TokenScan
     public const int SeenLimit = 50_000;
 
     private readonly DateTimeOffset since;
-    private readonly Dictionary<string, long> offsets;
-    private readonly HashSet<string> seenIds;
+    private readonly IReadOnlyDictionary<string, long>? offsets;
+    private readonly IReadOnlySet<string>? seenIds;
     private readonly string? root;
 
     /// <param name="since">
@@ -61,10 +77,13 @@ public sealed class TokenScan
     /// <param name="seenIds">이미 센 <c>message.id</c>.</param>
     /// <param name="root">안 주면 <see cref="ClaudeCodeUsage.ProjectsDirectory"/>.</param>
     /// <remarks>
-    /// **받은 사전과 집합을 여기서 곧바로 복사한다.** 스위프트의 <c>Dictionary</c>·<c>Set</c>
-    /// 은 값 타입이라 저절로 복사되지만 C# 은 참조다 — 그대로 들고 쓰면 배경 스레드가
-    /// **살아 있는 측정 상태를 직접 갈아엎고**, 표식 대조가 결과를 버려도 이미 늦는다.
-    /// (게다가 화면 스레드가 같은 사전을 읽는 중이면 그 자리에서 던진다.)
+    /// **받은 사전과 집합을 여기서 베끼지 않는다.** <see cref="Run"/> 이 어차피 제 작업용
+    /// 복사본을 뜨기 때문에(그래야 두 번 불러도 같은 답이 나온다) 여기서 또 뜨면 같은 것을
+    /// 두 번 베끼는 셈이다 — 스위프트의 값 타입 사전을 옮겨 오면서 남은 자국이다.
+    ///
+    /// 대신 **받은 사전과 집합을 그 자리에서 고치는 사람이 없어야 한다.** 측정 상태는 늘
+    /// 복사본을 고쳐 통째로 갈아 끼우므로(<see cref="MeterState.Copy"/>) 그 약속이 지켜지고,
+    /// 그래서 배경 스레드가 이 참조를 들고 나가도 살아 있는 상태를 갈아엎지 않는다.
     /// </remarks>
     public TokenScan(
         DateTimeOffset since,
@@ -73,11 +92,8 @@ public sealed class TokenScan
         string? root = null)
     {
         this.since = since;
-        this.offsets = ClaudeCodeUsage.WithPathComparer(offsets);
-        // 경로는 대소문자를 안 가리지만 id 는 가린다. 비교자가 서로 다르다.
-        this.seenIds = seenIds is null
-            ? new HashSet<string>(StringComparer.Ordinal)
-            : new HashSet<string>(seenIds, StringComparer.Ordinal);
+        this.offsets = offsets;
+        this.seenIds = seenIds;
         this.root = root;
     }
 
@@ -87,12 +103,18 @@ public sealed class TokenScan
     /// <summary>한 번 훑는다. 같은 인스턴스를 두 번 불러도 입력이 그대로라 같은 답이 나온다.</summary>
     public TokenScanResult Run()
     {
-        // 인스턴스가 들고 있는 것도 다시 복사한다 — Run 이 제 입력을 갉아먹으면 두 번째
-        // 훑기가 첫 번째와 다른 답을 낸다.
-        var offsets = new Dictionary<string, long>(this.offsets, ClaudeCodeUsage.PathComparer);
-        var seen = new HashSet<string>(this.seenIds, StringComparer.Ordinal);
+        // **받은 것을 갉아먹지 않고 작업용 복사본을 뜬다.** 제 입력을 고치면 두 번째
+        // 훑기가 첫 번째와 다른 답을 내고, 부르는 쪽의 살아 있는 상태까지 함께 움직인다.
+        // 경로는 대소문자를 안 가리지만 id 는 가린다 — 비교자가 서로 다르다.
+        var offsets = MeterState.CopiedOffsets(this.offsets);
+        var seen = this.seenIds is null
+            ? new HashSet<string>(StringComparer.Ordinal)
+            : new HashSet<string>(this.seenIds, StringComparer.Ordinal);
         var added = default(TokenTally);
         var byModel = new Dictionary<string, TokenTally>(StringComparer.Ordinal);
+        // 오프셋이 옮겨졌거나 더한 것이 있을 때만 선다. 놀고 있으면 끝까지 false 라
+        // 얹는 쪽이 저장을 통째로 건너뛴다 (TokenScanResult.Moved).
+        var moved = false;
 
         foreach (var file in ClaudeCodeUsage.Transcripts(root))
         {
@@ -107,11 +129,17 @@ public sealed class TokenScan
                 // 둔다. **맥은 이 빠른 경로에서 안 내려서**, 잘렸던 파일이 옛 크기를
                 // 넘길 때까지 그 사이에 적힌 것을 통째로 놓친다. 정상 경로의 동작은
                 // 똑같고 잘림에서만 나아지는 것이라 고쳐서 옮긴다.
-                if (file.Length < offset) offsets[file.Path] = Math.Max(0, file.Length);
+                if (file.Length < offset)
+                {
+                    offsets[file.Path] = Math.Max(0, file.Length);
+                    moved = true;
+                }
                 continue;
             }
 
             if (ReadAppended(file.Path, offset) is not { } chunk) continue;
+            // 여는 사이에 파일이 줄었거나 완성된 줄이 하나도 없으면 자리가 그대로다.
+            if (chunk.Next != offset) moved = true;
             offsets[file.Path] = chunk.Next;
             if (chunk.Data.Length == 0) continue;
 
@@ -136,6 +164,7 @@ public sealed class TokenScan
 
                 added += entry.Tally;
                 byModel[entry.Model] = byModel.GetValueOrDefault(entry.Model) + entry.Tally;
+                moved = true;
             }
         }
 
@@ -145,6 +174,7 @@ public sealed class TokenScan
             AddedByModel = byModel,
             Offsets = offsets,
             SeenIds = seen,
+            Moved = moved,
         };
     }
 
@@ -302,14 +332,16 @@ public sealed class TokenScan
 }
 
 /// <summary>
-/// 훑은 결과를 여태 쌓은 것 위에 얹는 셈.
+/// 훑은 결과를 여태 쌓은 것 위에 얹는 셈 — **합계 둘만 떼어 검사로 굳힌 자리다.**
 ///
-/// **일부러 떼어 놨다** — 진단 통로(<c>--probe-meter scan</c>)와 실제 동작이 같은 코드를
-/// 쓰게 하려는 것이다. 두 벌이 되면 반드시 갈린다. 시계도 파일도 안 타는 순수 계산이라
-/// 아무 데서나 부를 수 있다.
+/// 진단 통로(<c>--probe-meter scan</c>)가 타는 것은 이 함수가 아니라
+/// <see cref="UsageMeter.Applying"/> 이고, 그쪽이 상태를 만들면서 이걸 부른다. 여기를
+/// 따로 둔 것은 **합계 병합만 인자로 넣고 눈으로 셀 수 있게** 하려는 것이다 —
+/// 두 번 얹으면 두 배가 된다는 사실 같은 것을 <c>MeterState</c> 없이 못 박아 둔다.
 ///
 /// 오프셋과 본 id 는 결과의 것으로 **통째로 갈아 끼우는 것**이라 여기서 셈할 것이 없다
 /// (<see cref="TokenScanResult"/> 주석 참고). 그래서 이 함수는 합계 둘만 더한다.
+/// 시계도 파일도 안 타는 순수 계산이라 아무 데서나 부를 수 있다.
 /// </summary>
 public static class TokenScanApply
 {

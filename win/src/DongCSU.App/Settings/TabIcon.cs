@@ -39,7 +39,12 @@ internal static class TabIcon
     /// </summary>
     public const double Width = 16;
 
-    private static readonly FontFamily Font =
+    /// <summary>
+    /// 아이콘 글꼴 사슬. **탭 아이콘이 아닌 글리프도 이걸 쓴다**(측정 기록 줄의 화살표) —
+    /// 사슬을 다른 자리에 옮겨 적으면 대체 글꼴을 고칠 때 한쪽만 고치게 되고, 옛 윈도우
+    /// 에서 한쪽만 빈 네모가 된다.
+    /// </summary>
+    internal static readonly FontFamily Font =
         new("Segoe Fluent Icons, Segoe MDL2 Assets, Segoe UI Symbol");
 
     /// <summary>탭 키에 붙은 글리프. 모르는 키(또는 null)면 공통 아이콘.</summary>

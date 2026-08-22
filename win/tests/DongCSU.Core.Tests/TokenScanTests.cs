@@ -422,9 +422,15 @@ public class TokenScanTests
         Assert.Equal(new FileInfo(path).Length, second.Offsets[path]);
     }
 
-    /// <summary>덧붙은 게 없으면 아무것도 안 더한다(파일을 열지도 않는 빠른 길이다).</summary>
+    /// <summary>
+    /// 덧붙은 게 없으면 아무것도 안 더한다(파일을 열지도 않는 빠른 길이다).
+    ///
+    /// **그때는 <c>Moved</c> 도 서지 않아야 한다.** 재는 동안 훑기는 5초·60초마다 도는데
+    /// 그 사이에 기록이 안 늘면 여기로 떨어진다 — 얹는 쪽이 이걸 보고 저장을 건너뛰지
+    /// 않으면 바이트까지 같은 <c>meter.json</c> 을 1분에 열두 번 다시 쓴다.
+    /// </summary>
     [Fact]
-    public void 덧붙은_게_없으면_0_이다()
+    public void 덧붙은_게_없으면_0_이고_움직인_것도_없다()
     {
         using var temp = new TempTranscripts();
         temp.Write("a.jsonl", Jsonl.Line("a1", Since.AddMinutes(1), output: 5));
@@ -432,7 +438,9 @@ public class TokenScanTests
         var first = Scan(temp);
         var second = Scan(temp, first);
 
+        Assert.True(first.Moved);
         Assert.True(second.Added.IsEmpty);
+        Assert.False(second.Moved);
         Assert.Equal(first.Offsets, second.Offsets);
     }
 
@@ -549,6 +557,8 @@ public class TokenScanTests
 
         Assert.True(second.Added.IsEmpty);
         Assert.Equal(shrunk, second.Offsets[path]);
+        // 더한 것은 없어도 **오프셋이 움직였다** — 안 저장하면 다음 훑기가 또 내린다.
+        Assert.True(second.Moved);
 
         // 내려 둔 자리부터라야 그다음에 덧붙은 것을 놓치지 않는다.
         temp.Append("a.jsonl", Jsonl.Line("그다음", Since.AddMinutes(5), output: 11));
@@ -683,6 +693,7 @@ public class TokenScanTests
 
         Assert.True(result.Added.IsEmpty);
         Assert.Empty(result.Offsets);
+        Assert.False(result.Moved);
     }
 
     [Fact]
@@ -835,7 +846,8 @@ public class TokenScanParseTests
 }
 
 /// <summary>
-/// 얹는 셈. 진단 통로와 실제 동작이 **같은 코드**를 쓰게 떼어 놓은 자리다.
+/// 얹는 셈 중 **합계 병합만** 떼어 굳힌 자리. 진단 통로가 타는 것은
+/// <c>UsageMeter.Applying</c> 이고 그쪽이 상태를 만들면서 이걸 부른다.
 /// </summary>
 public class TokenScanApplyTests
 {

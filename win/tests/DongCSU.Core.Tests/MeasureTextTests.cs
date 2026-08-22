@@ -1,3 +1,4 @@
+using System.Globalization;
 using DongCSU.Core.Usage;
 
 namespace DongCSU.Core.Tests;
@@ -159,6 +160,58 @@ public class MeasureTextTests
     public void 한도가_없으면_줄표다()
     {
         Assert.Equal("—", MeasureText.Headline(new MeterRecord()));
+    }
+
+    // ── 기록 한 줄 토큰 ─────────────────────────────────────────────
+
+    /// <summary>
+    /// **목록에는 캐시를 절대 안 넣는다.** 캐시가 다 먹어서 어느 기록이나 억 단위로
+    /// 보이면 서로 견줄 수가 없다 — 상세 창에서 켜는 것과 갈리는 자리라 못 박아 둔다.
+    /// </summary>
+    [Fact]
+    public void 기록_한_줄은_캐시를_빼고_적는다()
+    {
+        var record = new MeterRecord { Tokens = Sample };
+
+        Assert.Equal("2.2만 토큰", MeasureText.RecordTokens(record));
+        // 상세 창에서 캐시를 켜면 9.2만이다. 목록은 그 설정과 무관하게 늘 같은 값이다.
+        Assert.NotEqual(
+            $"{TokenFormat.Short(MeasureText.Total(Sample, includesCache: true))} 토큰",
+            MeasureText.RecordTokens(record));
+    }
+
+    // ── 기록 날짜 ───────────────────────────────────────────────────
+
+    private static MeterRecord StoppedAtNoon => new()
+    {
+        // 2026-08-22 는 토요일이다.
+        StoppedAt = new DateTimeOffset(2026, 8, 22, 14, 3, 0, TimeSpan.Zero),
+    };
+
+    /// <summary>목록·상세·확인 창 셋이 이 글자를 같이 쓴다.</summary>
+    [Fact]
+    public void 기록_날짜는_요일까지_적는다()
+    {
+        Assert.Equal("8월 22일 (토) 14:03", MeasureText.RecordDate(StoppedAtNoon));
+    }
+
+    /// <summary>
+    /// **기계 로캘을 안 탄다.** 영어 윈도우에서 요일만 <c>Sat</c> 으로 나오면 한 줄 안에
+    /// 두 나라 말이 섞인다.
+    /// </summary>
+    [Fact]
+    public void 기록_날짜는_기계_로캘을_안_탄다()
+    {
+        var before = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("en-US");
+            Assert.Equal("8월 22일 (토) 14:03", MeasureText.RecordDate(StoppedAtNoon));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = before;
+        }
     }
 
     // ── 표본 문구 ───────────────────────────────────────────────────
