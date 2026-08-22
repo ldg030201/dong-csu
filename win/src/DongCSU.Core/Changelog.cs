@@ -156,6 +156,14 @@ public static class Changelog
                         ChangelogNote.New("아직 다듬는 중이라 beta 표시 (숫자가 실제와 어긋날 수 있음)"),
                     ],
                 },
+                new ChangelogGroup
+                {
+                    Title = "마스코트",
+                    Notes =
+                    [
+                        ChangelogNote.Remove("부엉이 아이콘의 베타 딱지 제거"),
+                    ],
+                },
             ],
         },
         new ChangelogEntry
