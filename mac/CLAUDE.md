@@ -66,7 +66,8 @@ dong-csu --render-owl-gif ../docs/characters/owl  # 하나마다 움직이는 GI
 dong-csu --dump-owl ../shared/owl.json            # 윈도우판과 나눠 쓸 부엉이 데이터
 dong-csu --dump-sprites <디렉터리> [sheet]        # 부엉이를 그림 마스코트 형식으로 (예시·검증용)
 dong-csu --fit-sheet <시트.png> [나올.json]       # 그린 시트에서 칸 좌표 뽑기
-dong-csu --probe-perch [selftest]                 # 창에 붙는 계산 · 붙여 둔 것이 버티는지
+dong-csu --probe-mascot [캐릭터]                  # 번들 시트가 몇 칸 읽히는지
+dong-csu --probe-perch [캐릭터] [selftest]        # 창에 붙는 계산 · 붙여 둔 것이 버티는지
 dong-csu --probe-login [on|off]                   # 로그인 항목 등록 상태 확인·변경
 dong-csu --probe-tokens 30                        # 최근 30분 동안 Claude Code가 쓴 토큰
 dong-csu --probe-meter [selftest|scan]            # 측정 기록 확인
@@ -185,16 +186,36 @@ GIF가 실제 애니메이션과 어긋나면 안 된다. GIF는 손으로 만�
 
 ## 그림 마스코트
 
-사용자가 제 그림을 넣는 통로다. **부엉이를 대체하지 않는다** — 부엉이는 파츠를 겹쳐
-그리는 쪽을 계속 쓰고, 이건 그 위에 얹힌 갈래다. 상태 판정은 `OwlAnimator.spriteState`
-하나에서 나와서 두 갈래가 같은 판단을 한다.
-
-`~/Library/Application Support/<번들 ID>/mascot/` 에 넣는다.
+**지금 기본이 이쪽이다.** 부엉이도 라쿤도 그림 시트 한 장으로 돌고, 파츠를 겹쳐
+그리는 격자 부엉이(`ClaudeIconStyle.owl`)는 보관용으로 남아 있다. 상태 판정은
+`OwlAnimator.spriteState` 하나에서 나와서 두 갈래가 같은 판단을 한다.
 
 | | |
 | --- | --- |
 | `mascot.png` | 칸을 나눠 담은 한 장 (6×4). 없으면 낱장 `<상태>.png` 를 찾는다 |
 | `mascot.json` | 칸마다 어느 자리를 읽을지. **없으면 균등 격자로 나눈다** |
+
+> [!WARNING]
+> **사용자 폴더로는 아직 못 바꾼다.** 한동안
+> `~/Library/Application Support/<번들 ID>/mascot/` 를 안내했는데 **그 경로를 읽는
+> 코드가 없다.** `MascotSpriteSet` 을 만드는 곳이 `MascotSpriteStore.bundled(_:)`
+> 하나뿐이고 그건 번들만 본다. `mascot.json`(`MascotAtlas`)도 적히기만 하고 읽는 곳이
+> 없다. 지금 캐릭터를 바꾸는 길은 번들 그림을 갈아 끼우고 다시 빌드하는 것뿐이다.
+
+### 캐릭터를 더할 때 손대는 곳 셋
+
+**이름 셋이 전부 같아야 한다.** 어긋나면 그 캐릭터만 조용히 격자 부엉이로 떨어지고
+화면에는 아무 말도 안 나온다.
+
+| | |
+| --- | --- |
+| `Resources/<이름>.png` | 다듬은 규격 시트 |
+| `ClaudeIconStyle` | 케이스 하나 + `sheetResource` 에 `"<이름>"` + 제목 둘 |
+| `build.sh` 의 `for extra in …` | `<이름>` 한 낱말 |
+
+`sheetResource` 가 값을 주면 나머지는 따라온다 — 아이콘 목록 · 창에 붙기 · 폭 재기가
+전부 `usesSheet` 하나만 본다. **캐릭터 이름으로 견주는 코드를 새로 쓰지 마라**
+(`== .owlSheet` 로 적어 두면 캐릭터를 더할 때마다 흩어진 자리를 다 찾아 고쳐야 한다).
 
 ### 크기를 못 박고 칸을 선으로 가른다
 
@@ -312,9 +333,15 @@ dong-csu --fit-sheet mascot.png
 
 | 자세 | 넘어가는 것 | 깊이 |
 | --- | --- | --- |
-| 걸터앉기 | 다리와 발 | 잉크 세로의 **15%** |
-| 거꾸로 매달리기 | 발과 발목 | 잉크 세로의 **15%** |
+| 걸터앉기 | 뒷다리와 발 | 잉크 세로의 **15%** |
+| 아래매달리기 | **잡는 부위** — 손이 있으면 손, 없으면 발 | 잉크 세로의 **15%** |
 | 벽붙기 | 붙잡는 앞다리 | 잉크 가로의 **25%** |
+
+**무엇으로 매달리는지는 캐릭터가 정하고, 코드는 안 본다.** 라쿤은 손으로 잡아
+똑바로 매달리고 부엉이는 날개로 못 움켜쥐어서 발로 잡고 뒤집힌다. 어느 쪽이든
+**잡는 부위가 그림 위쪽 15%** 에 오므로 여기 셈은 그대로다 — 자세를 새로 만들거나
+`MascotSprite` 를 늘릴 이유가 없다. 가르는 것은 [`prompt.txt`](../docs/characters/prompt.txt)
+뿐이다.
 
 **그림 절반을 걸치게 해 본 적이 있고 그건 버렸다.** 몸이 창에 잠겨서 무엇에 붙어
 있는지가 흐려졌다. 지금 넘어가는 것은 몸이 아니라 잡는 부위뿐이라 그 문제가 안 생긴다.

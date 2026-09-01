@@ -16,7 +16,8 @@
 
 개발 중에 띄우는 건 **`DongCSU-Test`** 라는 별개의 앱이다. 번들 ID가 `com.ldg.dong-csu-test`로
 달라서 설정·창 위치·메뉴바 자리를 정식판과 공유하지 않고, 둘을 동시에 띄워 비교할 수 있다.
-메뉴바 아이콘은 테스트판만 몸 색이 보라색이다.
+메뉴바 아이콘은 테스트판만 몸 색이 보라색이다. **마스코트는 정식판과 같은 색이다** —
+새 그림을 확인하려고 띄운 테스트판에서 그 색을 못 보면 앞뒤가 바뀐다.
 
 ```bash
 VARIANT=test ./build.sh    # DongCSU-Test.app  (dev.sh의 기본값)
@@ -32,7 +33,8 @@ VARIANT=test ./build.sh    # DongCSU-Test.app  (dev.sh의 기본값)
 ```bash
 dong-csu --render out.png 34 61 owl ok large   # HUD (사용률·아이콘·상태·배율)
 dong-csu --render out.png 34 61 owl ok pet hover   # 펫 모드 (마우스 올린 모습)
-dong-csu --render out.png 34 61 owl ok test    # 테스트판 모습 (보라 마스코트 + 버전 딱지)
+dong-csu --render out.png 34 61 owl ok test    # 테스트판 모습 (버전 딱지)
+dong-csu --render out.png 34 61 owl ok fable   # 모델별 사용량을 켠 모습 (링 셋)
 dong-csu --render-settings out.png version     # 설정 창의 특정 탭
 dong-csu --render-menubar out.png 16           # 메뉴바 아이콘
 dong-csu --render-icon out.png 1024            # 앱 아이콘
@@ -47,7 +49,8 @@ dong-csu --dump-owl ../shared/owl.json         # 윈도우판과 나눠 쓸 부�
 `--render`의 뒤쪽 인자는 순서와 무관하게 인식한다:
 보기(`expanded` `collapsed` `pet`), `hover` `light` `expandLeft` `stats` `update`,
 버전 딱지(`version` 정식판 · `test` 테스트판), 배율(`small`~`extraLarge`),
-상태(`ok` `stale` `reauth`), 0~1 사이 숫자는 배경 불투명도.
+상태(`ok` `stale` `reauth`), `fable`(모델별 사용량을 켠 모습),
+0~1 사이 숫자는 배경 불투명도.
 
 `--render-settings`는 탭 이름(`status` `measure` `display` `icon` `pet` `account`
 `version`)과 `update=1.2.0`(새 버전이 있는 것처럼 그리기)을 받는다.
