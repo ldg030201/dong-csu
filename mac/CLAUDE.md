@@ -56,7 +56,7 @@ pkill -f DongCSU-Test; open build/DongCSU-Test.app
 이걸로 먼저 확인한다.
 
 ```bash
-dong-csu --render out.png 34 61 owl ok large      # HUD (사용률·아이콘·상태·배율)
+dong-csu --render out.png 34 61 owlSheet ok large # HUD (사용률·아이콘·상태·배율)
 dong-csu --render-settings out.png changelog      # 설정 창의 특정 탭
 dong-csu --probe-layout                           # 설정 창이 탭마다 얼마나 길어지는지
 dong-csu --render-menubar out.png 16              # 메뉴바 아이콘
