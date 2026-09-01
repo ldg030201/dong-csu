@@ -527,7 +527,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl"),
     exit(ok ? 0 : 1)
 }
 
-// 기분마다 움직이는 GIF를 만든다: dong-csu --render-owl-gif <디렉터리> [칸높이]
+// 기분마다 움직이는 GIF를 만든다: dong-csu --render-owl-gif <디렉터리> [칸높이] [캐릭터]
 // 문서에 넣을 그림이다. 자세를 고치면 다시 돌려서 갱신한다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
    flagIndex + 1 < CommandLine.arguments.count {
@@ -537,10 +537,14 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
     // `grid` 를 붙이면 코드로 그리는 오리지널 부엉이로 뽑는다. 기본은 기본 캐릭터와
     // 같은 그림 마스코트다 — 문서가 화면과 다른 부엉이를 보여주면 안 된다.
     let usesGrid = arguments.contains("grid")
+    // 캐릭터 이름(`owlSheet` · `raccoonSheet`)을 끼워 넣으면 그 캐릭터로 뽑는다.
+    // **이름으로 견주지 않는다** — 시트를 쓰는 캐릭터면 무엇이든 여기로 들어온다.
+    let style = arguments.compactMap(ClaudeIconStyle.init(rawValue:))
+        .first { $0.usesSheet } ?? .default
     let written = MainActor.assumeIsolated {
         OwlGIFRenderer.writeAll(
             to: directory, cell: cell,
-            sheet: usesGrid ? nil : MascotSpriteStore.bundled(.owlSheet)
+            sheet: usesGrid ? nil : MascotSpriteStore.bundled(style)
         )
     }
     guard let written else {

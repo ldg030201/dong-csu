@@ -62,7 +62,7 @@ dong-csu --probe-layout                           # 설정 창이 탭마다 얼�
 dong-csu --render-menubar out.png 16              # 메뉴바 아이콘
 dong-csu --render-icon out.png 1024               # 앱 아이콘
 dong-csu --render-owl out.png 96                  # 부엉이 애니메이션 전 프레임 (기분 + 걷기·달리기)
-dong-csu --render-owl-gif ../docs/characters/owl  # 하나마다 움직이는 GIF (문서용)
+dong-csu --render-owl-gif <디렉터리> [칸높이] [캐릭터]  # 하나마다 움직이는 GIF (문서용)
 dong-csu --dump-owl ../shared/owl.json            # 윈도우판과 나눠 쓸 부엉이 데이터
 dong-csu --dump-sprites <디렉터리> [sheet]        # 부엉이를 그림 마스코트 형식으로 (예시·검증용)
 dong-csu --fit-sheet <시트.png> [나올.json]       # 그린 시트에서 칸 좌표 뽑기
@@ -183,6 +183,15 @@ ad-hoc 서명이라 신원이 **바이너리 해시**다. 앱이 직접 `SecItem
 
 **자세나 프레임 시간을 고쳤으면 `--render-owl-gif`를 다시 돌린다.** 캐릭터 문서의
 GIF가 실제 애니메이션과 어긋나면 안 된다. GIF는 손으로 만들지 않는다.
+**캐릭터마다 한 번씩 돌린다** — 캐릭터 이름을 끼워 넣으면 그 시트로 뽑는다.
+
+```bash
+dong-csu --render-owl-gif ../docs/characters/owl     120 owlSheet
+dong-csu --render-owl-gif ../docs/characters/raccoon 120 raccoonSheet
+```
+
+**`--render` 의 캐릭터 인자도 `owlSheet` 다.** `owl` 이라고 적으면 보관용 격자 부엉이가
+나온다 — 문서 그림을 그걸로 뽑아 놓고 한참 몰랐다.
 
 ## 그림 마스코트
 
