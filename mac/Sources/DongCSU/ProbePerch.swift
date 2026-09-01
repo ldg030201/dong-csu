@@ -21,8 +21,18 @@ enum ProbePerch {
     /// 그림자(`shadow`)가 알파를 몇 px 번지게 한다. 그만큼은 봐준다.
     private static let tolerance: CGFloat = 6
 
+    /// 어느 캐릭터로 잴지. 캐릭터마다 그림이 달라서 붙는 자리도 다르다.
+    ///
+    /// **여기가 화면과 같은 통로를 타야 한다.** 잉크 상자도 잡는 깊이도 시트에서
+    /// 나오므로, 새 캐릭터를 넣고 이걸 안 돌려 보면 그 캐릭터에서만 발이 뜬다.
+    private(set) static var style: ClaudeIconStyle = .owlSheet
+
     static func run(selftestOnly: Bool = false) -> Bool {
         if selftestOnly { return selftest() }
+        style = ClaudeIconStyle.allCases.first {
+            $0.usesSheet && CommandLine.arguments.contains($0.rawValue)
+        } ?? .owlSheet
+        print("캐릭터: \(style.shortTitle) (\(style.rawValue))")
         if CommandLine.arguments.contains("windows") { dumpWindows(); return true }
         var passed = true
         passed = surveyWindows() && passed
@@ -31,7 +41,63 @@ enum ProbePerch {
         passed = checkPlacements() && passed
         surveySpots()
         passed = selftest() && passed
+        passed = checkScreens() && passed
         return passed
+    }
+
+    // MARK: - 다른 화면으로 넘어가기
+
+    /// **화면이 여럿일 때만 뜻이 있는 검사다.** 켜면 옆 화면 자리를 그대로 받아들이고,
+    /// 끄면 지금 화면 안으로 되당겨야 한다.
+    ///
+    /// 눈으로는 못 본다 — 배회는 3~11초에 한 번, 26pt/s 로 움직이고 키를 누르는 동안은
+    /// 멈춘다. 옆 화면까지 걸어가는 것을 지켜보려면 몇 분이 걸린다.
+    private static func checkScreens() -> Bool {
+        print("\n다른 화면으로 넘어가기")
+        let screens = NSScreen.screens
+        guard screens.count > 1 else {
+            print("  화면이 하나뿐이라 잴 것이 없다 — 이 기능은 아무 일도 하지 않는다")
+            return true
+        }
+        for (index, screen) in screens.enumerated() {
+            let f = screen.visibleFrame
+            print(String(format: "  화면 %d — x %.0f~%.0f  y %.0f~%.0f",
+                         index + 1, f.minX, f.maxX, f.minY, f.maxY))
+        }
+
+        let panel = NSRect(origin: .zero, size: UsageHUDView.size(mode: .pet))
+        let motion = PetMotionController()
+        motion.frame = { panel }
+        motion.visualFrame = { panel }
+
+        // 지금 창이 있는 화면과 **다른** 화면 한가운데를 목표로 삼는다.
+        let here = screens.first { $0.frame.intersects(panel) } ?? screens[0]
+        guard let there = screens.first(where: { $0 != here }) else { return true }
+        let target = NSPoint(
+            x: there.visibleFrame.midX - panel.width / 2,
+            y: there.visibleFrame.midY - panel.height / 2
+        )
+        func onOtherScreen(_ p: NSPoint) -> Bool {
+            NSRect(origin: p, size: panel.size).intersects(there.frame)
+        }
+
+        motion.crossesScreens = false
+        let blocked = motion.clamped(target, crossing: true)
+        motion.crossesScreens = true
+        let allowed = motion.clamped(target, crossing: true)
+        // **켜 두어도 배회가 아니면 안 넘어간다.** 커서를 피하거나 붙어 있던 데서
+        // 떨어질 때가 이 길로 온다.
+        let dodged = motion.clamped(target)
+
+        let offOK = blocked.map { !onOtherScreen($0) } ?? true
+        let onOK = allowed.map(onOtherScreen) ?? false
+        let dodgeOK = dodged.map { !onOtherScreen($0) } ?? true
+        print("  꺼짐 — 옆 화면 자리를 요구하면 지금 화면으로 되당긴다   \(offOK ? "통과" : "실패")")
+        print("  켜짐 · 배회 — 옆 화면 자리를 그대로 받아들인다          \(onOK ? "통과" : "실패")")
+        print("  켜짐 · 피하기 — 지금 화면 안에 남는다                   \(dodgeOK ? "통과" : "실패")")
+        let ok = offOK && onOK && dodgeOK
+        print(ok ? "\n통과" : "\n실패")
+        return ok
     }
 
     // MARK: - 붙어 있는 상태가 버티는지
@@ -84,7 +150,7 @@ enum ProbePerch {
         // **모서리 맨 끝을 겨냥해도 오프셋이 가둬져 나온다.** 안 가두면 그림 절반이 창
         // 밖으로 나간 자리에 앉은 뒤 첫 추적 틱에서 42pt 옆으로 튄다 — 미리보기와 착지는
         // 맞았는데 곧 옮겨가는 것으로 보여서 눈으로 원인을 잡기 어렵다.
-        let box = UsageHUDView.petMascotRect(scale: HUDScale.normal.factor, style: .owlSheet)
+        let box = UsageHUDView.petMascotRect(scale: HUDScale.normal.factor, style: style)
         let aim = CGRect(
             x: window.frame.minX - box.width / 2, y: window.frame.maxY - 5,
             width: box.width, height: box.height
@@ -201,7 +267,7 @@ enum ProbePerch {
     /// 그건 고장이 아니라 물리적으로 자리가 없는 것이라, 숫자로 보여줘야 구분이 된다.
     private static func surveySpots() {
         let scale = HUDScale.normal.factor
-        let box = UsageHUDView.petMascotRect(scale: scale, style: .owlSheet)
+        let box = UsageHUDView.petMascotRect(scale: scale, style: style)
         let windows = WindowSurvey.onScreenWindows()
         guard !windows.isEmpty else { return }
 
@@ -259,7 +325,7 @@ enum ProbePerch {
         if span < need { return "모서리가 \(Int((need - span).rounded()))pt 짧다" }
         let middle = PerchSpot(window: id, edge: edge, offset: span / 2, windowFrame: window)
         guard UsageHUDView.petPerchOrigin(
-            perch: edge, contact: middle.contact(in: window), scale: scale, style: .owlSheet
+            perch: edge, contact: middle.contact(in: window), scale: scale, style: style
         ) != nil else {
             return "화면 밖" + shortfall(
                 edge: edge, window: window, scale: scale,
@@ -271,7 +337,7 @@ enum ProbePerch {
         let sink = { (spot: PerchSpot) in
             UsageHUDView.petPerchSink(
                 perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
-                scale: scale, style: .owlSheet
+                scale: scale, style: style
             )
         }
         let aim = WindowSurvey.landingArea(middle, mascot: mascot, sink: sink(middle))
@@ -281,7 +347,7 @@ enum ProbePerch {
         let placeable = { (spot: PerchSpot) in
             UsageHUDView.petPerchOrigin(
                 perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
-                scale: scale, style: .owlSheet
+                scale: scale, style: style
             ) != nil
         }
         let picked = WindowSurvey.snap(mascot: aim, within: WindowSurvey.snapDistance(mascot: mascot),
@@ -298,12 +364,12 @@ enum ProbePerch {
         edge: MascotPerch, window: CGRect, scale: CGFloat, contact: CGPoint
     ) -> String {
         guard let ink = UsageHUDView.petMascotInkRect(
-                perch: edge, scale: scale, style: .owlSheet
+                perch: edge, scale: scale, style: style
               ),
               let screen = NSScreen.screens.first(where: { $0.frame.intersects(window) })
         else { return "" }
         let sink = UsageHUDView.petPerchSink(
-            perch: edge, contact: contact, scale: scale, style: .owlSheet
+            perch: edge, contact: contact, scale: scale, style: style
         )
         let visible = screen.visibleFrame
         // 창 밖에 남는 몫만큼 자리가 있어야 한다.
@@ -325,7 +391,9 @@ enum ProbePerch {
     }
 
     /// 한글은 터미널에서 두 칸을 쓴다. `%-20@` 로는 줄이 안 맞는다.
-    private static func pad(_ text: String, _ width: Int) -> String {
+    /// 한글은 터미널에서 두 칸을 먹는다. 글자 수로 맞추면 표가 어긋난다.
+    /// `ProbeHUD` 도 같이 쓴다.
+    static func pad(_ text: String, _ width: Int) -> String {
         let visual = text.reduce(0) { $0 + ($1.isASCII ? 1 : 2) }
         return text + String(repeating: " ", count: max(width - visual, 0))
     }
@@ -413,19 +481,19 @@ enum ProbePerch {
     // MARK: - 그림 자리
 
     private static func checkInk() -> Bool {
-        guard let set = MascotSpriteStore.bundled else {
+        guard let set = MascotSpriteStore.bundled(style) else {
             print("\n실패 — 번들에 마스코트 시트가 없다")
             return false
         }
         let scale = HUDScale.normal.factor
-        let box = UsageHUDView.petMascotRect(scale: scale, style: .owlSheet)
+        let box = UsageHUDView.petMascotRect(scale: scale, style: style)
         print(String(format: "\n그림 묶음 상자 %.1f x %.1f pt (배율 1)", box.width, box.height))
         print("자세마다 그 상자 안 어디에 그려져 있나 — 예측(계산) vs 실제(그려서 잰 것)")
 
         var passed = true
         for perch in [MascotPerch.top, .bottom, .right, .left] {
             guard let predicted = UsageHUDView.petMascotInkRect(
-                perch: perch, scale: scale, style: .owlSheet
+                perch: perch, scale: scale, style: style
             ) else {
                 print("  \(label(perch)) — 예측을 못 냈다")
                 passed = false
@@ -485,19 +553,19 @@ enum ProbePerch {
     }
 
     private static func placements(scale: CGFloat) -> Bool {
-        let box = UsageHUDView.petMascotRect(scale: scale, style: .owlSheet)
+        let box = UsageHUDView.petMascotRect(scale: scale, style: style)
         guard let screen = NSScreen.main else { return false }
         let visible = screen.visibleFrame
         let sink = { (spot: PerchSpot) in
             UsageHUDView.petPerchSink(
                 perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
-                scale: scale, style: .owlSheet
+                scale: scale, style: style
             )
         }
         let placeable = { (spot: PerchSpot) in
             UsageHUDView.petPerchOrigin(
                 perch: spot.edge, contact: spot.contact(in: spot.windowFrame),
-                scale: scale, style: .owlSheet
+                scale: scale, style: style
             ) != nil
         }
 
@@ -617,14 +685,14 @@ enum ProbePerch {
         var passed = true
         for perch in [MascotPerch.top, .bottom, .right, .left] {
             let want = UsageHUDView.petPerchSink(
-                perch: perch, contact: contact, scale: scale, style: .owlSheet
+                perch: perch, contact: contact, scale: scale, style: style
             )
             guard
                 let origin = UsageHUDView.petPerchOrigin(
-                    perch: perch, contact: contact, scale: scale, style: .owlSheet
+                    perch: perch, contact: contact, scale: scale, style: style
                 ),
                 let ink = UsageHUDView.petMascotInkRect(
-                    perch: perch, scale: scale, style: .owlSheet
+                    perch: perch, scale: scale, style: style
                 )
             else {
                 print("  \(label(perch)) — 자리를 못 냈다")
@@ -663,7 +731,7 @@ enum ProbePerch {
     ) -> CGRect? {
         let height = UsageHUDView.petOwlHeight(scale: HUDScale.normal.factor)
         let view = MascotSpriteView(
-            set: set, sprite: sprite, flipped: flipped, testLook: false, size: height
+            set: set, sprite: sprite, flipped: flipped, size: height
         )
         let renderer = ImageRenderer(content: view)
         renderer.scale = 1
