@@ -36,7 +36,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 | 상주하는 곳 | 메뉴바 | 트레이 |
 | 설치 | Homebrew | WinGet · 설치 exe |
 | 업데이트 | 터미널에서 `brew upgrade` | 앱이 스스로 |
-| 지금 버전 | 2.5.1 | 2.4.0 |
+| 지금 버전 | 2.5.2 | 2.4.0 |
 | | **[설치하기 →](mac/README.md)** | **[설치하기 →](win/README.md)** |
 
 **어느 쪽이든 Claude Code에 로그인되어 있어야 합니다.** 이 앱은 Claude Code가 저장해 둔
