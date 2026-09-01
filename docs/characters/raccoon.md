@@ -7,11 +7,27 @@
 더하고 `mac/Resources/raccoon.png` 를 둔 것이 전부다.
 
 <div align="center">
-<img src="raccoon/idle.png" width="150" alt="라쿤">
+<img src="raccoon/idle.gif" width="150" alt="라쿤">
 </div>
 
 기분·걸음걸이·펫 모드·창에 붙기는 전부 [부엉이 문서](owl.md)와 같다. 판단하는 코드가
 한 벌뿐이라 캐릭터를 바꿔도 달라지는 것은 그림뿐이다.
+
+<table>
+<tr>
+<td align="center" width="20%"><img src="raccoon/idle.gif" width="110" alt="평소"><br><sub><b>평소</b></sub></td>
+<td align="center" width="20%"><img src="raccoon/tired.gif" width="110" alt="지침"><br><sub><b>지침</b></sub></td>
+<td align="center" width="20%"><img src="raccoon/exhausted.gif" width="110" alt="탈진"><br><sub><b>탈진</b></sub></td>
+<td align="center" width="20%"><img src="raccoon/offline.gif" width="110" alt="끊김"><br><sub><b>끊김</b></sub></td>
+<td align="center" width="20%"><img src="raccoon/dragged.gif" width="110" alt="끌림"><br><sub><b>끌림</b></sub></td>
+</tr>
+<tr>
+<td align="center"><img src="raccoon/dizzy.gif" width="110" alt="어지러움"><br><sub><b>어지러움</b></sub></td>
+<td align="center"><img src="raccoon/walk.gif" width="110" alt="걷기"><br><sub><b>걷기</b></sub></td>
+<td align="center"><img src="raccoon/run.gif" width="110" alt="달리기"><br><sub><b>달리기</b></sub></td>
+<td colspan="2"></td>
+</tr>
+</table>
 
 ## 부엉이와 다른 것
 

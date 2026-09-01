@@ -13,7 +13,7 @@ Claude 쪽 그림(Clawd, Claude 아이콘, 버스트 마크)은 출처가 달라
 | | 캐릭터 | 상태 | 문서 |
 | --- | --- | --- | --- |
 | <img src="owl/idle.gif" width="72" alt="부엉이"> | **부엉이** | 기본값 | [owl.md](owl.md) |
-| <img src="raccoon/idle.png" width="72" alt="라쿤"> | **라쿤** | beta · 그림 시트만 있는 첫 캐릭터 | [raccoon.md](raccoon.md) |
+| <img src="raccoon/idle.gif" width="72" alt="라쿤"> | **라쿤** | beta · 그림 시트만 있는 첫 캐릭터 | [raccoon.md](raccoon.md) |
 | | **부엉이 오리지널** | 코드로 그린 첫 판 | [owl.md](owl.md) |
 
 ## 캐릭터를 하나 더 만들 때
