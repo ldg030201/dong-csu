@@ -250,6 +250,19 @@ private struct Canvas {
     /// 날아간다. 배경은 테두리에서 이어져 있고 캐릭터는 윤곽선으로 막혀 있어서,
     /// 번지는 방식이면 안쪽을 안 건드린다.
     mutating func clearBackground() -> Int {
+        // **알파를 들고 온 그림은 색으로 지우지 않는다.**
+        //
+        // 색으로 지우는 길은 배경이 진짜 픽셀로 그려져 왔을 때만 쓸 것이다. 이미
+        // 투명한 그림에까지 태우면 지울 것이 없는데도 가장자리에서 배경색을 추측하는데,
+        // 거기 남아 있는 것은 배경이 아니라 **그림 둘레에 번진 옅은 그림자**다.
+        // 그걸 배경으로 읽으면 그와 밝기가 겹치는 것이 통째로 날아간다 — 라쿤이
+        // 그랬다. 그림자가 짙은 남색이라 "밝기 0~37 이 배경" 으로 잡혔고,
+        // 같은 범위인 **윤곽선과 발이 지워졌다.**
+        if isAlreadyTransparent() {
+            let hazed = clearHaze()
+            print("배경: 그림이 이미 투명하다 — 색으로 지우지 않는다")
+            return hazed
+        }
         guard let key = borderKey() else {
             print("가장자리가 한 가지 배경이 아니다 — 배경을 안 건드린다")
             return 0
@@ -324,6 +337,54 @@ private struct Canvas {
             fringe += marked.count
         }
         return queue.count + fringe
+    }
+
+    /// 배경이 이미 빠져 있는 그림인지. 가장자리 띠가 거의 다 비어 있으면 그렇다.
+    ///
+    /// **칸 선이 그어져 있어도 상관없다.** 칸 자리는 규격으로 정해져 있어서
+    /// (`cells(columns:rows:)` 가 균등 격자로 가르고 경계 안쪽만 훑는다) 선은 어차피
+    /// 어느 칸에도 안 들어간다. 지울 이유가 없는 것을 지우려다 그림을 깎는 쪽이 나쁘다.
+    private func isAlreadyTransparent() -> Bool {
+        let band = max(1, min(8, min(width, height) / 8))
+        var total = 0, empty = 0
+        for x in stride(from: 0, to: width, by: 2) {
+            for y in Array(0..<band) + Array((height - band)..<height) {
+                total += 1
+                if data[offset(x, y) + 3] <= 8 { empty += 1 }
+            }
+        }
+        guard total > 0 else { return false }
+        return empty * 10 >= total * 7
+    }
+
+    /// 그림에서 떨어져 나온 옅은 안개를 지운다. 지운 픽셀 수를 돌려준다.
+    ///
+    /// AI가 준 투명 배경에는 그림 둘레로 넓게 번진 반투명 그림자가 딸려 온다.
+    /// 눈에는 뿌연 테로 보이고, 칸 잉크 상자를 부풀려 캐릭터를 작게 만든다.
+    ///
+    /// **가장자리 계단은 남긴다.** 반투명이라고 다 지우면 윤곽선이 톱니가 된다.
+    /// 그림의 일부인 반투명은 **불투명한 픽셀에 붙어 있고**, 그림자는 떨어져 있다 —
+    /// 둘을 가르는 것이 이 검사다.
+    private mutating func clearHaze() -> Int {
+        let reach = 2
+        var doomed: [Int] = []
+        for y in 0..<height {
+            for x in 0..<width {
+                let alpha = data[offset(x, y) + 3]
+                guard alpha > 0, alpha < 250 else { continue }
+                var touchesInk = false
+                for dy in -reach...reach where !touchesInk {
+                    for dx in -reach...reach {
+                        let nx = x + dx, ny = y + dy
+                        guard nx >= 0, ny >= 0, nx < width, ny < height else { continue }
+                        if data[offset(nx, ny) + 3] >= 250 { touchesInk = true; break }
+                    }
+                }
+                if !touchesInk { doomed.append(y * width + x) }
+            }
+        }
+        for index in doomed { erase(index) }
+        return doomed.count
     }
 
     /// 배경이 무엇인지 가장자리에서 알아낸다.
