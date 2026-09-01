@@ -43,6 +43,11 @@ enum ClaudeIconStyle: String, CaseIterable {
     /// 번들에 규격 시트가 구워져 있고, **파일을 바꾸면 캐릭터가 바뀐다.**
     /// 앞으로 캐릭터를 더하는 것은 전부 이쪽이다.
     case owlSheet
+    /// 그림 파일 한 장으로 도는 라쿤.
+    ///
+    /// **부엉이와 코드를 하나도 안 나눠 쓴다.** 같은 규격 시트를 읽는 통로에
+    /// 파일 이름만 다르게 물린 것이라, 캐릭터를 더하는 값은 `sheetResource` 한 줄이다.
+    case raccoonSheet
     /// Claude Code 마스코트 Clawd.
     case clawd
     /// Claude 앱 아이콘. 번들에 넣어둔 이미지를 쓴다.
@@ -54,7 +59,7 @@ enum ClaudeIconStyle: String, CaseIterable {
 
     var group: IconStyleGroup {
         switch self {
-        case .owlSheet: return .character
+        case .owlSheet, .raccoonSheet: return .character
         case .owl: return .original
         case .clawd, .appIcon, .mark: return .claude
         }
@@ -64,6 +69,7 @@ enum ClaudeIconStyle: String, CaseIterable {
         switch self {
         case .owl: return "부엉이 오리지널 (코드로 그린 첫 판)"
         case .owlSheet: return "부엉이 (dong-csu 마스코트)"
+        case .raccoonSheet: return "라쿤"
         case .clawd: return "Clawd (Claude Code 마스코트)"
         case .appIcon: return "Claude 아이콘"
         case .mark: return "버스트 마크"
@@ -80,7 +86,7 @@ enum ClaudeIconStyle: String, CaseIterable {
     /// 만들기 전까지는 정지 그림이라, 그때 여기에 한 줄을 더하는 게 맞다.
     var isAnimated: Bool {
         switch self {
-        case .owl, .owlSheet: return true
+        case .owl, .owlSheet, .raccoonSheet: return true
         case .clawd, .appIcon, .mark: return false
         }
     }
@@ -90,11 +96,42 @@ enum ClaudeIconStyle: String, CaseIterable {
         switch self {
         case .owl: return "오리지널"
         case .owlSheet: return "부엉이"
+        case .raccoonSheet: return "라쿤"
         case .clawd: return "Clawd"
         case .appIcon: return "Claude 아이콘"
         case .mark: return "버스트"
         }
     }
+
+    /// 번들에 구워 둔 규격 시트의 파일 이름(확장자 뺀 것). 시트로 도는 그림만 값이 있다.
+    ///
+    /// **캐릭터를 더할 때 손대는 곳이 여기다.** 그림을 `Resources/<이름>.png` 로 두고
+    /// 여기 한 줄을 더하면 나머지(붙이기 · 미리보기 · 폭 재기)가 전부 따라온다.
+    var sheetResource: String? {
+        switch self {
+        case .owlSheet: return "mascot"
+        case .raccoonSheet: return "raccoon"
+        case .owl, .clawd, .appIcon, .mark: return nil
+        }
+    }
+
+    /// 아직 다듬는 중인 캐릭터인지. 타일 위에 `beta` 딱지가 붙는다.
+    ///
+    /// **고르는 것을 막지는 않는다.** 설정 탭의 `beta` 와 같은 뜻이다 — 써도 되는데
+    /// 아직 손볼 데가 남았다는 표시다.
+    var isBeta: Bool {
+        switch self {
+        case .raccoonSheet: return true
+        case .owl, .owlSheet, .clawd, .appIcon, .mark: return false
+        }
+    }
+
+    /// 그림 시트로 도는지. 창에 붙는 자세가 있는 것은 이쪽뿐이다.
+    ///
+    /// **캐릭터 이름으로 견주지 않는다.** `== .owlSheet` 로 적어 두면 캐릭터를 더할
+    /// 때마다 흩어진 자리를 다 찾아 고쳐야 하고, 하나만 빠뜨려도 그 캐릭터에서만
+    /// 붙이기가 조용히 죽는다.
+    var usesSheet: Bool { sheetResource != nil }
 }
 
 enum ClaudeIcon {
@@ -131,21 +168,6 @@ enum ClaudeIcon {
     }
 }
 
-/// 마스코트를 테스트판 색으로 그릴지. **렌더 통로가 끄고 들어온다.**
-///
-/// 값을 뷰마다 넘기지 않고 환경에 두는 이유: 설정 창의 아이콘 타일은 창 안쪽 깊은
-/// 곳에서 만들어져서, 인자로 내리려면 중간 뷰를 전부 손봐야 한다.
-private struct MascotTestLookKey: EnvironmentKey {
-    static let defaultValue = AppInfo.isTestBuild
-}
-
-extension EnvironmentValues {
-    var mascotTestLook: Bool {
-        get { self[MascotTestLookKey.self] }
-        set { self[MascotTestLookKey.self] = newValue }
-    }
-}
-
 struct ClaudeIconView: View {
     var style: ClaudeIconStyle
     /// **높이** 기준 크기. 격자 부엉이도 이 값을 높이로 받아서, 어느 그림을 골라도
@@ -158,12 +180,6 @@ struct ClaudeIconView: View {
     /// 조금 나가는 편이 오히려 맞다.
     var widthLimit: CGFloat?
     var eyeColor: Color = ClawdMark.defaultEyeColor
-    /// 테스트판 색으로 그릴지. **기본은 번들을 본다.**
-    ///
-    /// 문서 그림은 테스트 바이너리로 뽑기 때문에, 렌더 통로가 이 값을 꺼서 정식판
-    /// 모습을 그린다. 그러지 않으면 README 의 부엉이가 전부 보라색으로 나간다 —
-    /// 실제로 그렇게 나왔다.
-    @Environment(\.mascotTestLook) private var testLook
     /// 부엉이를 움직이게 할 애니메이터. 없으면 정지 자세로 그린다(렌더 통로).
     var owlAnimator: OwlAnimator?
 
@@ -171,11 +187,11 @@ struct ClaudeIconView: View {
 
     var body: some View {
         switch style {
-        case .owlSheet:
+        case .owlSheet, .raccoonSheet:
             // **파일에서 읽는다.** 번들에 규격 시트가 구워져 있고, 사용자 그림과
             // 똑같은 통로를 탄다. 시트가 없는 건 빌드가 깨진 것이므로 격자로 그리는
             // 쪽으로 떨어뜨려 화면이 비지는 않게 한다.
-            spriteBody(MascotSpriteStore.bundled)
+            spriteBody(MascotSpriteStore.bundled(style))
         case .owl:
             // 코드로 그리는 첫 판. 보관용이라 통로를 그대로 둔다.
             owl
@@ -213,7 +229,7 @@ struct ClaudeIconView: View {
             } else {
                 // 렌더 통로에는 애니메이터가 없다. 정지 자세로 그린다.
                 MascotSpriteView(
-                    set: set, sprite: .idle, flipped: false, testLook: testLook,
+                    set: set, sprite: .idle, flipped: false,
                     size: size, widthLimit: widthLimit
                 )
             }
@@ -226,11 +242,7 @@ struct ClaudeIconView: View {
         if let owlAnimator {
             AnimatedOwlView(animator: owlAnimator)
         } else {
-            // **팔레트를 명시한다.** 기본값은 정식판 파랑이라, 애니메이터가 없는
-            // 자리(설정 창 미리보기·렌더 통로)에서만 테스트판이 파랗게 나왔다.
-            //
-            // 문서 그림은 테스트 바이너리로 뽑으므로 렌더 통로가 이 값을 꺼 준다.
-            OwlMarkView(palette: testLook ? AppInfo.owlPalette : .normal)
+            OwlMarkView(palette: .normal)
         }
     }
 

@@ -724,21 +724,26 @@ struct MascotSpriteSet {
 /// `NSImage` 를 새로 만든다 — `ClaudeIcon.resolveImage()` 가 같은 이유로 캐시한다.
 @MainActor
 enum MascotSpriteStore {
-    private static var cached: MascotSpriteSet?
-    private static var loaded = false
+    private static var cached: [String: MascotSpriteSet?] = [:]
 
     /// 번들에 구워 둔 규격 시트.
     ///
     /// **부엉이도 파일이다.** 코드로 그리는 갈래를 따로 두면 같은 규격을 두 번
     /// 구현하는 셈이라 둘이 반드시 어긋난다. `build.sh` 가 빌드할 때
     /// `Resources/mascot.png` 를 넣거나, 없으면 격자 부엉이에서 구워 넣는다.
-    static var bundled: MascotSpriteSet? {
-        if loaded { return cached }
-        loaded = true
-        cached = Bundle.main
-            .url(forResource: "mascot", withExtension: "png")
+    ///
+    /// **캐릭터마다 따로 캐시한다.** 하나만 들고 있으면 설정 창에서 캐릭터 타일을
+    /// 나란히 그릴 때 한 칸 그릴 때마다 다른 시트를 디스크에서 다시 읽는다.
+    static func bundled(_ style: ClaudeIconStyle) -> MascotSpriteSet? {
+        guard let resource = style.sheetResource else { return nil }
+        if let hit = cached[resource] { return hit }
+        let set = Bundle.main
+            .url(forResource: resource, withExtension: "png")
             .flatMap { MascotSpriteSet(sheetAt: $0) }
-        return cached
+        // **못 찾은 것도 기억한다.** `Optional` 두 겹인 이유가 이거다 —
+        // 시트가 없는 빌드에서 뷰의 body 마다 번들을 뒤지지 않게 한다.
+        cached[resource] = .some(set)
+        return set
     }
 }
 
@@ -759,7 +764,6 @@ struct AnimatedMascotSpriteView: View {
             sprite: animator.spriteState,
             flipped: animator.spriteFlipped,
             sway: animator.spriteSway,
-            testLook: animator.usesTestLook,
             size: size,
             widthLimit: widthLimit
         )
@@ -779,8 +783,6 @@ struct MascotSpriteView: View {
     /// **그림 전체를 민다.** 파츠를 따로 움직이면 동물마다 자리가 애매해지는데,
     /// "걸을 때 몸이 좌우로 흔들린다"는 어느 동물에나 맞는다.
     var sway: Int = 0
-    /// 테스트판 색으로 그릴지. **기본은 번들을 본다** — 렌더 통로만 손으로 꽂는다.
-    var testLook: Bool = AppInfo.isTestBuild
     /// 마스코트 자리의 **높이**.
     let size: CGFloat
     /// 옆으로 퍼져도 되는 한계. nil 이면 안 막는다.
@@ -817,12 +819,6 @@ struct MascotSpriteView: View {
             .resizable()
             .interpolation(Self.interpolation(for: image))
             .scaledToFit()
-            // **테스트판은 색을 돌려 놓는다.** 링도 카드도 없는 펫 모드에서는 글자를
-            // 붙일 자리가 없어서 정식판과 구분할 방법이 색뿐이다 — 격자 부엉이가
-            // 보라색 팔레트로 그 일을 하던 것을, 그림 마스코트가 기본이 되면서
-            // 여기가 이어받는다. 색을 정해 칠하지 않고 돌리는 이유는 **어떤 그림이
-            // 들어올지 모르기 때문이다.** 사용자 그림에도 그대로 먹는다.
-            .hueRotation(.degrees(testLook ? 42 : 0))
     }
 
     /// 원본이 픽셀 그림인지 아닌지에 따라 확대 방식을 바꾼다.

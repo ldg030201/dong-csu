@@ -57,6 +57,17 @@ else
   echo "mascot: 격자 부엉이에서 구웠다"
 fi
 
+# 마스코트를 더 넣는다. **여기 이름은 ClaudeIconStyle.sheetResource 와 같아야 한다** —
+# 어긋나면 그 캐릭터만 격자 부엉이로 떨어지고, 화면에는 아무 말도 안 나온다.
+for extra in raccoon; do
+  if [[ -f "$ROOT/Resources/$extra.png" ]]; then
+    cp "$ROOT/Resources/$extra.png" "$APP/Contents/Resources/$extra.png"
+    echo "mascot: Resources/$extra.png 를 넣었다"
+  else
+    echo "mascot: Resources/$extra.png 가 없다 — 그 캐릭터는 격자로 떨어진다" >&2
+  fi
+done
+
 # 개발자 계정 없이 로컬 실행에 필요한 최소 서명.
 #
 # 자체 서명 인증서가 있으면 그걸 쓴다 — **손쉬운 사용 권한이 서명 신원에 걸리기**
