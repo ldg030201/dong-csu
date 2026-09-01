@@ -24,6 +24,9 @@ struct UsageLimit: Sendable, Hashable {
     /// 창이 새로 열려도 같은 한도를 가리키는 이름. 기록을 이 값으로 묶는다.
     var id: String { modelName.map { "\(kind)/\($0)" } ?? kind }
 
+    /// 링·숫자가 쓰는 꼴. 세 곳에서 같은 두 줄을 적고 있었다.
+    var window: UsageWindow { UsageWindow(utilization: percent, resetsAt: resetsAt) }
+
     var title: String {
         if let modelName { return "주간 · \(modelName)" }
         switch kind {

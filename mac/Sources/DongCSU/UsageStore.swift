@@ -41,6 +41,28 @@ final class UsageStore: ObservableObject {
         return weekly >= 100
     }
 
+    /// 세션(5시간) 한도를 다 썼다.
+    var isSessionSpent: Bool {
+        guard let session = snapshot?.fiveHour?.utilization else { return false }
+        return session >= 100
+    }
+
+    /// 화면에 그릴 모델별 주간 한도(`weekly_scoped`) 하나. 제일 많이 쓴 것.
+    ///
+    /// **세션·주간과 달리 없을 수 있다.** 요금제와 쓴 모델에 따라 달라서, 화면에서도
+    /// 있을 때만 그린다. 여럿이면 많이 쓴 것을 준다 — 링은 하나만 그릴 수 있다.
+    var scopedLimit: UsageLimit? {
+        snapshot?.limits.filter { $0.modelName != nil }.max { $0.percent < $1.percent }
+    }
+
+    /// 지금 이 순간 쓸 수 없다. **마스코트가 죽는 조건이다.**
+    ///
+    /// **둘 중 하나만 차도 못 쓴다.** 예전에는 주간만 봤는데, 세션을 다 쓴 사람은
+    /// 다음 창이 열릴 때까지 한 글자도 못 보내면서 마스코트만 멀쩡히 걸어다녔다.
+    /// 다시 쓸 수 있게 되기까지가 얼마나 남았는지는 링이 말하므로, 여기서는
+    /// **지금 되느냐** 만 본다.
+    var isSpent: Bool { isWeeklySpent || isSessionSpent }
+
     /// 조회가 성공할 때마다 부른다. 측정 기록(`UsageMeter`)이 여기에 붙는다.
     ///
     /// 저장소가 측정 객체를 직접 알면 조회와 기록이 한 덩어리가 되어, 조회만 쓰는
