@@ -93,6 +93,18 @@ BUMPED=1
 ./build.sh >/dev/null
 BUILT="$("$BIN" --version | awk '{print $2}')"
 
+# **날짜를 여기서 박는다.** 업데이트 확인은 `date` 가 있는 항목만 "나간 버전"으로
+# 세므로(`UpdateChecker.latest`), 비워 둔 채로 내면 태그도 릴리스도 나갔는데 앱에는
+# 새 버전이 없다고 뜬다. 실제로 2.5.2 를 그렇게 냈다.
+CHANGELOG=Sources/DongCSU/Changelog.swift
+if grep -q "version: \"$VERSION\", date: nil" "$CHANGELOG"; then
+  sed -i '' -E "s#(version: \"$VERSION\", date: )nil#\1\"$(date +%Y-%m-%d)\"#" "$CHANGELOG"
+  echo "▸ 변경 내역 날짜 $(date +%Y-%m-%d)"
+elif ! grep -q "version: \"$VERSION\"" "$CHANGELOG"; then
+  echo "변경 내역에 $VERSION 항목이 없다 — Changelog.swift 에 먼저 적어라" >&2
+  exit 1
+fi
+
 # 앱이 원격에서 받아보는 변경 내역. 태그를 올리기 전에 갱신해야
 # 새 버전이 나온 걸 옛 버전 앱에서도 볼 수 있다.
 dump_changelog >/dev/null
@@ -103,7 +115,7 @@ fi
 echo "▸ 빌드 확인 ($BUILT)"
 
 # ── 3. 커밋 · 태그 · 푸시 ───────────────────────────────────────
-git add Resources/Info.plist Sources/DongCSU/main.swift docs/changelog.json \
+git add Resources/Info.plist Sources/DongCSU/main.swift "$CHANGELOG" docs/changelog.json \
   "$REPO_ROOT/docs/changelog.json" "$REPO_ROOT/README.md"
 git commit -q -m "🔖 $TAG"
 COMMITTED=1
