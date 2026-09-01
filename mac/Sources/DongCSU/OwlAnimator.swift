@@ -30,9 +30,12 @@ enum OwlMood: String, CaseIterable {
     }
 
     /// 조회가 안 되는 동안에는 색을 빼서 지금 값이 아님을 몸으로 드러낸다.
-    /// 그 밖에는 빌드에 맞는 색을 쓴다 — 테스트판은 몸이 보라색이다.
+    ///
+    /// **테스트판도 정식판과 같은 색이다.** 한동안 테스트판은 마스코트까지 보라색으로
+    /// 그렸는데, 그러면 캐릭터가 캐릭터로 안 보인다 — 새로 그린 그림을 확인하려고 띄운
+    /// 테스트판에서 정작 그 색을 못 본다. 구분은 메뉴바 아이콘과 버전 딱지가 한다.
     var palette: OwlPalette {
-        self == .offline ? .offline : AppInfo.owlPalette
+        self == .offline ? .offline : .normal
     }
 
     /// 회색으로 굳는 색. 지금 쓸 수 없다는 뜻이다.
@@ -227,14 +230,14 @@ extension OwlMood {
     /// 지쳐 가는 정도는 세션(5시간)으로 본다 — 주간은 며칠에 걸쳐 천천히 차서,
     /// 그걸로 지치면 한 주 내내 지친 얼굴로 있게 된다.
     ///
-    /// **다만 주간을 다 쓴 것은 다르다.** 그때는 세션이 얼마 남았든 쓸 수 없으므로,
-    /// 세션 숫자를 보지 않고 곧바로 탈진이다. 이건 "천천히 지쳐 간다"가 아니라
-    /// "끝났다"라서 주간으로 판단하는 게 맞다.
+    /// **다만 한도를 다 쓴 것은 다르다.** 주간이 찼으면 세션이 얼마 남았든 쓸 수 없고,
+    /// 세션이 찼으면 주간이 얼마 남았든 지금은 못 쓴다. 어느 쪽이든 곧바로 탈진이다 —
+    /// 이건 "천천히 지쳐 간다"가 아니라 "끝났다"라서 백분율로 재는 갈래가 아니다.
     @MainActor
     static func resolve(store: UsageStore, isDragging: Bool) -> OwlMood {
         if store.isDisconnected { return .offline }
         // **다 쓴 것이 끌림보다 먼저다.** 죽은 부엉이는 집어 들어도 버둥거리지 않는다.
-        if store.isWeeklySpent { return .exhausted }
+        if store.isSpent { return .exhausted }
         if isDragging { return .dragged }
         guard let utilization = store.snapshot?.fiveHour?.utilization else { return .idle }
         if utilization >= exhaustedThreshold { return .exhausted }
@@ -412,19 +415,6 @@ final class OwlAnimator: ObservableObject {
         dizzyUntil = Date().addingTimeInterval(Self.dizzyDuration)
     }
 
-    /// 팔레트를 바깥에서 덮어쓴다. **렌더 통로 전용** — 테스트판 모습(보라색 몸)을
-    /// 실제 테스트 번들 없이 그려 보려고 둔 자리다. `@Published`가 아니라서 뷰가 생긴
-    /// 뒤에 바꿔도 다시 그려지지 않는다. 그리기 전에 한 번만 꽂는다.
-    var paletteOverride: OwlPalette?
-
-    /// 그림 마스코트를 테스트판 색으로 그릴지. **렌더 통로가 반드시 꽂는다.**
-    ///
-    /// 격자 부엉이는 팔레트로 색을 갈아 끼우지만 그림은 그럴 수가 없어서, 그리는
-    /// 쪽에서 색상만 돌린다. 번들(`AppInfo.isTestBuild`)을 바로 보면 안 된다 —
-    /// 문서 그림을 테스트 바이너리로 뽑기 때문에 전부 보라색이 된다.
-    var testLookOverride: Bool?
-    var usesTestLook: Bool { testLookOverride ?? AppInfo.isTestBuild }
-
     /// 다 써서 쓸 수 없는 상태. 켜면 자세는 그대로 두고 색만 뺀다.
     ///
     /// 기분을 따로 만들지 않는 이유: `owl.json` 에 애니메이션이 하나 더 생기고
@@ -441,13 +431,9 @@ final class OwlAnimator: ObservableObject {
     @Published private(set) var perch: MascotPerch?
 
     var palette: OwlPalette {
-        // **무엇보다 앞선다.** 아래 어느 갈래로 가든 회색이어야 한다 — 자세가 바뀌었다고
-        // 색이 돌아오면 다시 쓸 수 있게 된 것으로 읽힌다.
-        if isUnusable { return OwlMood.unusablePalette }
-        // 끊김의 회색도 색 자체가 정보라 덮어쓰지 않는다.
-        guard mood != .offline else { return mood.palette }
-        guard let paletteOverride else { return mood.palette }
-        return paletteOverride
+        // **무엇보다 앞선다.** 자세가 바뀌었다고 색이 돌아오면 다시 쓸 수 있게 된
+        // 것으로 읽힌다.
+        isUnusable ? OwlMood.unusablePalette : mood.palette
     }
 
     /// 끌려가는 동안 마우스의 속도(pt/s). 부호는 **마우스가 가는 쪽**이다.

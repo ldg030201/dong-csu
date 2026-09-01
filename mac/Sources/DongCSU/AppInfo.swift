@@ -38,14 +38,4 @@ enum AppInfo {
         isTestBuild ? "\(version) test" : version
     }
 
-    /// 마스코트를 그릴 기본 팔레트.
-    ///
-    /// 테스트판은 메뉴바 아이콘과 **같은 보라색 몸**으로 그린다. 링도 카드도 없는
-    /// 펫 모드에서는 글자를 붙일 자리가 없어서, 정식판과 구분할 방법이 색뿐이다.
-    /// 프레임마다 불리는 자리라 팔레트를 새로 만들지 않고 한 벌 만들어 둔 걸 돌려준다.
-    static var owlPalette: OwlPalette {
-        isTestBuild ? testBuildPalette : .normal
-    }
-
-    private static let testBuildPalette = OwlPalette.tinted(body: testBuildTint)
 }
