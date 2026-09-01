@@ -1,5 +1,8 @@
 import AppKit
 
+/// 화면에 떠 있는 창 목록. 앞에서 뒤 순서다.
+typealias WindowList = [(id: CGWindowID, frame: CGRect, owner: String)]
+
 /// 다른 앱 창이 화면 어디에 있는지 읽는다. 펫을 창 테두리에 붙일 때만 쓴다.
 ///
 /// **권한이 하나도 들지 않는다.** `CGWindowListCopyWindowInfo` 는 손쉬운 사용도 화면
@@ -22,7 +25,7 @@ enum WindowSurvey {
     /// 아예 없어서 걸러낼 수도 없다. 게다가 **앞뒤 순서가 보장되는 것도, 지금 스페이스만
     /// 나오는 것도 `.optionOnScreenOnly` 일 때뿐이다** — 붙어 있던 창이 다른 스페이스로
     /// 넘어간 것을 이 목록에서 사라지는 것으로 알아챈다.
-    static func onScreenWindows() -> [(id: CGWindowID, frame: CGRect, owner: String)] {
+    static func onScreenWindows() -> WindowList {
         let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
         guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]]
         else { return [] }
@@ -75,7 +78,12 @@ enum WindowSurvey {
     /// 그 창이 앞으로 왔는지는 목록 순서로만 알 수 있다(`.optionOnScreenOnly` 가
     /// 앞에서 뒤 순서를 보장한다). 자리를 재는 것과 같은 조회라 공짜다.
     static func locate(_ window: CGWindowID) -> (frame: CGRect, isFront: Bool)? {
-        let list = onScreenWindows()
+        locate(window, in: onScreenWindows())
+    }
+
+    /// **이미 떠 온 목록으로 답한다.** 한 틱 안에서 자리와 묻힘을 같이 봐야 하는데,
+    /// 각자 목록을 뜨면 같은 답을 두 번 산다 — 붙어 있는 내내 그 값을 낸다.
+    static func locate(_ window: CGWindowID, in list: WindowList) -> (frame: CGRect, isFront: Bool)? {
         guard let index = list.firstIndex(where: { $0.id == window }) else { return nil }
         return (list[index].frame, index == 0)
     }
@@ -147,7 +155,13 @@ enum WindowSurvey {
     /// 끌어올리는 코드가 그걸 뒤집어 놓는다 — **아무것도 없는 자리에 매달린 것으로
     /// 보인다.** 전체화면 창 위에 펫이 떠 있는 것이 그래서 생겼다.
     static func isBuried(_ spot: PerchSpot, mascot: CGSize, sink: CGFloat) -> Bool {
-        let list = onScreenWindows()
+        isBuried(spot, mascot: mascot, sink: sink, in: onScreenWindows())
+    }
+
+    /// 이미 떠 온 목록으로 답하는 쪽. `locate` 와 같은 틱이면 이걸 쓴다.
+    static func isBuried(
+        _ spot: PerchSpot, mascot: CGSize, sink: CGFloat, in list: WindowList
+    ) -> Bool {
         guard let rank = list.firstIndex(where: { $0.id == spot.window }) else { return false }
         return isCovered(spot, mascot: mascot, sink: sink, by: list[..<rank])
     }

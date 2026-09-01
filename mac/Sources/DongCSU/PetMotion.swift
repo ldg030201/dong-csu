@@ -282,7 +282,7 @@ final class PetMotionController {
         case .walking(let target):
             // 걷는 도중에 글을 쓰기 시작했으면 그 자리에 선다.
             guard !isTypingQuiet else { return halt() }
-            step(toward: target, speed: Self.walkSpeed, gait: .walk) { [weak self] in
+            step(toward: target, speed: Self.walkSpeed, gait: .walk, crossing: true) { [weak self] in
                 self?.rest()
             }
 
@@ -321,10 +321,14 @@ final class PetMotionController {
 
     /// 붙어 있는 동안의 한 틱. 창이 움직였으면 따라가고, 없어졌으면 떨어진다.
     private func follow(_ spot: PerchSpot) {
+        // **창 목록은 한 틱에 한 번만 뜬다.** 자리와 묻힘이 같은 목록을 보므로, 각자
+        // 뜨면 같은 답을 두 번 사면서 붙어 있는 내내 그 값을 낸다.
+        let windows = WindowSurvey.onScreenWindows()
+        let mascot = visualFrame().size
         // 창이 닫혔거나 최소화됐거나 다른 스페이스로 갔다.
-        guard let found = WindowSurvey.locate(spot.window) else { return unperch() }
+        guard let found = WindowSurvey.locate(spot.window, in: windows) else { return unperch() }
         // 창을 좁혀서 붙어 있을 자리가 없어졌다.
-        guard let moved = spot.clamped(to: found.frame, mascot: visualFrame().size) else {
+        guard let moved = spot.clamped(to: found.frame, mascot: mascot) else {
             return unperch()
         }
         // 붙은 자리가 화면 밖으로 나갔다.
@@ -333,7 +337,7 @@ final class PetMotionController {
         // **묻혔으면 앞으로 끌어올리지 않는다.** 올리면 그 창을 덮은 창 위에 펫만
         // 떠서, 아무것도 없는 자리에 매달린 것으로 보인다.
         let buried = WindowSurvey.isBuried(
-            moved, mascot: visualFrame().size, sink: perchSink(moved)
+            moved, mascot: mascot, sink: perchSink(moved), in: windows
         )
         setPerchFront(found.isFront && !buried, spot.window)
         guard origin != frame().origin else { return }
@@ -373,6 +377,7 @@ final class PetMotionController {
         toward target: NSPoint,
         speed: CGFloat,
         gait: OwlGait,
+        crossing: Bool = false,
         onArrive: () -> Void
     ) {
         let origin = frame().origin
@@ -382,13 +387,13 @@ final class PetMotionController {
         let stride = speed * CGFloat(Self.tick)
 
         guard distance > stride else {
-            move(clamped(target) ?? target)
+            move(clamped(target, crossing: crossing) ?? target)
             onArrive()
             return
         }
 
         let next = NSPoint(x: origin.x + dx / distance * stride, y: origin.y + dy / distance * stride)
-        let bounded = clamped(next) ?? next
+        let bounded = clamped(next, crossing: crossing) ?? next
         guard Self.distance(origin, bounded) > 0.5 else { return onArrive() }
 
         move(bounded)
@@ -464,6 +469,13 @@ final class PetMotionController {
     /// 지금 혼자 걸어다녀도 되는지.
     private var canWander: Bool { wanders && !isDrained && !isDizzy }
 
+    /// 다른 화면으로 넘어가도 되는지. 설정에서 켠다(기본 꺼짐).
+    ///
+    /// **배회할 때만이다.** 커서를 피하거나 붙어 있던 데서 떨어질 때는 지금 화면 안에
+    /// 남는다 — 안 그러면 마우스로 몰아붙였을 때 펫이 옆 모니터로 도망가고, 그건
+    /// 설정에 적힌 "산책하다 넘어간다" 와 다른 일이다. 가르는 자리는 `clamped(_:crossing:)`.
+    var crossesScreens = false
+
     private func wanderTarget() -> NSPoint? {
         guard walkArea() != nil else { return nil }
         let origin = frame().origin
@@ -472,11 +484,14 @@ final class PetMotionController {
         // 한쪽이 벽에 막혀 있으면 반대쪽으로 돌려서 한 번 더 본다.
         let first: CGFloat = Bool.random() ? 1 : -1
         for direction in [first, -first] {
+            // **넘어갈 때만 크게 걷는다.** 화면 하나 안에서는 지금 폭이 맞는데,
+            // 화면 경계를 넘으려면 한 걸음이 그 경계까지 닿아야 한다.
+            let stride: ClosedRange<CGFloat> = crossesScreens ? 90...900 : 90...360
             let candidate = NSPoint(
-                x: origin.x + direction * .random(in: 90...360),
+                x: origin.x + direction * .random(in: stride),
                 y: origin.y + .random(in: -70...70)
             )
-            guard let target = clamped(candidate) else { return nil }
+            guard let target = clamped(candidate, crossing: true) else { return nil }
             if Self.distance(origin, target) >= Self.minimumMove { return target }
         }
         return nil
@@ -485,19 +500,46 @@ final class PetMotionController {
     // MARK: - 범위
 
     /// 창 **원점**이 놓일 수 있는 범위. 화면 밖으로 걸어나가지 않게 여기로 가둔다.
+    ///
+    /// **화면 하나만 본다.** 여러 화면을 합친 사각형으로 가두면 화면 사이 빈 자리에
+    /// 설 수 있는데, 거기 서면 마스코트가 통째로 안 보인다. 넘어가는 것은
+    /// `crossesScreens` 가 켜졌을 때 `area(of:)` 를 화면마다 따로 재서 한다.
     private func walkArea() -> CGRect? {
         let panel = frame()
         let screen = NSScreen.screens.first { $0.frame.intersects(panel) } ?? NSScreen.main
         guard let screen else { return nil }
-
-        let area = screen.visibleFrame.insetBy(dx: Self.edgeMargin, dy: Self.edgeMargin)
-        let width = area.width - panel.width
-        let height = area.height - panel.height
-        guard width >= 0, height >= 0 else { return nil }
-        return CGRect(x: area.minX, y: area.minY, width: width, height: height)
+        return area(of: screen, panel: panel)
     }
 
-    private func clamped(_ origin: NSPoint) -> NSPoint? {
+    /// 그 화면에서 창 원점이 놓일 수 있는 범위.
+    private func area(of screen: NSScreen, panel: NSRect) -> CGRect? {
+        let inset = screen.visibleFrame.insetBy(dx: Self.edgeMargin, dy: Self.edgeMargin)
+        let width = inset.width - panel.width
+        let height = inset.height - panel.height
+        guard width >= 0, height >= 0 else { return nil }
+        return CGRect(x: inset.minX, y: inset.minY, width: width, height: height)
+    }
+
+    /// 그 자리에 서도 되는지. 어느 화면이든 온전히 들어가면 된다.
+    private func standable(_ origin: NSPoint) -> Bool {
+        let panel = frame()
+        return NSScreen.screens.contains { screen in
+            guard let area = area(of: screen, panel: panel) else { return false }
+            return area.insetBy(dx: -0.5, dy: -0.5).contains(origin)
+        }
+    }
+
+    /// 창 원점을 설 수 있는 자리로 되당긴다.
+    ///
+    /// **`crossing` 은 배회할 때만 참이다.** 화면을 넘어가는 것은 산책이라, 커서를
+    /// 피하거나 붙어 있던 데서 떨어질 때까지 넘어가면 설정에 적힌 것과 다른 일이
+    /// 벌어진다 — 마우스로 몰아붙이면 펫이 옆 모니터로 도망가 버린다.
+    ///
+    /// 진단 통로(`ProbePerch`)도 직접 부른다. **화면 밖으로 나가는지는 눈으로 못
+    /// 보므로** 거기서 이걸로 잰다.
+    func clamped(_ origin: NSPoint, crossing: Bool = false) -> NSPoint? {
+        // 다른 화면에 온전히 들어가는 자리면 지금 화면 밖이어도 그대로 간다.
+        if crossing, crossesScreens, standable(origin) { return origin }
         guard let area = walkArea() else { return nil }
         return NSPoint(
             x: min(max(origin.x, area.minX), area.maxX),
