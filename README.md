@@ -72,11 +72,20 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 
 <table>
 <tr>
-<td align="center" width="20%"><img src="docs/characters/owl/idle.gif" width="96" alt="평소"><br><sub><b>평소</b></sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/tired.gif" width="96" alt="지침"><br><sub><b>지침</b><br>세션 75%↑</sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/exhausted.gif" width="96" alt="탈진"><br><sub><b>탈진</b><br>세션 90%↑</sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
-<td align="center" width="20%"><img src="docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>커서가 쫓아올 때</sub></td>
+<td width="1%"><sub><b>🦉 부엉이</b></sub></td>
+<td align="center" width="19%"><img src="docs/characters/owl/idle.gif" width="88" alt="평소"><br><sub><b>평소</b></sub></td>
+<td align="center" width="19%"><img src="docs/characters/owl/tired.gif" width="88" alt="지침"><br><sub><b>지침</b><br>세션 75%↑</sub></td>
+<td align="center" width="19%"><img src="docs/characters/owl/exhausted.gif" width="88" alt="탈진"><br><sub><b>탈진</b><br>세션 90%↑</sub></td>
+<td align="center" width="19%"><img src="docs/characters/owl/walk.gif" width="88" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
+<td align="center" width="19%"><img src="docs/characters/owl/run.gif" width="88" alt="달리기"><br><sub><b>달리기</b><br>커서가 쫓아올 때</sub></td>
+</tr>
+<tr>
+<td width="1%"><sub><b>🦝 라쿤</b><br>beta</sub></td>
+<td align="center"><img src="docs/characters/raccoon/idle.gif" width="88" alt="평소"></td>
+<td align="center"><img src="docs/characters/raccoon/tired.gif" width="88" alt="지침"></td>
+<td align="center"><img src="docs/characters/raccoon/exhausted.gif" width="88" alt="탈진"></td>
+<td align="center"><img src="docs/characters/raccoon/walk.gif" width="88" alt="걷기"></td>
+<td align="center"><img src="docs/characters/raccoon/run.gif" width="88" alt="달리기"></td>
 </tr>
 </table>
 
