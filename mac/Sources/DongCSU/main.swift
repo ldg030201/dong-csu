@@ -27,6 +27,15 @@ if CommandLine.arguments.contains("--probe") {
             } else {
                 print("seven_day: -")
             }
+            // 모델별로 갈린 한도까지 본다. HUD 는 위 둘만 그리지만 서버는 더 준다.
+            if snapshot.limits.isEmpty {
+                print("limits: (없음 — 옛 응답)")
+            } else {
+                for limit in snapshot.limits {
+                    print("limit: \(limit.id)  \(limit.percent)%  "
+                          + "resets_at=\(limit.resetsAt?.description ?? "-")  [\(limit.title)]")
+                }
+            }
         } catch {
             print("error: \(error)")
         }
@@ -302,16 +311,22 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--dump-sprites"),
     exit(0)
 }
 
-// 번들에 든 마스코트 시트를 확인한다: dong-csu --probe-mascot
+// 번들에 든 마스코트 시트를 확인한다: dong-csu --probe-mascot [캐릭터]
 //
 // 몇 칸이 읽혔는지, 어떤 방법으로 읽었는지, 안 그린 칸이 어디로 떨어지는지 본다.
-// 새 그림을 `Resources/mascot.png` 에 넣고 빌드한 뒤 이걸로 확인한다.
+// 새 그림을 `Resources/<이름>.png` 에 넣고 빌드한 뒤 이걸로 확인한다.
+// 캐릭터 이름을 붙이면 그 시트를 본다 — 안 붙이면 기본 캐릭터다.
 if CommandLine.arguments.contains("--probe-mascot") {
     MainActor.assumeIsolated {
-        guard let set = MascotSpriteStore.bundled else {
-            print("번들에 mascot.png 가 없다 — 빌드가 깨졌다")
+        let named = ClaudeIconStyle.allCases.first {
+            $0.usesSheet && CommandLine.arguments.contains($0.rawValue)
+        }
+        let style = named ?? .owlSheet
+        guard let set = MascotSpriteStore.bundled(style) else {
+            print("번들에 \(style.sheetResource ?? "?").png 가 없다 — 빌드가 깨졌다")
             exit(1)
         }
+        print("캐릭터: \(style.shortTitle) (\(style.rawValue))")
         print("읽은 방법: \(set.readingMethod)")
         print("크기: \(Int(set.extent.width))x\(Int(set.extent.height))")
         print("칸 \(set.available.count)개: \(set.available.map(\.rawValue).joined(separator: ", "))")
@@ -405,6 +420,16 @@ if CommandLine.arguments.contains("--probe-perch") {
     NSApp.setActivationPolicy(.accessory)
     let onlySelftest = CommandLine.arguments.contains("selftest")
     exit(MainActor.assumeIsolated { ProbePerch.run(selftestOnly: onlySelftest) } ? 0 : 1)
+}
+
+// HUD 카드가 모든 조합에서 안 넘치는지 잰다: dong-csu --probe-hud
+//
+// 넘친 그림은 창 경계에서 잘려서 스크린샷으로는 안 보이고, 렌더 통로는 그림을 내용에
+// 맞춰 잡으므로 넘칠 자리가 없다. 그래서 치수로 잰다. 어긋나면 1로 끝난다.
+if CommandLine.arguments.contains("--probe-hud") {
+    _ = NSApplication.shared
+    NSApp.setActivationPolicy(.accessory)
+    exit(MainActor.assumeIsolated { ProbeHUD.run() } ? 0 : 1)
 }
 
 // 설정 창이 탭마다 얼마나 길어지는지 잰다: dong-csu --probe-layout
@@ -515,7 +540,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
     let written = MainActor.assumeIsolated {
         OwlGIFRenderer.writeAll(
             to: directory, cell: cell,
-            sheet: usesGrid ? nil : MascotSpriteStore.bundled
+            sheet: usesGrid ? nil : MascotSpriteStore.bundled(.owlSheet)
         )
     }
     guard let written else {
@@ -562,6 +587,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     // 0~1 사이 숫자를 하나 끼워 넣으면 배경 불투명도로 쓴다.
     let opacity = extras.compactMap(Double.init).first { $0 > 0 && $0 <= 1 } ?? 0.92
     let showsStats = extras.contains("stats")
+    // fable 을 끼워 넣으면 모델별 한도를 켠 모습으로 그린다.
+    let showsScopedLimit = extras.contains("fable")
     // small|normal|large|extraLarge 중 하나를 끼워 넣으면 그 배율로 그린다.
     let scale = extras.compactMap(HUDScale.init(rawValue:)).first ?? .normal
     // update 를 끼워 넣으면 새 버전이 나온 상태로 그린다.
@@ -584,6 +611,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
             side: side,
             opacity: opacity,
             showsStats: showsStats,
+            showsScopedLimit: showsScopedLimit,
             scale: scale,
             showsUpdateBadge: showsUpdateBadge,
             versionBadge: versionBadge,

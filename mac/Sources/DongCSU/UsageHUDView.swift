@@ -1,7 +1,19 @@
 import SwiftUI
 
+/// HUD가 보기마다 그리는 것들. `UsageHUDView.draws(_:in:)` 가 어느 보기에
+/// 그려지는지 답하고, 설정 창은 그걸 보고 토글을 잠근다.
+enum HUDElement {
+    /// 아래 줄의 CPU · 메모리.
+    case processStats
+    /// 제일 안쪽 모델별 링.
+    case scopedRing
+    /// 모서리 버전 딱지.
+    case versionBadge
+}
+
 /// 오른쪽 위에 떠 있는 사용량 HUD.
-/// 왼쪽: 이중 링(바깥=세션, 안쪽=주간) + 가운데 Claude 마크.
+/// 왼쪽: 링(바깥부터 세션 · 주간 · 모델별) + 가운데 Claude 마크.
+/// 모델별 링은 설정에서 켰을 때만 그린다.
 /// 오른쪽: 세션 / 주간 사용률과 초기화까지 남은 시간.
 /// 오른쪽 아래: 다음 사용량 조회까지 남은 시간(초 단위).
 struct UsageHUDView: View {
@@ -19,6 +31,8 @@ struct UsageHUDView: View {
     var isHeld: Bool = false
     /// 들고 있는 동안 링·버튼 줄을 감출지.
     var hidesRingWhileHeld: Bool = true
+    /// 모델별 한도(예: Fable)를 링과 줄에 같이 보여줄지. 기본 꺼짐.
+    var showsScopedLimit: Bool = false
     var palette = HUDPalette(isDark: true)
     /// 설정 창 열기. HUDController가 꽂아준다.
     var onOpenSettings: (() -> Void)?
@@ -69,7 +83,10 @@ struct UsageHUDView: View {
     static let basePetOwlHeight: CGFloat = 84
     /// 뒤에 두르는 링의 바깥 지름. 마스코트가 링 안쪽에 여유 있게 들어가야 한다.
     /// 안쪽 지름 = 바깥 − 두께 2겹(10) − 간격(7) 이고, 마스코트 폭은 높이 × 15/13 이다.
-    static let basePetRingDiameter: CGFloat = 124
+    /// **선 굵기(5)까지 더해 128 이 되는 값이다.** 124 로 두면 바깥 선이 창 밖으로
+    /// 반 pt 나가서 링 위아래가 아주 얇게 깎인다.
+    static let basePetRingDiameter: CGFloat = 123
+    static let basePetRingLineWidth: CGFloat = 5
     /// 창은 링을 담을 만큼. 링을 감추고 있을 때도 크기는 그대로다 —
     /// 호버할 때 창을 늘리면 커서가 창 밖으로 밀려나 호버가 끊긴다.
     /// 링 아래에 붙는 버튼 줄의 높이.
@@ -79,21 +96,118 @@ struct UsageHUDView: View {
     /// 호버할 때 창을 늘리면 커서가 창 밖으로 밀려나 호버가 끊긴다.
     static let basePetSize = CGSize(width: 128, height: 128 + basePetButtonRow)
 
-    static func size(mode: HUDMode, showsStats: Bool = false, scale: CGFloat = 1) -> CGSize {
+    /// 모델별 한도 줄 하나가 차지하는 높이. 세션 · 주간 줄과 같은 몫이다.
+    /// (값 20 + 남은 시간 11 + 줄 사이 8 + 여백)
+    static let baseScopedRowHeight: CGFloat = 46
+
+    static func size(
+        mode: HUDMode, showsStats: Bool = false, showsScopedLimit: Bool = false,
+        scale: CGFloat = 1
+    ) -> CGSize {
         func scaled(_ size: CGSize) -> CGSize {
             CGSize(width: size.width * scale, height: size.height * scale)
         }
+        // 모델별 링이 붙어 링이 커진 만큼 카드도 넓어진다.
+        let grown = showsScopedLimit ? baseScopedGrowth : 0
         switch mode {
         case .pet: return scaled(basePetSize)
-        // 접은 상태에는 자리가 없어서 자원 사용량을 붙이지 않는다.
-        case .collapsed: return scaled(baseCollapsedSize)
+        // 접은 카드에는 숫자가 없어서 자원 사용량 줄은 안 붙는다. 링은 그리므로
+        // 링이 커지면 카드도 가로·세로로 같이 커진다.
+        case .collapsed:
+            return scaled(CGSize(
+                width: baseCollapsedSize.width + grown,
+                height: baseCollapsedSize.height + grown
+            ))
         case .expanded:
-            let expanded = scaled(baseExpandedSize)
-            guard showsStats else { return expanded }
-            return CGSize(
-                width: expanded.width,
-                height: expanded.height + baseStatsRowHeight * scale
-            )
+            // 윗줄(링·숫자) + 아래 자원 사용량 줄.
+            var height = expandedRowHeight(showsScopedLimit: showsScopedLimit, scale: scale)
+            if showsStats { height += baseStatsRowHeight * scale }
+            return CGSize(width: (baseExpandedSize.width + grown) * scale, height: height)
+        }
+    }
+
+    /// 링 바깥 지름. 둘일 때와, 모델별이 붙어 셋일 때.
+    ///
+    /// **셋이면 키워야 한다.** 62 안에 셋을 넣으면 마스코트 자리가 12pt 밖에 안 남아
+    /// 무슨 그림인지 안 보인다.
+    static let baseRingDiameter: CGFloat = 62
+    static let baseScopedRingDiameter: CGFloat = 84
+
+    /// 모델별 링이 붙으면 링이 이만큼 커진다. **카드도 가로·세로로 같이 이만큼 넓힌다.**
+    ///
+    /// 세로만 넓히고 가로를 그대로 두면 커진 링이 옆의 글자 자리를 그만큼 먹는다.
+    /// 창은 안 줄었는데 숫자가 밀려서 버튼 밑으로 파고든다 — 눈에는 "가로가 줄어든"
+    /// 것처럼 보인다.
+    static var baseScopedGrowth: CGFloat { baseScopedRingDiameter - baseRingDiameter }
+
+    static func ringDiameter(showsScopedLimit: Bool, scale: CGFloat) -> CGFloat {
+        (showsScopedLimit ? baseScopedRingDiameter : baseRingDiameter) * scale
+    }
+
+    /// 링 바깥을 두르는 선의 굵기. 지름 밖으로 이만큼 더 나간다.
+    static func ringLineWidth(scale: CGFloat) -> CGFloat { 6 * scale }
+    /// 안쪽 링들의 선 굵기.
+    static func ringInnerLineWidth(scale: CGFloat) -> CGFloat { 5 * scale }
+    /// 링과 링 사이에 두는 틈.
+    static func ringGap(scale: CGFloat) -> CGFloat { 7 * scale }
+
+    /// 펼친 카드의 좌우 여백과 링 · 글자 사이 틈.
+    ///
+    /// **여기에만 적는다.** 그리는 쪽과 진단 통로가 각자 숫자를 들고 있으면, 여백을
+    /// 고쳤을 때 진단은 옛 숫자로 재면서 통과시킨다.
+    static func expandedLeading(scale: CGFloat) -> CGFloat { 13 * scale }
+    static func expandedGap(scale: CGFloat) -> CGFloat { 13 * scale }
+    static func expandedTrailing(scale: CGFloat) -> CGFloat { 10 * scale }
+
+    /// 접은 카드의 링 왼쪽 여백과 링 · 버튼 열 사이 틈.
+    static func collapsedLeading(scale: CGFloat) -> CGFloat { 12 * scale }
+    static func collapsedGap(scale: CGFloat) -> CGFloat { 8 * scale }
+
+    /// 접은 카드에서 링 왼쪽 여백 + 오른쪽 버튼 열이 먹는 폭.
+    static func collapsedChrome(scale: CGFloat) -> CGFloat {
+        collapsedLeading(scale: scale) + collapsedGap(scale: scale)
+            + refreshHitSize(scale: scale) + collapsedTrailing(scale: scale)
+    }
+
+    /// 펼친 카드에서 링 · 숫자가 놓이는 윗줄의 높이. 모델별 줄이 붙으면 그만큼 커진다.
+    ///
+    /// **`size()` 도 마스코트 판정 자리도 다 여기서 가져간다.** 따로 유도하면
+    /// 그림과 판정이 어긋나서, 링 가장자리를 더블클릭해도 펫으로 안 들어간다.
+    static func expandedRowHeight(showsScopedLimit: Bool, scale: CGFloat) -> CGFloat {
+        (baseExpandedSize.height + (showsScopedLimit ? baseScopedRowHeight : 0)) * scale
+    }
+
+    /// 링을 겹쳐 놓았을 때 안쪽 링들의 지름과, 가운데에 남는 자리.
+    ///
+    /// **겹치는 규칙이 여기 하나뿐이어야 한다.** 그리는 쪽과 가운데 그림 크기를 재는
+    /// 쪽이 따로 세면, 틈을 한 번 고쳤을 때 마스코트가 제일 안쪽 링을 파고든다.
+    static func ringLayout(
+        outer: CGFloat, outerWidth: CGFloat, innerWidth: CGFloat,
+        hasScoped: Bool, scale: CGFloat
+    ) -> (inner: CGFloat, third: CGFloat, free: CGFloat) {
+        let gap = ringGap(scale: scale)
+        let inner = innerDiameter(outer: outer, outerWidth: outerWidth, gap: gap)
+        let third = innerDiameter(outer: inner, outerWidth: innerWidth, gap: gap)
+        // 가운데 그림이 들어갈 자리. 제일 안쪽 링의 선 안쪽에서 조금 더 물러선다.
+        let innermost = hasScoped ? third : inner
+        return (inner, third, innermost - innerWidth * 2 - 4 * scale)
+    }
+
+    /// 이 보기가 실제로 그리는가.
+    ///
+    /// **설정 창이 토글을 잠글지 여기서 정한다.** 두 자리에 따로 적으면 반드시
+    /// 어긋난다 — 모델별 링이 실제로 그 꼴이었다. 세 보기에 다 그려지는데 토글은
+    /// 펼친 카드에서만 열려서, 접어 놓은 사람은 링이 눈앞에 보이는데도 못 껐다.
+    ///
+    /// 반대쪽도 똑같이 나쁘다. 안 그리는데 토글이 열려 있으면 눌러도 아무 일이 없다.
+    static func draws(_ element: HUDElement, in mode: HUDMode) -> Bool {
+        switch element {
+        // 아래 줄은 펼친 카드에만 있다.
+        case .processStats: return mode == .expanded
+        // 링은 세 보기에 다 그린다.
+        case .scopedRing: return true
+        // 접은 카드는 링에 겹쳐서 안 붙이고, 펫에는 카드 자체가 없다.
+        case .versionBadge: return mode == .expanded
         }
     }
 
@@ -153,6 +267,11 @@ struct UsageHUDView: View {
 
     static func petOwlHeight(scale: CGFloat) -> CGFloat { basePetOwlHeight * scale }
 
+    /// 펫 링의 선 굵기. 카드 링보다 얇다.
+    /// **바깥 굵기는 `basePetRingDiameter` 와 짝이다** — 123 + 5 = 128 이 링 자리다.
+    static func petRingLineWidth(scale: CGFloat) -> CGFloat { basePetRingLineWidth * scale }
+    static func petRingInnerLineWidth(scale: CGFloat) -> CGFloat { 4 * scale }
+
     /// 마스코트 그림이 실제로 덮는 자리(뷰 좌표, 아래가 0).
     ///
     /// **`petHitRect` 와 같은 셈을 쓴다.** 둘 다 "버튼 줄 위 영역의 가운데"인데,
@@ -184,11 +303,7 @@ struct UsageHUDView: View {
     /// `petMascotRect` 주석에 있다. 창 원점을 미는 것으로 푼다.
     @MainActor
     static func petPerchOrigin(
-        perch: MascotPerch, contact: CGPoint, scale: CGFloat, style: ClaudeIconStyle,
-        // 화면 안에 다 들어와야 하는지. **미리보기에서 "여긴 자리가 없다" 를 그릴 때만
-        // 끈다** — 그때는 못 붙는 자리인 것을 알면서 어디에 놓일지를 보여주는 것이라,
-        // 화면 밖이라는 이유로 nil 을 받으면 그릴 자리를 못 낸다.
-        requireOnScreen: Bool = true
+        perch: MascotPerch, contact: CGPoint, scale: CGFloat, style: ClaudeIconStyle
     ) -> NSPoint? {
         guard let ink = petMascotInkRect(perch: perch, scale: scale, style: style) else {
             return nil
@@ -224,7 +339,6 @@ struct UsageHUDView: View {
             x: origin.x + ink.minX, y: origin.y + ink.minY,
             width: ink.width, height: ink.height
         )
-        guard requireOnScreen else { return origin }
         guard let screen = NSScreen.screens.first(where: { $0.visibleFrame.intersects(visual) }),
               screen.visibleFrame.contains(visual)
         else { return nil }
@@ -245,7 +359,7 @@ struct UsageHUDView: View {
         perch: MascotPerch, contact: CGPoint, scale: CGFloat, style: ClaudeIconStyle
     ) -> CGFloat {
         guard let ink = petMascotInkRect(perch: perch, scale: scale, style: style),
-              let set = MascotSpriteStore.bundled,
+              let set = MascotSpriteStore.bundled(style),
               // **잉크를 잰 칸에서 깊이도 읽는다.** 시트에 그 자세가 없으면 잉크는
               // fallback 칸(선 자세)에서 나오는데, 깊이만 원래 칸에서 가져오면 붙잡는
               // 부위가 없는 그림을 있는 만큼 밀어 넣는다.
@@ -309,7 +423,7 @@ struct UsageHUDView: View {
     static func petMascotInkRect(
         perch: MascotPerch, scale: CGFloat, style: ClaudeIconStyle
     ) -> CGRect? {
-        guard style == .owlSheet, let set = MascotSpriteStore.bundled,
+        guard let set = MascotSpriteStore.bundled(style),
               let fraction = set.inkFraction(perch.sprite)
         else { return nil }
         let box = petMascotRect(scale: scale, style: style)
@@ -340,7 +454,7 @@ struct UsageHUDView: View {
     @MainActor
     static func mascotAspect(style: ClaudeIconStyle) -> CGFloat {
         let owl = CGFloat(OwlMark.bodyColumns) / CGFloat(OwlMark.lines)
-        guard style == .owlSheet, let set = MascotSpriteStore.bundled else { return owl }
+        guard let set = MascotSpriteStore.bundled(style) else { return owl }
         return set.extent.width / max(set.extent.height, 1)
     }
 
@@ -364,13 +478,14 @@ struct UsageHUDView: View {
         mode: HUDMode,
         side: HUDExpandSide,
         showsStats: Bool,
+        showsScopedLimit: Bool = false,
         scale: CGFloat = 1
     ) -> CGRect {
         // 펫에는 버튼이 없다. 빈 사각형을 주면 어떤 클릭도 여기 걸리지 않는다.
         guard mode != .pet else { return .zero }
 
         let button = refreshHitSize(scale: scale)
-        let panel = size(mode: mode, showsStats: showsStats, scale: scale)
+        let panel = size(mode: mode, showsStats: showsStats, showsScopedLimit: showsScopedLimit, scale: scale)
         let trailing = collapsedTrailing(scale: scale)
         let inset = refreshInset(scale: scale)
 
@@ -405,25 +520,31 @@ struct UsageHUDView: View {
         mode: HUDMode,
         side: HUDExpandSide,
         showsStats: Bool,
+        showsScopedLimit: Bool = false,
         scale: CGFloat = 1
     ) -> CGRect {
-        let panel = size(mode: mode, showsStats: showsStats, scale: scale)
+        let panel = size(mode: mode, showsStats: showsStats, showsScopedLimit: showsScopedLimit, scale: scale)
         guard mode != .pet else { return CGRect(origin: .zero, size: panel) }
 
-        let ring = 62 * scale
-        // 펼친 상태의 링은 위쪽 88pt 줄 안에서 세로 가운데에 놓인다.
-        // 자원 사용량 줄이 붙어 창이 커져도 링은 그대로 위에 남는다.
-        let rowHeight = mode == .collapsed ? panel.height : baseExpandedSize.height * scale
+        // **링이 커지면 이 자리도 같이 커져야 한다.** 62 로 못 박아 두면 모델별 링을
+        // 켰을 때 링 가장자리를 더블클릭해도 펫으로 안 들어간다.
+        let ring = ringDiameter(showsScopedLimit: showsScopedLimit, scale: scale)
+        // 펼친 상태의 링은 위쪽 줄 안에서 세로 가운데에 놓인다. 자원 사용량 줄이
+        // 붙어 창이 커져도 링은 그대로 위에 남는다.
+        let rowHeight = mode == .collapsed
+            ? panel.height
+            : expandedRowHeight(showsScopedLimit: showsScopedLimit, scale: scale)
         let y = panel.height - rowHeight + (rowHeight - ring) / 2
 
         // 접힌 상태에서 왼쪽으로 펼치는 설정이면 버튼 열이 링 앞에 온다.
         let leading: CGFloat
         switch (mode, side) {
-        case (.collapsed, .right): leading = 12 * scale
+        case (.collapsed, .right): leading = collapsedLeading(scale: scale)
         case (.collapsed, .left):
-            leading = collapsedTrailing(scale: scale) + refreshHitSize(scale: scale) + 8 * scale
-        case (_, .right): leading = 13 * scale
-        case (_, .left): leading = panel.width - 13 * scale - ring
+            leading = collapsedTrailing(scale: scale) + refreshHitSize(scale: scale)
+                + collapsedGap(scale: scale)
+        case (_, .right): leading = expandedLeading(scale: scale)
+        case (_, .left): leading = panel.width - expandedLeading(scale: scale) - ring
         }
         return CGRect(x: leading, y: y, width: ring, height: ring)
     }
@@ -437,6 +558,7 @@ struct UsageHUDView: View {
         mode: HUDMode,
         side: HUDExpandSide,
         showsStats: Bool,
+        showsScopedLimit: Bool = false,
         scale: CGFloat = 1
     ) -> CGRect {
         // 펫은 배지를 그리지 않는다. 그런데도 자리를 돌려주면 그만큼이 클릭 통과
@@ -445,7 +567,7 @@ struct UsageHUDView: View {
 
         let badge = updateBadgeSize(scale: scale)
         let inset = refreshInset(scale: scale)
-        let panel = size(mode: mode, showsStats: showsStats, scale: scale)
+        let panel = size(mode: mode, showsStats: showsStats, showsScopedLimit: showsScopedLimit, scale: scale)
         let x = side == .right ? inset : panel.width - inset - badge
         return CGRect(x: x, y: panel.height - inset - badge, width: badge, height: badge)
     }
@@ -470,9 +592,9 @@ struct UsageHUDView: View {
 
     private var isDisconnected: Bool { store.isDisconnected }
 
-    private var ringDiameter: CGFloat { s(62) }
-    private var outerLineWidth: CGFloat { s(6) }
-    private var innerLineWidth: CGFloat { s(5) }
+    private var ringDiameter: CGFloat { Self.ringDiameter(showsScopedLimit: showsScopedLimit, scale: scale) }
+    private var outerLineWidth: CGFloat { Self.ringLineWidth(scale: scale) }
+    private var innerLineWidth: CGFloat { Self.ringInnerLineWidth(scale: scale) }
 
     var body: some View {
         switch mode {
@@ -514,12 +636,15 @@ struct UsageHUDView: View {
         ZStack {
             ringPair(
                 diameter: s(Self.basePetRingDiameter),
-                outerWidth: s(5),
-                innerWidth: s(4)
+                outerWidth: Self.petRingLineWidth(scale: scale),
+                innerWidth: Self.petRingInnerLineWidth(scale: scale)
             )
             .opacity(showsPetRing ? (isDisconnected ? 0.4 : 0.95) : 0)
             .animation(.easeOut(duration: 0.18), value: showsPetRing)
 
+            // **링 안쪽에 맞추지 않는다.** 펫은 마스코트가 주인공이고 링은 마우스를
+            // 올렸을 때만 뒤에서 떠오르는 것이라, 마스코트가 링 위로 올라오는 것이
+            // 맞다. 링에 맞춰 줄이면 켜고 끌 때마다 캐릭터 크기가 달라진다.
             ClaudeIconView(
                 style: iconStyle,
                 size: Self.petOwlHeight(scale: scale),
@@ -569,7 +694,7 @@ struct UsageHUDView: View {
 
     /// 접힌 모습: 링 + 세로 버튼 열. 버튼은 펼쳐질 방향 쪽에 붙는다.
     private var collapsedBody: some View {
-        HStack(spacing: s(8)) {
+        HStack(spacing: Self.collapsedGap(scale: scale)) {
             if expandSide == .right {
                 ringsView
                 buttonColumn
@@ -578,15 +703,23 @@ struct UsageHUDView: View {
                 ringsView
             }
         }
-        .padding(.leading, expandSide == .right ? s(12) : Self.collapsedTrailing(scale: scale))
-        .padding(.trailing, expandSide == .right ? Self.collapsedTrailing(scale: scale) : s(12))
+        .padding(.leading, expandSide == .right
+            ? Self.collapsedLeading(scale: scale) : Self.collapsedTrailing(scale: scale))
+        .padding(.trailing, expandSide == .right
+            ? Self.collapsedTrailing(scale: scale) : Self.collapsedLeading(scale: scale))
         .frame(
-            width: Self.size(mode: .collapsed, scale: scale).width,
-            height: Self.size(mode: .collapsed, scale: scale).height
+            width: collapsedSize.width,
+            height: collapsedSize.height
         )
         // 접은 카드는 108pt뿐이라 버전 딱지를 붙이면 링 위에 겹친다.
         // 테스트판인지는 마스코트 색(보라)이 알려준다.
-        .overlay(alignment: badgeAlignment) { cornerBadges(showsVersion: false) }
+        .overlay(alignment: badgeAlignment) { cornerBadges }
+    }
+
+    /// 접은 카드 크기. **모델별 링이 붙으면 커진다** — 링이 커진 만큼 카드도 커져야
+    /// 링이 카드를 뚫고 나가지 않는다.
+    private var collapsedSize: CGSize {
+        Self.size(mode: .collapsed, showsScopedLimit: showsScopedLimit, scale: scale)
     }
 
     private var buttonColumn: some View {
@@ -612,13 +745,25 @@ struct UsageHUDView: View {
             }
         }
         .frame(
-            width: s(Self.baseExpandedSize.width),
-            height: Self.size(mode: .expanded, showsStats: usageMonitor != nil, scale: scale).height
+            width: expandedSize.width,
+            height: Self.size(
+                mode: .expanded, showsStats: usageMonitor != nil,
+                showsScopedLimit: showsScopedLimit, scale: scale
+            ).height
         )
     }
 
+    /// 펼친 카드 크기. 모델별 링이 붙으면 가로도 그만큼 넓어진다.
+    private var expandedSize: CGSize {
+        Self.size(mode: .expanded, showsScopedLimit: showsScopedLimit, scale: scale)
+    }
+
+    private var expandedRowHeight: CGFloat {
+        Self.expandedRowHeight(showsScopedLimit: showsScopedLimit, scale: scale)
+    }
+
     private var mainRow: some View {
-        HStack(spacing: s(13)) {
+        HStack(spacing: Self.expandedGap(scale: scale)) {
             if expandSide == .right {
                 ringsView
                 metricsView
@@ -629,11 +774,13 @@ struct UsageHUDView: View {
                 ringsView
             }
         }
-        .padding(.leading, expandSide == .right ? s(13) : s(10))
-        .padding(.trailing, expandSide == .right ? s(10) : s(13))
-        .frame(width: s(Self.baseExpandedSize.width), height: s(Self.baseExpandedSize.height))
+        .padding(.leading, expandSide == .right
+            ? Self.expandedLeading(scale: scale) : Self.expandedTrailing(scale: scale))
+        .padding(.trailing, expandSide == .right
+            ? Self.expandedTrailing(scale: scale) : Self.expandedLeading(scale: scale))
+        .frame(width: expandedSize.width, height: expandedRowHeight)
         .overlay(alignment: expandSide == .right ? .topTrailing : .topLeading) { controlButtons }
-        .overlay(alignment: badgeAlignment) { cornerBadges(showsVersion: true) }
+        .overlay(alignment: badgeAlignment) { cornerBadges }
         // 아래 줄이 생기면 카운트다운도 거기로 내려가 자원 사용량과 같은 높이에 놓인다.
         .overlay(alignment: expandSide == .right ? .bottomTrailing : .bottomLeading) {
             if usageMonitor == nil { resetCountdown }
@@ -666,7 +813,7 @@ struct UsageHUDView: View {
                     title: "세션",
                     window: store.snapshot?.fiveHour,
                     now: context.date,
-                    isSpent: store.isWeeklySpent
+                    isSpent: store.isSpent
                 )
                 metric(
                     title: "주간",
@@ -674,6 +821,16 @@ struct UsageHUDView: View {
                     now: context.date,
                     isSpent: store.isWeeklySpent
                 )
+                // 링과 같은 순서로 맨 아래. 켜져 있고 서버가 줄 때만 나온다.
+                if showsScopedLimit, let limit = store.scopedLimit,
+                   let name = limit.modelName {
+                    metric(
+                        title: name,
+                        window: UsageWindow(utilization: limit.percent, resetsAt: limit.resetsAt),
+                        now: context.date,
+                        isSpent: store.isWeeklySpent
+                    )
+                }
             }
             .shadow(color: palette.textShadow, radius: s(2), y: s(0.5))
             .opacity(store.isStale ? 0.45 : 1)
@@ -760,7 +917,11 @@ struct UsageHUDView: View {
     /// 한 줄에 묶어 두면 새 버전이 잡히는 순간 버전 딱지가 옆으로 밀려난다.
     /// **업데이트 표시가 늘 바깥쪽이다** — 클릭 통과 영역이 모서리 기준으로 계산된다
     /// (`updateBadgeRectInPanel`).
-    @ViewBuilder private func cornerBadges(showsVersion: Bool) -> some View {
+    /// **어느 보기에 버전 딱지를 붙이는지는 `draws` 만 안다.** 부르는 쪽이 정하면
+    /// 설정 창의 잠금과 어긋난다 — 접은 카드에도 붙이기로 하면 한쪽만 고쳐도 컴파일은
+    /// 통과한다.
+    @ViewBuilder private var cornerBadges: some View {
+        let showsVersion = Self.draws(.versionBadge, in: mode)
         let version = showsVersion ? versionBadge : nil
         if showsUpdateBadge || version != nil {
             HStack(spacing: s(3)) {
@@ -974,11 +1135,11 @@ struct UsageHUDView: View {
             ringPair(diameter: ringDiameter, outerWidth: outerLineWidth, innerWidth: innerLineWidth)
             // **폭까지 막는다.** HUD 아이콘은 작은 링 안에 갇혀 있어서, 옆으로 퍼진
             // 그림이 그대로 나오면 원을 뚫고 숫자 위로 올라온다.
-            let iconSize = Self.innerDiameter(
-                outer: ringDiameter,
-                outerWidth: outerLineWidth,
-                gap: s(7)
-            ) - innerLineWidth * 2 - s(4)
+            // 링이 하나 더 생기면 아이콘도 그만큼 안으로 들어간다.
+            let iconSize = Self.ringLayout(
+                outer: ringDiameter, outerWidth: outerLineWidth, innerWidth: innerLineWidth,
+                hasScoped: scopedRingWindow != nil, scale: scale
+            ).free
             ClaudeIconView(
                 style: iconStyle,
                 size: iconSize,
@@ -999,22 +1160,34 @@ struct UsageHUDView: View {
         outer - outerWidth * 2 - gap
     }
 
-    /// 링 두 개만. 펫 모드는 가운데 아이콘을 따로 크게 그리므로 여기 붙이지 않는다.
+    /// 링. 바깥부터 ** 세션 · 주간 · 모델별 ** 순이다.
+    ///
+    /// **모델별은 켰을 때만 그린다.** 서버가 줄 때만 있는 값이라, 늘 자리를 비워 두면
+    /// 링이 있는 사람과 없는 사람의 가운데 아이콘 크기가 달라진다.
+    /// 펫 모드는 가운데 아이콘을 따로 크게 그리므로 여기 붙이지 않는다.
     private func ringPair(
         diameter: CGFloat,
         outerWidth: CGFloat,
         innerWidth: CGFloat
     ) -> some View {
-        let inner = Self.innerDiameter(outer: diameter, outerWidth: outerWidth, gap: s(7))
+        let layout = Self.ringLayout(
+            outer: diameter, outerWidth: outerWidth, innerWidth: innerWidth,
+            hasScoped: scopedRingWindow != nil, scale: scale
+        )
+        let inner = layout.inner
+        let third = layout.third
         return ZStack {
             // 주간을 다 썼으면 **둘 다** 색을 뺀다. 세션은 쓸 수 없어서고, 주간은
             // 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는 죽었는데
             // 링은 살아 있어서, 아직 뭔가 되는 것처럼 읽힌다.
+            //
+            // **세션만 다 썼을 때는 세션 링만 뺀다.** 주간은 다음 창이 열리면 실제로
+            // 쓸 수 있는 양이라, 그것까지 회색으로 만들면 있는 여유를 숨기는 셈이다.
             ring(
                 window: store.snapshot?.fiveHour,
                 diameter: diameter,
                 lineWidth: outerWidth,
-                isSpent: store.isWeeklySpent
+                isSpent: store.isSpent
             )
             ring(
                 window: store.snapshot?.sevenDay,
@@ -1022,8 +1195,24 @@ struct UsageHUDView: View {
                 lineWidth: innerWidth,
                 isSpent: store.isWeeklySpent
             )
+            // **제일 안쪽이 모델별이다.** 세션 · 주간은 누구에게나 있고 이건 없을 수도
+            // 있어서, 없을 때 자리가 비지 않는 쪽이 안쪽이다.
+            if let scoped = scopedRingWindow {
+                ring(
+                    window: scoped,
+                    diameter: third,
+                    lineWidth: innerWidth,
+                    isSpent: store.isWeeklySpent
+                )
+            }
         }
         .frame(width: diameter, height: diameter)
+    }
+
+    /// 모델별 링에 그릴 값. 꺼져 있거나 서버가 안 주면 nil.
+    private var scopedRingWindow: UsageWindow? {
+        guard showsScopedLimit, let limit = store.scopedLimit else { return nil }
+        return UsageWindow(utilization: limit.percent, resetsAt: limit.resetsAt)
     }
 
     private func ring(

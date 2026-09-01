@@ -243,6 +243,7 @@ final class HUDController {
         let size = UsageHUDView.size(
             mode: settings.mode,
             showsStats: settings.showsProcessStats,
+            showsScopedLimit: settings.showsScopedLimit,
             scale: settings.scale.factor
         )
         panel = HUDPanel(
@@ -305,6 +306,7 @@ final class HUDController {
                 mode: settings.mode,
                 side: settings.expandSide,
                 showsStats: settings.showsProcessStats,
+                showsScopedLimit: settings.showsScopedLimit,
                 scale: settings.scale.factor
             )
         ]
@@ -468,6 +470,9 @@ final class HUDController {
         observe(settings.$isHUDVisible) { $0.applyHUDVisible() }
         observe(settings.$expandSide) { $0.applyExpandSide() }
         observe(settings.$showsProcessStats) { $0.applyProcessStats() }
+        // **줄이 하나 늘면 창도 커져야 한다.** 뷰만 다시 그리면 카드는 커졌는데
+        // 창은 그대로라 위아래가 잘린다 — `applyMode` 가 창까지 다시 잰다.
+        observe(settings.$showsScopedLimit) { $0.applyMode() }
         // 배율은 창 크기·모서리·클릭 영역까지 바꾼다. 접기와 같은 경로를 탄다.
         observe(settings.$scale) { $0.applyMode() }
         // 새 버전이 잡히면 표시를 띄우고 그 자리를 클릭 통과 영역에 더한다.
@@ -504,7 +509,7 @@ final class HUDController {
     private func syncUsageMonitor(visible: Bool? = nil) {
         let isVisible = visible ?? panel.isVisible
 
-        if settings.showsProcessStats, isVisible, settings.mode == .expanded {
+        if settings.showsProcessStats, isVisible, UsageHUDView.draws(.processStats, in: settings.mode) {
             usageMonitor.start()
         } else {
             usageMonitor.stop()
@@ -532,15 +537,20 @@ final class HUDController {
         // 조회가 끊긴 동안에는 멈춰 있는다. 회색으로 굳은 채 걸어다니면
         // "멈췄다"는 표시가 무색해진다.
         //
-        // **주간을 다 썼을 때도 같다.** 그때는 아예 죽은 것으로 다루므로 스스로 걷지도,
+        // **한도를 다 썼을 때도 같다.** 그때는 아예 죽은 것으로 다루므로 스스로 걷지도,
         // 커서를 피하지도 않는다. 색만 빼고 계속 돌아다니면 살아 있는 것으로 보인다.
-        let canMove = isVisible
+        //
+        // 주간뿐 아니라 **세션**도 본다(`isSpent`) — 세션을 다 쓰면 주간이 아무리
+        // 남아 있어도 지금은 못 쓴다.
+        // **붙어 있어도 되는지가 먼저다.** 걷는 쪽은 여기에 눌림만 하나 더 본다 —
+        // 눌림은 메뉴가 떠 있거나 클릭 중이라 잠깐 멈추는 것일 뿐이라, 같이 묶으면
+        // 붙여 놓은 것을 한 번 누르기만 해도 떨어져서 걸어나간다.
+        let canStayPerched = isVisible
             && !areScreensAsleep
             && settings.mode == .pet
             && !isDraggingPanel
-            && !isPressed
             && !store.isDisconnected
-            && !store.isWeeklySpent
+            && !store.isSpent
 
         motion.wanders = settings.petWanders
         // **기분을 그대로 쓴다.** 여기서 임계값을 따로 견주면 마스코트는 주저앉았는데
@@ -551,20 +561,14 @@ final class HUDController {
         // 따로 세면 그림과 움직임이 어긋난다.
         motion.isDizzy = owlAnimator.mood == .dizzy
         motion.dodgesCursor = settings.petDodgesCursor
+        // **기본은 꺼짐.** 켜면 옆 화면으로 걸어 넘어간다.
+        motion.crossesScreens = settings.petCrossesScreens
         // **그림 마스코트에서만 붙는다.** 격자로 그리는 부엉이에는 매달림·앉음 자세가
         // 없어서, 붙여 놓아도 테두리에 그냥 서 있는 것으로 보인다 — 기능이 아니라
         // 버그로 읽힌다.
-        motion.perches = settings.petPerches && settings.iconStyle == .owlSheet
-        // **붙어 있어도 되는지는 따로 본다.** `canMove` 에는 눌림(`isPressed`)이 들어
-        // 있는데, 그건 메뉴가 떠 있거나 클릭 중이라 잠깐 멈추는 것일 뿐이다. 같이 묶으면
-        // 붙여 놓은 것을 한 번 누르기만 해도 떨어져서 걸어나간다.
-        motion.canStayPerched = isVisible
-            && !areScreensAsleep
-            && settings.mode == .pet
-            && !isDraggingPanel
-            && !store.isDisconnected
-            && !store.isWeeklySpent
-        motion.update(active: canMove)
+        motion.perches = settings.petPerches && settings.iconStyle.usesSheet
+        motion.canStayPerched = canStayPerched
+        motion.update(active: canStayPerched && !isPressed)
     }
 
     /// 끌어다 놓은 자리가 창 테두리에 닿아 있으면 거기 붙인다.
@@ -599,10 +603,10 @@ final class HUDController {
     /// **실제로 붙는 조건과 반드시 같아야 한다.** 여기서 빠뜨린 조건이 있으면 끌고 가는
     /// 동안 "여기 붙는다" 표시까지 그려 놓고 손을 떼면 아무 일도 안 일어난다 — 표시를
     /// 넣은 이유(닿은 것 같은데 안 붙는 자리가 넓다)를 그대로 되살리는 셈이다.
-    /// 조회가 끊기거나 주간을 다 쓰면 펫은 죽은 것으로 다루므로 붙지도 않는다.
+    /// 조회가 끊기거나 한도를 다 쓰면 펫은 죽은 것으로 다루므로 붙지도 않는다.
     private var canPerch: Bool {
-        settings.mode == .pet && settings.petPerches && settings.iconStyle == .owlSheet
-            && !store.isDisconnected && !store.isWeeklySpent
+        settings.mode == .pet && settings.petPerches && settings.iconStyle.usesSheet
+            && !store.isDisconnected && !store.isSpent
     }
 
     /// 끄는 동안 붙을 자리를 찾아 **자세와 표시를 미리** 맞춘다.
@@ -622,38 +626,27 @@ final class HUDController {
         ))
     }
 
+    /// 끄는 동안 **자세를 바꾸고 걸릴 줄을 보여준다.**
+    ///
+    /// **놓일 자리를 덮던 사각형은 걷어냈다.** 옅게 칠해 두었는데 어두운 창 위에서는
+    /// 흰 판때기로 보였다 — 뒤 창을 안 가리려고 옅게 둔 것이 어두운 배경에서 정반대로
+    /// 나왔다. 어디에 걸리는지는 막대 하나로 충분하다.
     private func applyPerchPreview(_ spot: PerchSpot?) {
         guard let spot, let rect = perchVisualRect(spot) else {
             owlAnimator.setPerch(nil)
-            // **붙을 자리가 없다는 것도 보여준다.** 아무것도 안 뜨면 "왜 안 붙지" 하고
-            // 같은 자리에 계속 갖다 대게 된다 — 창이 화면 높이를 꽉 채우고 있으면
-            // 위·아래에는 영영 못 붙는데 그걸 알려 줄 자리가 여기뿐이다.
-            if let blocked = WindowSurvey.snap(
-                mascot: mascotScreenRect(), within: perchSnapDistance, sink: perchSink
-            ) {
-                // **붙을 때와 같은 셈으로 그린다.** 상자로 그리면 잉크와 어긋나서
-                // 점선이 엉뚱하게 안쪽에 뜬다 — 실제로 그랬다.
-                if let rect = perchVisualRect(blocked, requireOnScreen: false) {
-                    perchHint.show(
-                        rect: rect, edge: blocked.edge,
-                        sink: perchSink(blocked), blocked: true
-                    )
-                } else {
-                    perchHint.hide()
-                }
-            } else {
-                perchHint.hide()
-            }
-            return
+            return perchHint.hide()
         }
         // **자세를 먼저 바꾼다.** 손을 떼기 전에 어느 자세로 붙을지가 그림으로 보인다.
         owlAnimator.setPerch(spot.edge)
         perchHint.show(rect: rect, edge: spot.edge, sink: perchSink(spot))
     }
 
-    /// 그 자리에 붙었을 때 **그림이 덮을** 화면 사각형. 표시가 이 자리에 뜬다.
-    private func perchVisualRect(_ spot: PerchSpot, requireOnScreen: Bool = true) -> NSRect? {
-        guard let origin = perchOrigin(spot, requireOnScreen: requireOnScreen),
+    /// 그 자리에 붙었을 때 **그림이 덮을** 화면 사각형. 막대가 이 상자의 한 변에 온다.
+    ///
+    /// **상자가 아니라 잉크로 잰다.** 상자에는 자세마다 빈 여백이 붙어 있어서, 그걸로
+    /// 그리면 막대가 창 테두리에서 몇십 pt 떨어진 데 뜬다.
+    private func perchVisualRect(_ spot: PerchSpot) -> NSRect? {
+        guard let origin = perchOrigin(spot),
               let ink = UsageHUDView.petMascotInkRect(
                   perch: spot.edge, scale: scale, style: settings.iconStyle
               )
@@ -718,13 +711,12 @@ final class HUDController {
     private var perchWasFront = false
 
     /// 그 자리에 붙었을 때 창이 놓일 원점. 붙을 수 없으면 nil.
-    private func perchOrigin(_ spot: PerchSpot, requireOnScreen: Bool = true) -> NSPoint? {
+    private func perchOrigin(_ spot: PerchSpot) -> NSPoint? {
         UsageHUDView.petPerchOrigin(
             perch: spot.edge,
             contact: spot.contact(in: spot.windowFrame),
             scale: scale,
             style: settings.iconStyle,
-            requireOnScreen: requireOnScreen
         )
     }
 
@@ -828,7 +820,7 @@ final class HUDController {
     /// 사용량·연결 상태·드래그 여부에서 지금 기분을 다시 정한다.
     private func refreshMood() {
         // 다 쓴 것을 먼저 알려 준다. 순서가 뒤면 한 틱 동안 살아 있는 자세가 스친다.
-        owlAnimator.setUnusable(store.isWeeklySpent)
+        owlAnimator.setUnusable(store.isSpent)
         owlAnimator.setMood(OwlMood.resolve(store: store, isDragging: isDraggingPanel))
     }
 
@@ -839,6 +831,7 @@ final class HUDController {
         layoutHosting(for: UsageHUDView.size(
             mode: settings.mode,
             showsStats: settings.showsProcessStats,
+            showsScopedLimit: settings.showsScopedLimit,
             scale: scale
         ))
     }
@@ -1089,6 +1082,7 @@ final class HUDController {
             mode: mode,
             side: settings.expandSide,
             showsStats: settings.showsProcessStats,
+            showsScopedLimit: settings.showsScopedLimit,
             scale: scale
         )
         guard character.contains(point) else {
@@ -1122,6 +1116,7 @@ final class HUDController {
         let newSize = UsageHUDView.size(
             mode: mode,
             showsStats: settings.showsProcessStats,
+            showsScopedLimit: settings.showsScopedLimit,
             scale: scale
         )
         let target = targetFrame(for: newSize)
@@ -1361,6 +1356,7 @@ final class HUDController {
                 mode: mode,
                 side: settings.expandSide,
                 showsStats: settings.showsProcessStats,
+                showsScopedLimit: settings.showsScopedLimit,
                 scale: scale
             )
         ]
@@ -1370,6 +1366,7 @@ final class HUDController {
                     mode: mode,
                     side: settings.expandSide,
                     showsStats: settings.showsProcessStats,
+                    showsScopedLimit: settings.showsScopedLimit,
                     scale: scale
                 )
             )
@@ -1432,6 +1429,7 @@ final class HUDController {
             petRingDisplay: settings.petRingDisplay,
             isHeld: isDraggingPanel,
             hidesRingWhileHeld: settings.petHidesRingWhileHeld,
+            showsScopedLimit: settings.showsScopedLimit,
             palette: HUDPalette(isDark: appearance.isDark),
             onOpenSettings: { [weak self] in self?.onOpenSettings?() },
             onOpenMeasure: { [weak self] in self?.handleOpenMeasure() },
@@ -1441,7 +1439,8 @@ final class HUDController {
             // 표본 타이머가 도는지가 아니라 "표시 설정"을 봐야 한다.
             // 접기 애니메이션 동안에는 타이머를 잠시 멈추는데, 그때 뷰를 다시 만들면
             // 줄이 통째로 사라져서 펼친 뒤에도 안 보였다.
-            usageMonitor: settings.showsProcessStats && mode == .expanded ? usageMonitor : nil,
+            usageMonitor: settings.showsProcessStats && UsageHUDView.draws(.processStats, in: mode)
+                ? usageMonitor : nil,
             scale: scale,
             showsUpdateBadge: updates.hasUpdate,
             versionBadge: settings.showsVersionBadge ? AppInfo.badgeVersion : nil,

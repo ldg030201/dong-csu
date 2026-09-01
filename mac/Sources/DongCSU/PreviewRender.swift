@@ -124,8 +124,6 @@ enum OwlGIFRenderer {
                             perch: nil
                         ),
                         flipped: false,
-                        // 문서용이라 번들이 무엇이든 정식판 색으로 뽑는다.
-                        testLook: false,
                         size: cell
                     )
                 } else {
@@ -422,6 +420,7 @@ enum HUDPreviewRenderer {
         side: HUDExpandSide = .right,
         opacity: Double = 0.92,
         showsStats: Bool = false,
+        showsScopedLimit: Bool = false,
         scale: HUDScale = .normal,
         showsUpdateBadge: Bool = false,
         versionBadge: String? = nil,
@@ -437,7 +436,12 @@ enum HUDPreviewRenderer {
                 utilization: utilization.weekly,
                 resetsAt: Date().addingTimeInterval(26 * 3600)
             ),
-            fetchedAt: Date().addingTimeInterval(state == .ok ? 0 : -13 * 3600)
+            fetchedAt: Date().addingTimeInterval(state == .ok ? 0 : -13 * 3600),
+            // 모델별 한도는 서버가 줄 때만 있다. 켠 모습을 그리려면 여기서 흉내낸다.
+            limits: showsScopedLimit
+                ? [UsageLimit(kind: "weekly_scoped", modelName: "Fable",
+                              percent: 18, resetsAt: Date().addingTimeInterval(26 * 3600))]
+                : []
         )
 
         // 실제 창과 같은 배경(반투명 단색)을 쓰고, 그 뒤에 회색 바탕을 깔아
@@ -453,14 +457,7 @@ enum HUDPreviewRenderer {
         let animator = OwlAnimator()
         animator.setMood(OwlMood.resolve(store: store, isDragging: false))
         // 실제 화면과 같은 규칙으로 색을 뺀다. 안 그러면 미리보기만 멀쩡해 보인다.
-        animator.setUnusable(store.isWeeklySpent)
-        // **색을 반드시 꽂고 들어간다.** 안 꽂으면 `OwlMood.palette` 가 번들을 보고
-        // 고르는데, 문서 그림은 테스트 바이너리로 뽑기 때문에 `test` 를 안 붙여도
-        // 부엉이가 보라색으로 나온다. 실제로 그렇게 나왔다.
-        animator.paletteOverride = versionBadgeIsTest
-            ? .tinted(body: AppInfo.testBuildTint)
-            : .normal
-        animator.testLookOverride = versionBadgeIsTest
+        animator.setUnusable(store.isSpent)
 
         let palette = HUDPalette(isDark: isDark)
         let content = UsageHUDView(
@@ -468,6 +465,7 @@ enum HUDPreviewRenderer {
             iconStyle: iconStyle,
             mode: mode,
             isHovered: isHovered,
+            showsScopedLimit: showsScopedLimit,
             palette: palette,
             expandSide: side,
             usageMonitor: showsStats ? { let m = ProcessUsageMonitor(); m.start(); return m }() : nil,
@@ -493,9 +491,7 @@ enum HUDPreviewRenderer {
                 )
             )
 
-        // **번들이 아니라 인자가 정한다.** 문서 그림은 테스트 바이너리로 뽑는다.
-        return ImageRenderer(content: content.environment(\.mascotTestLook, versionBadgeIsTest))
-            .writePNG(to: path, scale: 3)
+        return ImageRenderer(content: content).writePNG(to: path, scale: 3)
     }
 
     /// 설정 창을 PNG로 렌더한다. 탭마다 화면이 달라서 어느 탭을 그릴지 받는다.
@@ -594,8 +590,6 @@ enum HUDPreviewRenderer {
         .content
         .preferredColorScheme(isDark ? .dark : .light)
         .background(Color(nsColor: .windowBackgroundColor))
-        // 설정 창 그림도 정식판 모습으로 뽑는다. 아이콘 타일이 여기 딸려 있다.
-        .environment(\.mascotTestLook, false)
 
         return ImageRenderer(content: view).writePNG(to: path, scale: 2)
     }

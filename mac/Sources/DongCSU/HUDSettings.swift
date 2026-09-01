@@ -239,6 +239,22 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(!petWanders, forKey: Keys.petWandersOff) }
     }
 
+    /// 모델별로 갈린 주간 한도(예: Fable)를 같이 보여줄지.
+    ///
+    /// **기본은 꺼짐이다.** 서버가 줄 때만 있는 값이라 켜 놓으면 어떤 사람에게는
+    /// 아무것도 안 늘고, 링만 하나 더 그려서 셋이 겹쳐 보인다. 쓰는 사람이 켠다.
+    @Published var showsScopedLimit: Bool = false {
+        didSet { defaults.set(showsScopedLimit, forKey: Keys.showsScopedLimit) }
+    }
+
+    /// 배회할 때 다른 화면으로 걸어 넘어갈지.
+    ///
+    /// **기본은 꺼짐이다.** 켜 두면 마스코트가 옆 화면으로 사라져서, 보려고 켜 둔
+    /// 사람이 어디 갔는지 찾게 된다. 화면이 하나뿐인 사람에게는 아무 일도 안 한다.
+    @Published var petCrossesScreens: Bool = false {
+        didSet { defaults.set(petCrossesScreens, forKey: Keys.petCrossesScreens) }
+    }
+
     /// 커서를 펫 위에 올려둔 채 잡지 않으면 비켜줄지.
     @Published var petDodgesCursor: Bool = true {
         didSet { defaults.set(!petDodgesCursor, forKey: Keys.petDodgesCursorOff) }
@@ -378,6 +394,9 @@ final class HUDSettings: ObservableObject {
         static let petDodgesCursorOff = "pet.dodgesCursorOff"
         static let petPerchesOff = "pet.perchesOff"
         static let petRingWhileHeldOff = "pet.hidesRingWhileHeldOff"
+        // 이건 기본값이 꺼짐이라 그대로 저장한다.
+        static let petCrossesScreens = "pet.crossesScreens"
+        static let showsScopedLimit = "hud.showsScopedLimit"
         // 붙는 깊이는 기본값이 0이 아니라 그대로 저장한다. 없으면 규격 기본값.
         static let perchDepthTop = "pet.gripDepth.top"
         static let perchDepthBottom = "pet.gripDepth.bottom"
@@ -430,6 +449,8 @@ final class HUDSettings: ObservableObject {
         petDodgesCursor = !defaults.bool(forKey: Keys.petDodgesCursorOff)
         petPerches = !defaults.bool(forKey: Keys.petPerchesOff)
         petHidesRingWhileHeld = !defaults.bool(forKey: Keys.petRingWhileHeldOff)
+        petCrossesScreens = defaults.bool(forKey: Keys.petCrossesScreens)
+        showsScopedLimit = defaults.bool(forKey: Keys.showsScopedLimit)
         // 저장된 값이 없으면 규격 기본값. `?? 0` 으로 두면 안 붙는 것처럼 보인다.
         perchDepthTop = Self.storedGripDepth(.top, defaults: defaults)
             .map(Double.init) ?? MascotSprite.sit.gripDepth

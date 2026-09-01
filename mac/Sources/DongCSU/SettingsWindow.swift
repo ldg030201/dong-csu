@@ -353,6 +353,11 @@ struct SettingsView: View {
 
                 usageColumn(title: "세션 (5시간)", window: store.snapshot?.fiveHour, now: context.date)
                 usageColumn(title: "주간 (7일)", window: store.snapshot?.sevenDay, now: context.date)
+                // 모델별은 서버가 줄 때만 있다. 여기는 상태를 보는 자리라 표시 설정과
+                // 상관없이 늘 보여준다 — HUD 에 안 띄워 뒀어도 값은 알 수 있어야 한다.
+                if let scoped = store.scopedLimit {
+                    usageColumn(title: scoped.title, window: scoped.window, now: context.date)
+                }
 
                 Divider()
 
@@ -375,6 +380,24 @@ struct SettingsView: View {
                     .disabled(store.isRefreshing || !store.canFetchNow)
             }
         }
+    }
+
+    /// 펫 모드일 때만 뜻이 있는 설정들. 세 곳이 같은 조건을 따로 적고 있었다.
+    private var canTogglePet: Bool { settings.isHUDVisible && settings.mode == .pet }
+
+    /// 지금 보기에서 만질 수 있는 토글인가. HUD 가 꺼져 있거나, 지금 보기가 그것을
+    /// 안 그리면 잠근다.
+    private func canToggle(_ element: HUDElement) -> Bool {
+        settings.isHUDVisible && UsageHUDView.draws(element, in: settings.mode)
+    }
+
+    /// 모델별 한도 토글에 쓰는 글. 서버가 준 이름이 있으면 그걸 쓴다.
+    ///
+    /// **이름을 박아 두지 않는다.** 지금은 Fable 이지만 서버가 다른 모델을 줄 수도
+    /// 있고, 아무것도 안 줄 수도 있다.
+    private var scopedLimitTitle: String {
+        if let name = store.scopedLimit?.modelName { return "\(name) 사용량 표시" }
+        return "모델별 사용량 표시"
     }
 
     private func usageColumn(title: String, window: UsageWindow?, now: Date) -> some View {
@@ -873,11 +896,17 @@ struct SettingsView: View {
                 )
             }
 
+            // **잠글지 말지를 여기서 정하지 않는다.** 지금 보기가 그것을 그리는지는
+            // HUD 가 안다 — `draws(_:in:)` 에 물어본다. 여기에 조건을 따로 적으면
+            // HUD 를 고칠 때 같이 안 고쳐져서 어긋난다.
             Toggle("아래 줄에 CPU·메모리 표시", isOn: $settings.showsProcessStats)
-                .disabled(!settings.isHUDVisible || settings.mode != .expanded)
+                .disabled(!canToggle(.processStats))
+
+            Toggle(scopedLimitTitle, isOn: $settings.showsScopedLimit)
+                .disabled(!canToggle(.scopedRing))
 
             Toggle(versionBadgeTitle, isOn: $settings.showsVersionBadge)
-                .disabled(!settings.isHUDVisible)
+                .disabled(!canToggle(.versionBadge))
 
             Toggle("HUD 표시", isOn: $settings.isHUDVisible)
             // 펫은 여기 넣지 않는다. 펫 탭이 따로 있고, 접기와 한 줄에 묶어 두면
@@ -1031,9 +1060,9 @@ struct SettingsView: View {
                 ForEach(PetRingDisplay.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             // 펫 뒤에만 두르는 링이라 펫 모드가 아니면 고를 것이 없다.
-            .disabled(!settings.isHUDVisible || settings.mode != .pet)
+            .disabled(!canTogglePet)
 
-            Text("펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간.")
+            Text("마우스를 올리면 펫 뒤에 사용량 링이 떠오른다.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -1055,20 +1084,20 @@ struct SettingsView: View {
             Toggle("창에 붙이기", isOn: $settings.petPerches)
                 // 매달림·앉음 자세가 그림 쪽에만 있다. 켤 수 있게 두면 켜 놓고
                 // 왜 안 붙는지 알 길이 없다.
-                .disabled(settings.iconStyle != .owlSheet)
+                .disabled(!settings.iconStyle.usesSheet)
             petNote(
-                settings.iconStyle == .owlSheet
+                settings.iconStyle.usesSheet
                     ? "끌어다 다른 앱 창 테두리 가까이 놓으면 거기 앉거나 매달린다. "
                         + "창을 옮기면 따라간다."
                     : "앉고 매달리는 자세가 그림 마스코트에만 있어서, "
                         + "지금 고른 아이콘에서는 붙지 않는다."
             )
 
-            if settings.petPerches, settings.iconStyle == .owlSheet {
+            if settings.petPerches, settings.iconStyle.usesSheet {
                 perchDepthSection
             }
         }
-        .disabled(!settings.isHUDVisible || settings.mode != .pet)
+        .disabled(!canTogglePet)
     }
 
     /// 펫이 스스로 움직이는 것들. 전부 펫 모드에서만 돈다 —
@@ -1084,6 +1113,14 @@ struct SettingsView: View {
             petNote("커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다. "
                     + "창에 붙어 있는 동안에는 비키지 않는다.")
 
+            Toggle("다른 화면으로 넘어가기", isOn: $settings.petCrossesScreens)
+                // 돌아다니지 않으면 넘어갈 일도 없다.
+                .disabled(!settings.petWanders)
+            petNote(NSScreen.screens.count > 1
+                    ? "걸어다니다 옆 화면으로 넘어간다. 꺼 두면 지금 있는 화면 안에서만 돈다."
+                    : "화면이 하나뿐이라 지금은 아무 일도 하지 않는다. "
+                      + "화면을 더 연결하면 걸어서 넘어간다.")
+
             Toggle("들고 있을 때 감추기", isOn: $settings.petHidesRingWhileHeld)
             petNote("집어 들면 사용량 링과 버튼 줄이 사라진다. "
                     + "\"항상 표시\"로 해 뒀어도 들고 있는 동안은 안 보인다.")
@@ -1091,7 +1128,7 @@ struct SettingsView: View {
         }
         // 제목에 "펫 모드에서만"이라고 적어 두고 켤 수 있게 두면 앞뒤가 안 맞는다.
         // 펫 모드가 아니면 실제로 아무 일도 일어나지 않으므로 함께 잠근다.
-        .disabled(!settings.isHUDVisible || settings.mode != .pet)
+        .disabled(!canTogglePet)
     }
 
     private func petNote(_ text: String) -> some View {
@@ -1175,6 +1212,15 @@ struct SettingsView: View {
                             settings.iconStyle == style ? Color.accentColor : Color.clear,
                             lineWidth: 2
                         )
+                }
+                // **이름 옆이 아니라 타일 위에 붙인다.** 타일 폭이 76pt 뿐이라
+                // 이름 옆에 두면 긴 이름에서 줄이 바뀌고, 타일마다 캡션 높이가 달라져
+                // 한 줄로 늘어놓은 것이 어긋나 보인다.
+                .overlay(alignment: .topTrailing) {
+                    if style.isBeta {
+                        pillBadge("beta", tint: .orange)
+                            .padding(4)
+                    }
                 }
                 Text(style.shortTitle)
                     .font(.system(size: 10))
