@@ -124,6 +124,27 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.5.2", date: nil, groups: [
+            ChangelogGroup(title: "아이콘", tab: "icon", notes: [
+                .new("라쿤 캐릭터 추가 (beta)"),
+            ]),
+            ChangelogGroup(title: "표시", tab: "display", notes: [
+                .new("모델별 사용량 표시 추가 "
+                     + "(예: Fable — 링과 줄이 하나씩 늘고 카드가 그만큼 커짐, 기본 꺼짐)"),
+                .fix("접거나 펫일 때 버전 표시 설정이 눌려도 아무 일이 없던 문제 수정 "
+                     + "(그 보기에는 딱지가 없어서 잠김)"),
+            ]),
+            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
+                .new("다른 화면으로 넘어가기 추가 (혼자 돌아다닐 때만, 기본 꺼짐)"),
+                .fix("마우스를 올렸을 때 뜨는 링의 위아래가 아주 얇게 깎이던 문제 수정"),
+                .remove("끌 때 놓일 자리를 덮던 반투명 사각형과 점선 제거 "
+                        + "(어두운 창에서 흰 판으로 보임 — 걸리는 줄은 그대로 표시)"),
+            ]),
+            ChangelogGroup(title: "마스코트", notes: [
+                .fix("세션 한도를 다 써도 죽지 않던 문제 수정 "
+                     + "(걷기 · 커서 피하기도 멈추고 세션 링도 회색)"),
+            ]),
+        ]),
         ChangelogEntry(version: "2.5.1", date: "2026-08-17", groups: [
             ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
                 .new("잡는 깊이 조절 추가 (걸터앉기 · 매달리기 · 껴안기 따로)"),
