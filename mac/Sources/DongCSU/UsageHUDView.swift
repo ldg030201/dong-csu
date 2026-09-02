@@ -100,10 +100,36 @@ struct UsageHUDView: View {
     /// (값 20 + 남은 시간 11 + 줄 사이 8 + 여백)
     static let baseScopedRowHeight: CGFloat = 46
 
-    static func size(
-        mode: HUDMode, showsStats: Bool = false, showsScopedLimit: Bool = false,
-        scale: CGFloat = 1
-    ) -> CGSize {
+    /// 창 치수와 클릭 자리를 잴 때 **늘 같이 가는 것들.**
+    ///
+    /// 하나씩 인자로 넘기면 카드에 붙는 것이 하나 늘 때마다 네 시그니처와 호출부
+    /// 열두 곳을 같이 고쳐야 한다. 실제로 모델별 링을 넣을 때 그 열두 곳을 손으로
+    /// 고쳤고, 그중 셋은 들여쓰기가 어긋난 채로 들어갔다.
+    ///
+    /// **설정 객체를 넘기지 않는다** — 진단 통로와 미리보기에는 `HUDSettings` 가 없고,
+    /// 기하 계산이 UserDefaults 를 물면 같은 인자로 부른 결과가 기계마다 달라진다.
+    struct Card {
+        var mode: HUDMode
+        var side: HUDExpandSide = .right
+        var showsStats = false
+        var showsScopedLimit = false
+        var scale: CGFloat = 1
+
+        init(
+            _ mode: HUDMode, side: HUDExpandSide = .right,
+            showsStats: Bool = false, showsScopedLimit: Bool = false, scale: CGFloat = 1
+        ) {
+            self.mode = mode
+            self.side = side
+            self.showsStats = showsStats
+            self.showsScopedLimit = showsScopedLimit
+            self.scale = scale
+        }
+    }
+
+    static func size(_ card: Card) -> CGSize {
+        let (mode, showsStats, showsScopedLimit, scale) =
+            (card.mode, card.showsStats, card.showsScopedLimit, card.scale)
         func scaled(_ size: CGSize) -> CGSize {
             CGSize(width: size.width * scale, height: size.height * scale)
         }
@@ -226,7 +252,7 @@ struct UsageHUDView: View {
     /// 반대로 마스코트 크기로만 잡으면, 호버해서 링이 뜬 순간 커서를 링 쪽으로 조금만
     /// 옮겨도 영역을 벗어나 링이 사라진다.
     static func petHitRect(scale: CGFloat) -> CGRect {
-        let panel = size(mode: .pet, scale: scale)
+        let panel = size(.init(.pet, scale: scale))
         let side = basePetRingDiameter * scale
         let row = basePetButtonRow * scale
         // 뷰 좌표는 아래가 0이다. 버튼 줄이 아래에 깔리고 링은 그 **위** 영역의 가운데다.
@@ -244,7 +270,7 @@ struct UsageHUDView: View {
     /// `petHitRect`(사각형)와는 겹치므로, 여기 마우스가 올라오면 도망을 막아야 한다.
     /// `HUDController` 가 이 자리에 추적 영역을 따로 걸어 그렇게 한다.
     static func petUpdateRect(scale: CGFloat) -> CGRect {
-        let panel = size(mode: .pet, scale: scale)
+        let panel = size(.init(.pet, scale: scale))
         let side = updateBadgeSize(scale: scale)
         let inset = 2 * scale
         return CGRect(
@@ -261,7 +287,7 @@ struct UsageHUDView: View {
     /// 다가갔는데 펫이 달아나면 영영 못 누른다. 자리를 갈라 두면 특별히 예외를 두지
     /// 않아도 그 일이 생기지 않는다.
     static func petButtonsRect(scale: CGFloat) -> CGRect {
-        let panel = size(mode: .pet, scale: scale)
+        let panel = size(.init(.pet, scale: scale))
         return CGRect(x: 0, y: 0, width: panel.width, height: basePetButtonRow * scale)
     }
 
@@ -279,7 +305,7 @@ struct UsageHUDView: View {
     /// 고쳐졌다 — 판정이 배율 1에서 16pt 아래로 밀렸다. 같은 파일에 나란히 둔다.
     @MainActor
     static func petMascotRect(scale: CGFloat, style: ClaudeIconStyle = .owl) -> CGRect {
-        let panel = size(mode: .pet, scale: scale)
+        let panel = size(.init(.pet, scale: scale))
         let height = petOwlHeight(scale: scale)
         let width = height * mascotAspect(style: style)
         let row = basePetButtonRow * scale
@@ -474,18 +500,13 @@ struct UsageHUDView: View {
     /// 높이는 반드시 "실제 창 크기"에서 가져와야 한다. 자원 사용량 줄이 붙으면 창이
     /// 17pt 커지는데, 그때 펼친 기본 높이(88)로 계산하면 영역이 그만큼 아래로 밀려서
     /// 버튼을 눌러도 클릭이 통과되지 않는다.
-    static func controlsHitRectInPanel(
-        mode: HUDMode,
-        side: HUDExpandSide,
-        showsStats: Bool,
-        showsScopedLimit: Bool = false,
-        scale: CGFloat = 1
-    ) -> CGRect {
+    static func controlsHitRectInPanel(_ card: Card) -> CGRect {
+        let (mode, side, scale) = (card.mode, card.side, card.scale)
         // 펫에는 버튼이 없다. 빈 사각형을 주면 어떤 클릭도 여기 걸리지 않는다.
         guard mode != .pet else { return .zero }
 
         let button = refreshHitSize(scale: scale)
-        let panel = size(mode: mode, showsStats: showsStats, showsScopedLimit: showsScopedLimit, scale: scale)
+        let panel = size(card)
         let trailing = collapsedTrailing(scale: scale)
         let inset = refreshInset(scale: scale)
 
@@ -516,14 +537,10 @@ struct UsageHUDView: View {
     ///
     /// 여기를 더블클릭하면 펫 모드로 들어간다. 링과 마스코트가 겹쳐 있으므로 링 전체를
     /// 잡는다. 펫에서는 이미 마스코트뿐이라 창 전체가 그 자리다.
-    static func characterRectInPanel(
-        mode: HUDMode,
-        side: HUDExpandSide,
-        showsStats: Bool,
-        showsScopedLimit: Bool = false,
-        scale: CGFloat = 1
-    ) -> CGRect {
-        let panel = size(mode: mode, showsStats: showsStats, showsScopedLimit: showsScopedLimit, scale: scale)
+    static func characterRectInPanel(_ card: Card) -> CGRect {
+        let (mode, side, showsScopedLimit, scale) =
+            (card.mode, card.side, card.showsScopedLimit, card.scale)
+        let panel = size(card)
         guard mode != .pet else { return CGRect(origin: .zero, size: panel) }
 
         // **링이 커지면 이 자리도 같이 커져야 한다.** 62 로 못 박아 두면 모델별 링을
@@ -554,20 +571,15 @@ struct UsageHUDView: View {
 
     /// 업데이트 표시 자리. 버튼 묶음 반대편 위 모서리에 둔다.
     /// 기본 설정(오른쪽으로 펼치기)에서는 왼쪽 위가 된다.
-    static func updateBadgeRectInPanel(
-        mode: HUDMode,
-        side: HUDExpandSide,
-        showsStats: Bool,
-        showsScopedLimit: Bool = false,
-        scale: CGFloat = 1
-    ) -> CGRect {
+    static func updateBadgeRectInPanel(_ card: Card) -> CGRect {
+        let (mode, side, scale) = (card.mode, card.side, card.scale)
         // 펫은 배지를 그리지 않는다. 그런데도 자리를 돌려주면 그만큼이 클릭 통과
         // 구멍이 되어, 마스코트 한 귀퉁이를 눌러도 끌리지 않는다.
         guard mode != .pet else { return .zero }
 
         let badge = updateBadgeSize(scale: scale)
         let inset = refreshInset(scale: scale)
-        let panel = size(mode: mode, showsStats: showsStats, showsScopedLimit: showsScopedLimit, scale: scale)
+        let panel = size(card)
         let x = side == .right ? inset : panel.width - inset - badge
         return CGRect(x: x, y: panel.height - inset - badge, width: badge, height: badge)
     }
@@ -614,8 +626,8 @@ struct UsageHUDView: View {
             petButtonRow
         }
         .frame(
-            width: Self.size(mode: .pet, scale: scale).width,
-            height: Self.size(mode: .pet, scale: scale).height
+            width: Self.size(.init(.pet, scale: scale)).width,
+            height: Self.size(.init(.pet, scale: scale)).height
         )
         // **여기에 사용량 요약을 붙이지 않는다.** 카드 전체를 덮는 설명이라 버튼 위에
         // 올려도 같이 떠서 버튼 설명과 겹친다. 마우스를 올리면 링이 떠오르므로
@@ -657,8 +669,8 @@ struct UsageHUDView: View {
             .opacity(!iconStyle.isAnimated && isDisconnected ? 0.4 : 1)
         }
         .frame(
-            width: Self.size(mode: .pet, scale: scale).width,
-            height: Self.size(mode: .pet, scale: scale).height - s(Self.basePetButtonRow)
+            width: Self.size(.init(.pet, scale: scale)).width,
+            height: Self.size(.init(.pet, scale: scale)).height - s(Self.basePetButtonRow)
         )
     }
 
@@ -719,7 +731,7 @@ struct UsageHUDView: View {
     /// 접은 카드 크기. **모델별 링이 붙으면 커진다** — 링이 커진 만큼 카드도 커져야
     /// 링이 카드를 뚫고 나가지 않는다.
     private var collapsedSize: CGSize {
-        Self.size(mode: .collapsed, showsScopedLimit: showsScopedLimit, scale: scale)
+        Self.size(.init(.collapsed, showsScopedLimit: showsScopedLimit, scale: scale))
     }
 
     private var buttonColumn: some View {
@@ -746,16 +758,13 @@ struct UsageHUDView: View {
         }
         .frame(
             width: expandedSize.width,
-            height: Self.size(
-                mode: .expanded, showsStats: usageMonitor != nil,
-                showsScopedLimit: showsScopedLimit, scale: scale
-            ).height
+            height: Self.size(.init(.expanded, showsStats: usageMonitor != nil, showsScopedLimit: showsScopedLimit, scale: scale)).height
         )
     }
 
     /// 펼친 카드 크기. 모델별 링이 붙으면 가로도 그만큼 넓어진다.
     private var expandedSize: CGSize {
-        Self.size(mode: .expanded, showsScopedLimit: showsScopedLimit, scale: scale)
+        Self.size(.init(.expanded, showsScopedLimit: showsScopedLimit, scale: scale))
     }
 
     private var expandedRowHeight: CGFloat {

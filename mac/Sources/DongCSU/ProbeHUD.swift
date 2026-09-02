@@ -25,10 +25,7 @@ enum ProbeHUD {
                     for scale in HUDScale.allCases {
                         rows += 1
                         let notes = check(mode: mode, scoped: scoped, stats: stats, scale: scale)
-                        let panel = UsageHUDView.size(
-                            mode: mode, showsStats: stats, showsScopedLimit: scoped,
-                            scale: scale.factor
-                        )
+                        let panel = UsageHUDView.size(.init(mode, showsStats: stats, showsScopedLimit: scoped, scale: scale.factor))
                         // 펫은 다른 링을 쓴다. 안 쓰는 숫자를 찍으면 표가 거짓말한다.
                         let ring = mode == .pet
                             ? UsageHUDView.basePetRingDiameter * scale.factor
@@ -99,7 +96,7 @@ enum ProbeHUD {
         mode: HUDMode, scoped: Bool, stats: Bool, scale: HUDScale
     ) -> [String] {
         let f = scale.factor
-        let panel = UsageHUDView.size(mode: mode, showsStats: stats, showsScopedLimit: scoped, scale: f)
+        let panel = UsageHUDView.size(.init(mode, showsStats: stats, showsScopedLimit: scoped, scale: f))
         let ring = UsageHUDView.ringDiameter(showsScopedLimit: scoped, scale: f)
         let line = UsageHUDView.ringLineWidth(scale: f)
         var notes: [String] = []
@@ -140,15 +137,13 @@ enum ProbeHUD {
         // 클릭을 흘려보낼 자리들이 창 안에 있어야 한다. 밖으로 나가면 버튼이 안 눌린다.
         for side in [HUDExpandSide.right, .left] {
             let bounds = CGRect(origin: .zero, size: panel)
-            let controls = UsageHUDView.controlsHitRectInPanel(
-                mode: mode, side: side, showsStats: stats, showsScopedLimit: scoped, scale: f
-            )
+            let controls = UsageHUDView.controlsHitRectInPanel(.init(mode, side: side, showsStats: stats,
+                showsScopedLimit: scoped, scale: f))
             if mode != .pet, !bounds.insetBy(dx: -0.5, dy: -0.5).contains(controls) {
                 notes.append("버튼 자리가 창 밖 (\(side == .right ? "오른쪽" : "왼쪽"))")
             }
-            let character = UsageHUDView.characterRectInPanel(
-                mode: mode, side: side, showsStats: stats, showsScopedLimit: scoped, scale: f
-            )
+            let character = UsageHUDView.characterRectInPanel(.init(mode, side: side, showsStats: stats,
+                showsScopedLimit: scoped, scale: f))
             if !bounds.insetBy(dx: -0.5, dy: -0.5).contains(character) {
                 notes.append("마스코트 자리가 창 밖 (\(side == .right ? "오른쪽" : "왼쪽"))")
             }

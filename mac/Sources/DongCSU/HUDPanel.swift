@@ -234,18 +234,20 @@ final class HUDController {
     private var appearance: HUDAppearance { settings.appearance }
     private var scale: CGFloat { settings.scale.factor }
 
+    /// 지금 설정으로 만든 카드. **치수를 재는 곳은 전부 이걸 쓴다** — 설정 넷을
+    /// 자리마다 다시 읽으면 카드에 붙는 것이 하나 늘 때 일곱 곳을 같이 고쳐야 한다.
+    private func card(_ mode: HUDMode? = nil) -> UsageHUDView.Card {
+        UsageHUDView.Card(settings, mode: mode)
+    }
+
     init(store: UsageStore, settings: HUDSettings, updates: UpdateChecker, meter: UsageMeter) {
         self.store = store
         self.settings = settings
         self.updates = updates
         self.meter = meter
 
-        let size = UsageHUDView.size(
-            mode: settings.mode,
-            showsStats: settings.showsProcessStats,
-            showsScopedLimit: settings.showsScopedLimit,
-            scale: settings.scale.factor
-        )
+        // 아직 저장 속성이 다 안 채워져서 `card()` 를 못 쓴다.
+        let size = UsageHUDView.size(UsageHUDView.Card(settings))
         panel = HUDPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -302,13 +304,7 @@ final class HUDController {
         interactionView.autoresizingMask = [.width, .height]
         // 시작 시점에는 아직 업데이트를 확인하기 전이라 버튼 영역만 넣는다.
         interactionView.passThroughRects = [
-            UsageHUDView.controlsHitRectInPanel(
-                mode: settings.mode,
-                side: settings.expandSide,
-                showsStats: settings.showsProcessStats,
-                showsScopedLimit: settings.showsScopedLimit,
-                scale: settings.scale.factor
-            )
+            UsageHUDView.controlsHitRectInPanel(card())
         ]
         container.addSubview(interactionView)
 
@@ -828,12 +824,7 @@ final class HUDController {
     private func applyExpandSide() {
         refreshPassThroughRects()
         rebuildRootView()
-        layoutHosting(for: UsageHUDView.size(
-            mode: settings.mode,
-            showsStats: settings.showsProcessStats,
-            showsScopedLimit: settings.showsScopedLimit,
-            scale: scale
-        ))
+        layoutHosting(for: UsageHUDView.size(card()))
     }
 
     /// 크기가 바뀔 때 고정할 모서리를 정한다.
@@ -1078,13 +1069,7 @@ final class HUDController {
     /// 셋을 한 줄로 돌리면 접으려다 펫으로 넘어가서, 원래 있던 접기 동작이 무엇을
     /// 할지 예측할 수 없어진다.
     private func handleDoubleClick(at point: NSPoint) {
-        let character = UsageHUDView.characterRectInPanel(
-            mode: mode,
-            side: settings.expandSide,
-            showsStats: settings.showsProcessStats,
-            showsScopedLimit: settings.showsScopedLimit,
-            scale: scale
-        )
+        let character = UsageHUDView.characterRectInPanel(card(mode))
         guard character.contains(point) else {
             handleToggleCollapse()
             return
@@ -1113,12 +1098,7 @@ final class HUDController {
     /// 보기를 바꾼다. 오른쪽 위 모서리를 붙잡아 두어서 크기가 바뀌어도 자리가 튀지 않는다.
     private func applyMode() {
         let mode = settings.mode
-        let newSize = UsageHUDView.size(
-            mode: mode,
-            showsStats: settings.showsProcessStats,
-            showsScopedLimit: settings.showsScopedLimit,
-            scale: scale
-        )
+        let newSize = UsageHUDView.size(card(mode))
         let target = targetFrame(for: newSize)
 
         // 애니메이션 도중에 표본이 갱신되면 화면이 다시 배치되면서 끊겨 보인다.
@@ -1352,23 +1332,11 @@ final class HUDController {
     private func refreshPassThroughRects() {
         let mode = settings.mode
         var rects = [
-            UsageHUDView.controlsHitRectInPanel(
-                mode: mode,
-                side: settings.expandSide,
-                showsStats: settings.showsProcessStats,
-                showsScopedLimit: settings.showsScopedLimit,
-                scale: scale
-            )
+            UsageHUDView.controlsHitRectInPanel(card(mode))
         ]
         if updates.hasUpdate {
             rects.append(
-                UsageHUDView.updateBadgeRectInPanel(
-                    mode: mode,
-                    side: settings.expandSide,
-                    showsStats: settings.showsProcessStats,
-                    showsScopedLimit: settings.showsScopedLimit,
-                    scale: scale
-                )
+                UsageHUDView.updateBadgeRectInPanel(card(mode))
             )
         }
         // 펫의 버튼 줄과 새 버전 배지는 SwiftUI 버튼이라 클릭을 아래로 흘려보내야 눌린다.
@@ -1516,5 +1484,22 @@ final class HUDController {
                 self?.syncMotion()
             }
             .store(in: &cancellables)
+    }
+}
+
+/// 설정에서 카드를 그대로 만든다.
+///
+/// **`UsageHUDView` 쪽에 두지 않는다.** 거기는 설정을 몰라야 진단 통로와 미리보기가
+/// 같은 인자로 같은 답을 낸다 — 기하 계산이 UserDefaults 를 물면 기계마다 달라진다.
+@MainActor
+private extension UsageHUDView.Card {
+    init(_ settings: HUDSettings, mode: HUDMode? = nil) {
+        self.init(
+            mode ?? settings.mode,
+            side: settings.expandSide,
+            showsStats: settings.showsProcessStats,
+            showsScopedLimit: settings.showsScopedLimit,
+            scale: settings.scale.factor
+        )
     }
 }
