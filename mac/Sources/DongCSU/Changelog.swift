@@ -124,6 +124,14 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.5.2.1", date: nil, groups: [
+            ChangelogGroup(title: "아이콘", tab: "icon", notes: [
+                .fix("라쿤이 어지러워할 때 머리 위에 노란 조각이 뜨던 문제 수정"),
+            ]),
+            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
+                .change("다른 화면으로 넘어가기를 켜면 커서를 피할 때도 넘어가도록 변경"),
+            ]),
+        ]),
         ChangelogEntry(version: "2.5.2", date: "2026-09-01", groups: [
             ChangelogGroup(title: "아이콘", tab: "icon", notes: [
                 .new("라쿤 캐릭터 추가 (beta)"),
