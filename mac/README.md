@@ -88,11 +88,11 @@ brew tap ldg030201/dong-csu https://github.com/ldg030201/dong-csu && brew trust 
 
 | | 최소 | 비고 |
 | --- | --- | --- |
-| **macOS** | 14 (Sonoma) | |
+| **macOS** | 14 (Sonoma) | **15 (Sequoia) 이상은 미리 만든 결과물을 받는다.** 14는 소스에서 빌드한다 |
 | **Claude Code** | 로그인된 상태 | keychain에 저장된 토큰을 읽는다 |
 | **Homebrew** | — | 설치에만 쓴다 |
-| **Swift 툴체인** | 5.9 | 소스에서 빌드할 때만. `xcode-select --install` |
-| **Xcode** | 불필요 | Command Line Tools만 있으면 된다 |
+| **Swift 툴체인** | 5.9 | **소스에서 빌드할 때만** — 위 표에서 미리 만든 결과물이 없는 경우 |
+| **Xcode** | 불필요 | Command Line Tools만 있으면 된다. 낡았으면 `xcode-select --install` |
 | **아키텍처** | Apple Silicon | Intel도 되지만 미리 빌드된 결과물이 없어 설치가 오래 걸린다 |
 | **외부 의존성** | 없음 | Swift 패키지 0개 |
 

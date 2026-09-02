@@ -50,10 +50,38 @@ sign_identity() {
   fi
 }
 
+# Package.swift 가 요구하는 최소 Swift. 여기를 올리면 아래 안내도 같이 맞춘다.
+MIN_SWIFT="5.9"
+
+# **툴체인이 낡았으면 먼저 알아먹게 말해준다.**
+#
+# 소스로 까는 사람(미리 만든 결과물이 없는 macOS 판)이 낡은 Xcode·Command Line Tools 를
+# 쓰면 SwiftPM 이 "package is using Swift tools version 5.9.0 but the installed
+# version is …" 같은 말을 뱉고 죽는데, 받는 쪽에서는 무엇을 해야 하는지 알 수 없다.
+#
+# **정식 Xcode 를 요구하지 않는다.** Command Line Tools 만으로도 빌드되므로
+# Homebrew 의 `depends_on xcode:` 는 쓰면 안 된다 — 잘 되던 사람까지 막는다.
+require_swift() {
+  local have
+  have="$(swift --version 2>/dev/null | sed -n 's/.*Apple Swift version \([0-9][0-9.]*\).*/\1/p' | head -1)"
+  if [[ -z "$have" ]]; then
+    echo "Swift 를 못 찾았다. Command Line Tools 를 깔아라:  xcode-select --install" >&2
+    exit 1
+  fi
+  # 가장 낮은 것이 최소치면 통과다. 자릿수가 달라도(5.10 vs 5.9) 맞게 센다.
+  if [[ "$(printf '%s\n%s\n' "$MIN_SWIFT" "$have" | sort -V | head -1)" != "$MIN_SWIFT" ]]; then
+    echo "Swift $have 은 너무 낡았다 — $MIN_SWIFT 이상이 필요하다." >&2
+    echo "  Xcode 를 쓰면 App Store 에서 업데이트하고," >&2
+    echo "  Command Line Tools 만 쓰면:  sudo rm -rf /Library/Developer/CommandLineTools && xcode-select --install" >&2
+    exit 1
+  fi
+}
+
 # Homebrew처럼 이미 샌드박스 안에서 도는 환경에서는 SwiftPM의 자체 샌드박스가
 # 중첩되어 실패한다. 그럴 때 SWIFT_BUILD_FLAGS="--disable-sandbox" 로 넘긴다.
 # 단어 분리를 의도한 것이라 따옴표를 씌우지 않는다.
 swift_build() {
+  require_swift
   # shellcheck disable=SC2086
   swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-} "$@"
 }
