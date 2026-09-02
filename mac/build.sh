@@ -57,9 +57,12 @@ else
   echo "mascot: 격자 부엉이에서 구웠다"
 fi
 
-# 마스코트를 더 넣는다. **여기 이름은 ClaudeIconStyle.sheetResource 와 같아야 한다** —
-# 어긋나면 그 캐릭터만 격자 부엉이로 떨어지고, 화면에는 아무 말도 안 나온다.
-for extra in raccoon; do
+# 나머지 마스코트. **이름을 여기 적지 않는다** — 방금 만든 바이너리에게 물어본다.
+# 손으로 적어 두면 `ClaudeIconStyle.sheetResource` 를 고칠 때 같이 안 고쳐지고,
+# 어긋나면 그 캐릭터만 조용히 격자 부엉이로 떨어진다.
+for extra in $("$APP/Contents/MacOS/$APP_NAME" --dump-sheets); do
+  # 기본 시트는 위에서 이미 넣었다(없으면 구웠다).
+  [[ "$extra" == "mascot" ]] && continue
   if [[ -f "$ROOT/Resources/$extra.png" ]]; then
     cp "$ROOT/Resources/$extra.png" "$APP/Contents/Resources/$extra.png"
     echo "mascot: Resources/$extra.png 를 넣었다"

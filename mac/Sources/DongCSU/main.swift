@@ -527,6 +527,15 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl"),
     exit(ok ? 0 : 1)
 }
 
+// 번들에 넣어야 하는 마스코트 시트 이름을 한 줄에 하나씩 뱉는다: dong-csu --dump-sheets
+//
+// **build.sh 가 이걸 읽는다.** 캐릭터 이름을 셸에 손으로 적어 두면 `sheetResource` 를
+// 고칠 때 같이 안 고쳐지고, 어긋나면 그 캐릭터만 조용히 격자 부엉이로 떨어진다.
+if CommandLine.arguments.contains("--dump-sheets") {
+    ClaudeIconStyle.allCases.compactMap(\.sheetResource).forEach { print($0) }
+    exit(0)
+}
+
 // 기분마다 움직이는 GIF를 만든다: dong-csu --render-owl-gif <디렉터리> [칸높이] [캐릭터]
 // 문서에 넣을 그림이다. 자세를 고치면 다시 돌려서 갱신한다.
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--render-owl-gif"),
