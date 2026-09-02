@@ -65,7 +65,7 @@ enum ProbePerch {
                          index + 1, f.minX, f.maxX, f.minY, f.maxY))
         }
 
-        let panel = NSRect(origin: .zero, size: UsageHUDView.size(mode: .pet))
+        let panel = NSRect(origin: .zero, size: UsageHUDView.size(.init(.pet)))
         let motion = PetMotionController()
         motion.frame = { panel }
         motion.visualFrame = { panel }
@@ -85,16 +85,16 @@ enum ProbePerch {
         let blocked = motion.clamped(target, crossing: true)
         motion.crossesScreens = true
         let allowed = motion.clamped(target, crossing: true)
-        // **켜 두어도 배회가 아니면 안 넘어간다.** 커서를 피하거나 붙어 있던 데서
-        // 떨어질 때가 이 길로 온다.
+        // **켜 두어도 제 걸음이 아니면 안 넘어간다.** 붙어 있던 데서 떨어져 자리를
+        // 잡을 때가 이 길로 온다.
         let dodged = motion.clamped(target)
 
         let offOK = blocked.map { !onOtherScreen($0) } ?? true
         let onOK = allowed.map(onOtherScreen) ?? false
         let dodgeOK = dodged.map { !onOtherScreen($0) } ?? true
         print("  꺼짐 — 옆 화면 자리를 요구하면 지금 화면으로 되당긴다   \(offOK ? "통과" : "실패")")
-        print("  켜짐 · 배회 — 옆 화면 자리를 그대로 받아들인다          \(onOK ? "통과" : "실패")")
-        print("  켜짐 · 피하기 — 지금 화면 안에 남는다                   \(dodgeOK ? "통과" : "실패")")
+        print("  켜짐 · 걸어감 — 옆 화면 자리를 그대로 받아들인다        \(onOK ? "통과" : "실패")")
+        print("  켜짐 · 떼어놓기 — 지금 화면 안에 남는다                 \(dodgeOK ? "통과" : "실패")")
         let ok = offOK && onOK && dodgeOK
         print(ok ? "\n통과" : "\n실패")
         return ok

@@ -290,7 +290,8 @@ final class PetMotionController {
             step(
                 toward: target,
                 speed: hurried ? Self.dashSpeed : Self.dodgeSpeed,
-                gait: hurried ? .run : .walk
+                gait: hurried ? .run : .walk,
+                crossing: true
             ) { [weak self] in
                 self?.rest()
             }
@@ -453,7 +454,7 @@ final class PetMotionController {
             guard let target = clamped(NSPoint(
                 x: panel.minX + direction.dx * retreat,
                 y: panel.minY + direction.dy * retreat
-            )) else { return }
+            ), crossing: true) else { return }
             guard Self.distance(panel.origin, target) >= Self.minimumMove else { continue }
             // 한 번 비켰는데 또 올라왔으면 장난치는 것이다. 그때도 느긋하게 걸으면
             // 잡히려고 서 있는 것처럼 보인다. **쫓아오면 뛴다.**
@@ -471,9 +472,12 @@ final class PetMotionController {
 
     /// 다른 화면으로 넘어가도 되는지. 설정에서 켠다(기본 꺼짐).
     ///
-    /// **배회할 때만이다.** 커서를 피하거나 붙어 있던 데서 떨어질 때는 지금 화면 안에
-    /// 남는다 — 안 그러면 마우스로 몰아붙였을 때 펫이 옆 모니터로 도망가고, 그건
-    /// 설정에 적힌 "산책하다 넘어간다" 와 다른 일이다. 가르는 자리는 `clamped(_:crossing:)`.
+    /// **스스로 걸어가는 것은 다 넘어간다** — 배회도, 커서를 피해 물러나는 것도.
+    /// 몰아붙이면 옆 모니터로 달아나는 것이 이 설정을 켠 사람이 기대하는 모습이다.
+    ///
+    /// 넘어가지 않는 것은 **제 걸음이 아닌 자리 잡기** 하나다(`unperch`) — 붙어 있던
+    /// 창에서 떨어질 때는 그 자리에 서야지 옆 화면으로 튀면 안 된다.
+    /// 가르는 자리는 `clamped(_:crossing:)`.
     var crossesScreens = false
 
     private func wanderTarget() -> NSPoint? {
@@ -531,9 +535,9 @@ final class PetMotionController {
 
     /// 창 원점을 설 수 있는 자리로 되당긴다.
     ///
-    /// **`crossing` 은 배회할 때만 참이다.** 화면을 넘어가는 것은 산책이라, 커서를
-    /// 피하거나 붙어 있던 데서 떨어질 때까지 넘어가면 설정에 적힌 것과 다른 일이
-    /// 벌어진다 — 마우스로 몰아붙이면 펫이 옆 모니터로 도망가 버린다.
+    /// **`crossing` 은 스스로 걸어갈 때 참이다.** 배회도 커서 피하기도 제 걸음이라
+    /// 넘어간다. 거짓인 곳은 붙어 있던 데서 떨어져 자리를 잡는 `unperch` 뿐이다 —
+    /// 거기서 넘어가면 놓은 자리가 아니라 옆 화면에 가서 선다.
     ///
     /// 진단 통로(`ProbePerch`)도 직접 부른다. **화면 밖으로 나가는지는 눈으로 못
     /// 보므로** 거기서 이걸로 잰다.
