@@ -350,7 +350,7 @@ if CommandLine.arguments.contains("--probe-mascot") {
 }
 
 // 그려 받은 시트를 규격 시트로 만든다:
-//   dong-csu --prep-sheet <받은.png> <나올.png> [cols=6] [rows=4] [keep=4] [noalign]
+//   dong-csu --prep-sheet <받은.png> <나올.png> [cols=6] [rows=4] [keep=4] [speck=1500] [noalign]
 if let flagIndex = CommandLine.arguments.firstIndex(of: "--prep-sheet"),
    flagIndex + 2 < CommandLine.arguments.count {
     func number(_ key: String, _ fallback: Int) -> Int {

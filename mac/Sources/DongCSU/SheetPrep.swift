@@ -56,7 +56,7 @@ enum SheetPrep {
         let wiped = canvas.clearBackground()
         print("배경으로 지운 픽셀: \(wiped) (\(wiped * 100 / (canvas.width * canvas.height))%)")
         let specks = canvas.clearSpecks(smallerThan: options.speck)
-        if specks > 0 { print("턴 부스러기: \(specks)픽셀") }
+        report(specks: specks, limit: options.speck, canvas: canvas, options: options)
 
         let cells = canvas.cells(columns: options.columns, rows: options.rows, keep: options.keep)
         let drawn = cells.filter { $0.ink != nil }.count
@@ -65,6 +65,7 @@ enum SheetPrep {
             print("칸을 못 갈랐다 — 배경이 안 빠졌거나 격자가 다르다")
             return false
         }
+        report(clipped: cells, canvas: canvas, options: options)
 
         guard let png = compose(canvas: canvas, cells: cells, options: options) else {
             print("규격 시트를 못 만들었다")
@@ -77,6 +78,70 @@ enum SheetPrep {
         let size = MascotSheet.canonicalSize
         print("규격 시트: \(destination) (\(Int(size.width))x\(Int(size.height)))")
         return true
+    }
+
+    /// 칸 네 변에서 안 읽는 여유. **칸 선을 피하려고 둔 것이다.**
+    ///
+    /// 재는 쪽과 알려 주는 쪽이 같은 값을 봐야 한다 — 두 곳에 적으면 "8px 안으로
+    /// 넣어라" 라고 해 놓고 실제로는 다른 폭을 잘라 내게 된다.
+    /// **`nonisolated` 이다** — 재는 쪽(`Canvas`)이 메인 액터 밖에 있어서,
+    /// 여기 묶어 두면 그쪽에서 부르지 못하고 공식이 두 벌로 갈린다.
+    nonisolated static func readInset(cellWidth: Int, cellHeight: Int) -> Int {
+        max(2, min(cellWidth, cellHeight) / 32)
+    }
+
+    /// 이만한 덩어리가 부스러기로 털렸으면 **그린 것일 수 있다.**
+    /// 워터마크 조각은 이보다 훨씬 작다.
+    private static let tellingSpeck = 200
+
+    /// 턴 부스러기를 알린다. **워터마크 조각과 일부러 그린 것이 여기서 갈린다.**
+    ///
+    /// 라쿤 어지러움 칸의 별들(1350 · 775 · 704픽셀)이 이 청소에 통째로 지워졌는데,
+    /// 그때 뜬 것은 "턴 부스러기: 2829픽셀" 한 줄이라 무엇이 없어졌는지 알 길이
+    /// 없었다. **큰 덩어리는 어느 칸에서 얼마가 없어졌는지 이름을 불러 준다.**
+    private static func report(specks: [Speck], limit: Int, canvas: Canvas, options: Options) {
+        guard !specks.isEmpty else { return }
+        let total = specks.reduce(0) { $0 + $1.pixels }
+        print("턴 부스러기: \(specks.count)덩어리 \(total)픽셀")
+        let telling = specks.filter { $0.pixels >= tellingSpeck }.sorted { $0.pixels > $1.pixels }
+        guard !telling.isEmpty else { return }
+        print("  경고: 그리기에는 큰 덩어리가 털렸다 — 일부러 그린 것이면 없어진 것이다")
+        for speck in telling.prefix(8) {
+            let spot = name(atX: speck.x, y: speck.y, canvas: canvas, options: options)
+            print("    \(spot): \(speck.pixels)픽셀")
+        }
+        print("  남기려면 한 덩어리가 \(limit)픽셀을 넘거나 몸에 닿아 있어야 한다")
+        print("  그린 것이면 speck=<더 작은 수> 로 다시 돌려라 — 워터마크 조각도 같이 남는다")
+    }
+
+    /// 칸 끝까지 그려서 이미 잃은 것이 있는 칸을 알린다.
+    ///
+    /// **잘린 것은 되살릴 수 없다.** 다듬고 나서야 눈으로 알아채면 원본을 다시 찾아
+    /// 와야 하는데, 여기서 한 줄 찍어 주면 받자마자 안다. 라쿤 어지러움 칸이
+    /// 그랬는데 그때 뜬 것은 "칸 24개 중 21개에 그림이 있다" 한 줄이었다.
+    private static func report(clipped cells: [Cell], canvas: Canvas, options: Options) {
+        let hurt = cells.compactMap { cell in cell.clip.map { (cell, $0) } }
+        guard !hurt.isEmpty else { return }
+        print("경고: \(hurt.count)칸이 칸 끝줄까지 그려져 있다 — 칸 밖으로 나간 몫은 이미 없다")
+        for (cell, clip) in hurt {
+            print("    \(name(row: cell.row, column: cell.column)): \(clip.describe)")
+        }
+        print("  다시 받을 때 네 변에서 여유를 두고 그리게 해라. 잘린 것은 되살릴 수 없다")
+    }
+
+    /// 그 자리가 어느 칸인지. 배치에 없는 자리는 줄·칸 번호로만 부른다.
+    private static func name(row: Int, column: Int) -> String {
+        let spot = "\(row + 1)줄 \(column + 1)번"
+        guard row >= 0, row < MascotSheet.rows, column >= 0, column < MascotSheet.columns,
+              let sprite = MascotSheet.layout[row][column] else { return spot }
+        return "\(sprite.rawValue) (\(spot))"
+    }
+
+    private static func name(atX x: Int, y: Int, canvas: Canvas, options: Options) -> String {
+        let cellWidth = canvas.width / max(options.columns, 1)
+        let cellHeight = canvas.height / max(options.rows, 1)
+        guard cellWidth > 0, cellHeight > 0 else { return "\(x),\(y)" }
+        return name(row: y / cellHeight, column: x / cellWidth)
     }
 
     /// 잘라낸 칸들을 규격 자리에 앉힌다.
@@ -199,6 +264,38 @@ enum SheetPrep {
         let ink: Box?
         /// 잉크 위쪽 1/3 의 가로 한가운데. 걷는 자세를 머리로 맞출 때 쓴다.
         let headCenterX: Int?
+        /// 안 읽는 여유에 걸쳐서 **잘려 나가는 것.** 안 걸쳤으면 nil.
+        let clip: Clip?
+    }
+
+    /// 칸 안에 그렸는데 읽는 자리 밖이라 없어지는 몫.
+    ///
+    /// **알려 주지 않으면 아무도 모른다.** 라쿤 어지러움 칸이 위로 14px 넘어가서
+    /// 귀 끝 22px 가 평평하게 잘려 나갔는데, 그때 화면에 뜬 것은 "칸 21개에 그림이
+    /// 있다" 한 줄이라 다 되고 나서야 눈으로 알아챘다. 잘린 픽셀은 되살릴 수 없어서
+    /// **그 자리에서 알아야** 다시 받든 그리든 할 수 있다.
+    struct Clip {
+        /// 그림이 칸 맨 끝줄까지 닿은 변. **칸 밖으로 나간 몫은 받은 그림에 없다.**
+        var edges: [String] = []
+        /// 넓히고도 상자 밖에 남아서 없어지는 픽셀 수. 칸 선으로 본 줄은 빼고 센다.
+        var pixels = 0
+
+        var isEmpty: Bool { edges.isEmpty && pixels == 0 }
+
+        var describe: String {
+            var parts: [String] = []
+            if !edges.isEmpty { parts.append("\(edges.joined(separator: " · ")) 끝줄까지 닿음") }
+            if pixels > 0 { parts.append("상자 밖 \(pixels)픽셀") }
+            return parts.joined(separator: " · ")
+        }
+    }
+
+    /// 털어 낸 덩어리 하나.
+    struct Speck {
+        let pixels: Int
+        /// 덩어리 한가운데. 어느 칸에서 없어졌는지 부를 때 쓴다.
+        let x: Int
+        let y: Int
     }
 
     struct Box {
@@ -464,9 +561,13 @@ private struct Canvas {
     }
 
     /// 작은 덩어리를 턴다. 워터마크 조각이 여기서 빠진다.
-    mutating func clearSpecks(smallerThan limit: Int) -> Int {
+    ///
+    /// **무엇을 털었는지 돌려준다.** 이 청소는 워터마크를 노리고 두었는데 몸에서
+    /// 떨어져 그린 것(어지러움 칸의 별)도 크기만 보고 같이 지운다. 어느 칸에서
+    /// 얼마짜리가 없어졌는지 불러 줘야 그린 것이 지워진 것을 알아챌 수 있다.
+    mutating func clearSpecks(smallerThan limit: Int) -> [SheetPrep.Speck] {
         var seen = [Bool](repeating: false, count: width * height)
-        var removed = 0
+        var removed: [SheetPrep.Speck] = []
         for start in 0..<(width * height) where !seen[start] && data[start * 4 + 3] > 8 {
             var group = [start]
             seen[start] = true
@@ -487,8 +588,10 @@ private struct Canvas {
                 }
             }
             guard group.count < limit else { continue }
+            let midX = group.reduce(0) { $0 + $1 % width } / group.count
+            let midY = group.reduce(0) { $0 + $1 / width } / group.count
+            removed.append(SheetPrep.Speck(pixels: group.count, x: midX, y: midY))
             for index in group { erase(index) }
-            removed += group.count
         }
         return removed
     }
@@ -504,7 +607,7 @@ private struct Canvas {
                 // **칸 안쪽만 훑는다.** 칸 경계에 그어 준 선이 여기서 통째로 빠진다 —
                 // 선을 찾아 지우는 길도 해 봤는데, 발끝이 선에 닿아 있거나 선이 배경과
                 // 섞여 있으면 놓친다. 격자 자리는 우리가 아니까 안 보면 그만이다.
-                let inset = max(2, min(cellWidth, cellHeight) / 32)
+                let inset = SheetPrep.readInset(cellWidth: cellWidth, cellHeight: cellHeight)
                 var minX = cellWidth, minY = cellHeight, maxX = -1, maxY = -1
                 for y in inset..<(cellHeight - inset) {
                     for x in inset..<(cellWidth - inset) where opaque(originX + x, originY + y) {
@@ -514,10 +617,55 @@ private struct Canvas {
                         if y > maxY { maxY = y }
                     }
                 }
+                // **잡은 상자를 여유 쪽으로 도로 넓힌다.**
+                //
+                // 여유는 칸 선을 안 보려고 둔 것이지 그림을 버리려고 둔 것이 아니다.
+                // 안 넓히면 거기 걸친 것이 그대로 없어진다 — 라쿤은 21칸 중 18칸이
+                // 걸쳐 있었고, 어지러움 칸은 **귀 끝이 평평하게 잘려 나갔다.**
+                //
+                // 선과 그림은 **줄이 꽉 찼는지**로 가른다. 칸 선은 칸을 가로지르므로
+                // 한 줄이 통째로 차고, 그림은 그렇게까지 안 찬다. 이 판정이면 선을
+                // 안 지운 그림에서도 선을 안 물고 들어온다.
+                var top = minY, bottom = maxY, left = minX, right = maxX
+                func inkRow(_ y: Int) -> Int {
+                    (0..<cellWidth).count { opaque(originX + $0, originY + y) }
+                }
+                func inkColumn(_ x: Int) -> Int {
+                    (0..<cellHeight).count { opaque(originX + x, originY + $0) }
+                }
+                let rowIsLine = cellWidth * 4 / 5, columnIsLine = cellHeight * 4 / 5
+                if maxX >= minX {
+                    while top > 0, (1..<rowIsLine).contains(inkRow(top - 1)) { top -= 1 }
+                    while bottom < cellHeight - 1,
+                          (1..<rowIsLine).contains(inkRow(bottom + 1)) { bottom += 1 }
+                    while left > 0, (1..<columnIsLine).contains(inkColumn(left - 1)) { left -= 1 }
+                    while right < cellWidth - 1,
+                          (1..<columnIsLine).contains(inkColumn(right + 1)) { right += 1 }
+                }
                 let ink: SheetPrep.Box? = maxX < minX ? nil : SheetPrep.Box(
-                    x: originX + minX, y: originY + minY,
-                    width: maxX - minX + 1, height: maxY - minY + 1
+                    x: originX + left, y: originY + top,
+                    width: right - left + 1, height: bottom - top + 1
                 )
+                // **칸 끝줄에 닿았으면 이미 잃은 것이 있다.** 넓혀 봐야 칸 밖으로
+                // 나간 몫은 받은 그림에 없다 — 그린 쪽이 고쳐야 하는 자리다.
+                let clip = ink.map { _ -> SheetPrep.Clip in
+                    var found = SheetPrep.Clip()
+                    if top == 0 { found.edges.append("위") }
+                    if bottom == cellHeight - 1 { found.edges.append("아래") }
+                    if left == 0 { found.edges.append("왼쪽") }
+                    if right == cellWidth - 1 { found.edges.append("오른쪽") }
+                    // 넓히고도 상자 밖에 남은 것. 선으로 본 줄은 빼고 센다.
+                    for y in 0..<cellHeight where y < top || y > bottom {
+                        let count = inkRow(y)
+                        if count < rowIsLine { found.pixels += count }
+                    }
+                    for y in top...bottom {
+                        for x in 0..<cellWidth where x < left || x > right {
+                            if opaque(originX + x, originY + y) { found.pixels += 1 }
+                        }
+                    }
+                    return found
+                }.flatMap { $0.isEmpty ? nil : $0 }
                 // 머리(잉크 위쪽 1/3)의 가로 한가운데. 발이 옆으로 나가도 안 흔들린다.
                 var head: Int?
                 if let ink {
@@ -533,7 +681,7 @@ private struct Canvas {
                 }
                 result.append(SheetPrep.Cell(
                     row: row, column: column, sourceX: originX, sourceY: originY,
-                    ink: ink, headCenterX: head
+                    ink: ink, headCenterX: head, clip: clip
                 ))
             }
         }
