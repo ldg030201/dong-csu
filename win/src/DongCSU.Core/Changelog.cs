@@ -135,7 +135,7 @@ public static class Changelog
         new ChangelogEntry
         {
             Version = "2.5.0",
-            Date = null,
+            Date = "2026-09-08",
             Groups =
             [
                 new ChangelogGroup
@@ -152,9 +152,77 @@ public static class Changelog
                 },
                 new ChangelogGroup
                 {
+                    Title = "표시",
+                    Tab = "display",
+                    Notes =
+                    [
+                        ChangelogNote.New("모델별 사용량 표시 추가 "
+                            + "(예: Fable — 링과 줄이 하나씩 늘고 카드가 그만큼 커짐, 기본 꺼짐)"),
+                        ChangelogNote.Fix("접어 뒀을 때 버전 표시 설정이 눌려도 아무 일이 없던 문제 수정 "
+                            + "(접은 카드에는 딱지가 없어서 잠김)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "아이콘",
+                    Tab = "icon",
+                    Notes =
+                    [
+                        ChangelogNote.New("라쿤 캐릭터 추가 (beta)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "펫 모드",
+                    Tab = "pet",
+                    Notes =
+                    [
+                        ChangelogNote.New("창에 붙이기 추가 "
+                            + "(끌어다 다른 앱 창 테두리 가까이 놓으면 앉거나 매달리고, 창을 옮기면 따라감)"),
+                        ChangelogNote.New("잡는 깊이 조절 추가 (걸터앉기 · 매달리기 · 껴안기 따로)"),
+                        ChangelogNote.New("다른 화면으로 넘어가기 추가 (기본 꺼짐)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "계정",
+                    Tab = "account",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("공식 설치본으로 깐 Claude Code도 찾도록 개선 "
+                            + "(전에는 재로그인을 눌러도 실행 파일을 못 찾음)"),
+                        ChangelogNote.Improve("토큰 만료까지 남은 시간이 1초마다 줄어들도록 개선"),
+                        ChangelogNote.Change("Claude Code 재로그인 단추를 계정 탭에 항상 두도록 변경 "
+                            + "(전에는 토큰이 만료됐을 때만 보임)"),
+                        ChangelogNote.Fix("재로그인 창을 띄우지 못했을 때 아무 말도 없던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "업데이트",
+                    Tab = "version",
+                    Notes =
+                    [
+                        ChangelogNote.New("받는 도중에 그만두기 추가 (다음에 이어 받음)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "설정 창",
+                    Notes =
+                    [
+                        ChangelogNote.Change("탭 목록을 묶음으로 나눔"),
+                    ],
+                },
+                new ChangelogGroup
+                {
                     Title = "마스코트",
                     Notes =
                     [
+                        ChangelogNote.Change("테스트판에서도 정식판과 같은 색으로 그리도록 변경 "
+                            + "(구분은 트레이 아이콘과 버전 딱지가 함)"),
+                        ChangelogNote.Fix("세션 한도를 다 써도 죽지 않던 문제 수정 "
+                            + "(걷기 · 커서 피하기도 멈추고 세션 링도 회색)"),
                         ChangelogNote.Remove("부엉이 아이콘의 베타 딱지 제거"),
                     ],
                 },
