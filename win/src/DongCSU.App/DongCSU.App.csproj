@@ -99,6 +99,14 @@
       같은 이유로 원본을 그대로 집어 온다.
     -->
     <EmbeddedResource Include="../../../mac/Resources/mascot.png" LogicalName="mascot.png" />
+
+    <!--
+      라쿤 시트. 부엉이와 **같은 규격**이라 읽는 코드를 하나도 안 나눠 쓴다 —
+      `IconStyleExtensions.SheetResource` 가 이름만 갈라 준다.
+
+      캐릭터를 더할 때 손대는 곳은 여기와 그 한 줄뿐이다.
+    -->
+    <EmbeddedResource Include="../../../mac/Resources/raccoon.png" LogicalName="raccoon.png" />
   </ItemGroup>
 
 </Project>

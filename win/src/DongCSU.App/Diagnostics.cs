@@ -116,6 +116,14 @@ public static partial class Diagnostics
                 exitCode = ProbeTokens(args);
                 return true;
 
+            // 재로그인이 **어느 실행 파일을 띄울지**. 설치 방식마다 자리가 달라서
+            // "재로그인을 눌렀는데 안내 창만 뜬다" 의 원인이 거의 여기다 — 후보를
+            // 순서대로 늘어놓고 어디까지 갔는지 찍는다. **CI 에 넣지 않는다**:
+            // 빌드 기계에는 claude 가 깔려 있지 않다.
+            case "--probe-login":
+                exitCode = ProbeLogin();
+                return true;
+
             case "--probe-meter":
                 exitCode = ProbeMeter(args);
                 return true;
@@ -131,6 +139,27 @@ public static partial class Diagnostics
             // 그림은 같은 파일을 쓰므로 안 갈리지만 읽는 방법은 갈린다.
             case "--probe-mascot":
                 exitCode = Rendering.ProbeMascot.Run(args);
+                return true;
+
+            // 카드가 **모든 조합에서 안 넘치는지** 잰다. 넘친 그림은 창 경계에서 잘려
+            // 나가서 스크린샷으로는 "원래 저렇게 생긴 것"처럼 보인다 — 그래서 화면이
+            // 아니라 치수를 잰다. 바깥 것에 안 기대므로 CI 가 부른다.
+            case "--probe-hud":
+                exitCode = Hud.ProbeHud.Run();
+                return true;
+
+            // 창 테두리에 붙는 계산. `selftest` 는 가짜 창 목록으로 돌아 빌드 기계에서도
+            // 같은 답이 나오고, `windows` 는 지금 떠 있는 진짜 창에 **앱이 쓰는 것과 같은
+            // 계산기**를 태워 본다 — "안 붙는다"는 말을 들었을 때 볼 자리다.
+            case "--probe-perch":
+                exitCode = Hud.ProbePerch.Run(args);
+                return true;
+
+            // 다른 화면으로 넘어가는 계산. 배회는 3~11초에 한 번 움직여서 옆 화면까지
+            // 걸어가는 것을 눈으로 지켜보려면 몇 분이 걸리고, 배율이 다른 모니터에서만
+            // 드러나는 어긋남은 그렇게 봐도 안 잡힌다. 화면이 하나뿐이면 0 으로 끝난다.
+            case "--probe-pet":
+                exitCode = Hud.ProbePet.Run();
                 return true;
 
             case "--log":
@@ -183,6 +212,56 @@ public static partial class Diagnostics
         || arg.StartsWith("--squirrel-", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
+    /// <c>--probe-login</c> — 재로그인이 실행 파일을 찾는 길을 그대로 걷는다.
+    ///
+    /// <b>앱과 같은 것을 부른다</b>(<see cref="ClaudeCli.Candidates"/> ·
+    /// <see cref="ClaudeCli.Resolve"/> · <see cref="ClaudeCli.LoginCommand"/>). 여기서
+    /// 따로 셈하면 표에는 "찾았다" 가 뜨는데 눌러 보면 안 뜨는 자리가 생긴다.
+    ///
+    /// <b>자격 증명이 WSL 안이면 실행 파일이 하나도 없어도 통과다</b> — 그때는 윈도우
+    /// 쪽 실행 파일을 아예 안 쓰고 <c>wsl claude auth login</c> 으로 넘긴다.
+    /// </summary>
+    private static int ProbeLogin()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+
+        Console.WriteLine("재로그인 — claude 실행 파일 찾기");
+        Console.WriteLine($"  네이티브 설치 자리: {ClaudeCli.NativeRoot(appData)}");
+        Console.WriteLine();
+        Console.WriteLine("  후보 (위에서부터 본다)");
+        foreach (var candidate in ClaudeCli.Candidates(home, appData, Directory.EnumerateDirectories))
+        {
+            Console.WriteLine($"    {(File.Exists(candidate) ? "있음" : "없음")}  {candidate}");
+        }
+
+        // **앱과 같은 차례로 고른다.** `Program.Start` 도 훑으면서 마지막으로 찾은 것을
+        // 남긴다 — 여기서 첫 번째를 잡으면 WSL 판정이 갈려서 엉뚱한 답이 나온다.
+        string? credentialPath = null;
+        foreach (var attempt in new FileCredentialSource(fallbackPaths: WslCredentialPaths.All).Inspect())
+        {
+            if (attempt.Found) credentialPath = attempt.Path;
+        }
+
+        var insideWsl = ClaudeCli.IsInsideWsl(credentialPath);
+        var executable = ClaudeCli.Resolve(home, appData, File.Exists, Directory.EnumerateDirectories);
+
+        Console.WriteLine();
+        Console.WriteLine($"  자격 증명: {credentialPath ?? "(못 찾음)"}{(insideWsl ? "  ← WSL 안" : "")}");
+        Console.WriteLine($"  고른 것  : {executable ?? "(없음)"}");
+
+        if (ClaudeCli.LoginCommand(executable, insideWsl) is not { } command)
+        {
+            Console.Error.WriteLine();
+            Console.Error.WriteLine("띄울 명령이 없다 — 재로그인을 눌러도 안내 창만 뜬다");
+            return 1;
+        }
+
+        Console.WriteLine($"  띄울 명령: {command.File} {command.Arguments}");
+        return 0;
+    }
+
+    /// <summary>
     /// 통로 목록을 찍는다. 모르는 <c>--</c> 인자와 <c>--help</c> 가 여기로 온다.
     ///
     /// **새 통로를 더하면 이 목록에도 한 줄 더한다.** 여기 없는 통로는 있어도 아무도
@@ -200,9 +279,13 @@ public static partial class Diagnostics
         Console.WriteLine("  --probe");
         Console.WriteLine("  --probe-owl [기분]");
         Console.WriteLine("  --probe-layout");
-        Console.WriteLine("  --probe-mascot");
+        Console.WriteLine("  --probe-mascot [owl|raccoon]");
+        Console.WriteLine("  --probe-hud");
+        Console.WriteLine("  --probe-perch [selftest|windows]");
+        Console.WriteLine("  --probe-pet");
         Console.WriteLine("  --probe-meter [selftest|scan|ui]");
         Console.WriteLine("  --probe-tokens [분]");
+        Console.WriteLine("  --probe-login");
         Console.WriteLine("  --log");
         Console.WriteLine("  --render <out.png> [세션%] [주간%] [보기] [아이콘] [배율] [테마]");
         Console.WriteLine("  --render-settings <out.png> [탭] [너비x높이] [dark|light]");

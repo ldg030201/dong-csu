@@ -5,7 +5,8 @@ using DongCSU.Core.Usage;
 namespace DongCSU.App.Rendering;
 
 /// <summary>
-/// 사용률 링. 바깥이 5시간 세션, 안쪽이 7일 주간이다.
+/// 사용률 링. 바깥부터 5시간 세션 · 7일 주간 · 모델별이다.
+/// **셋째는 설정에서 켰고 서버가 줄 때만 그린다.**
 ///
 /// **두께가 안팎이 다르다** — 맥과 같이 바깥 6, 간격 7, 안쪽 5 다. 하나로 맞추면
 /// 두 판을 나란히 놓았을 때 굵기가 눈에 띄게 달라진다.
@@ -61,12 +62,26 @@ public static class RingRenderer
     /// **두께에서 끌어내지 않고 따로 받는다.** 두께의 기준값이 카드(6·5)와 펫에서
     /// 다르므로 나눠서 되돌리면 펫에서 틀린 배율이 나온다.
     /// </param>
-    /// <param name="spentColor">
-    /// 주간을 다 썼을 때 두 링에 함께 칠할 색. 안 넘기면 각자 제 사용률 색으로 그린다.
+    /// <param name="sessionSpentColor">
+    /// 바깥(세션) 링에 칠할 회색. 안 넘기면 제 사용률 색으로 그린다.
     ///
-    /// **다 썼으면 둘 다 색을 뺀다.** 세션은 쓸 수 없어서고, 주간은 그 자신이 죽은
-    /// 이유라서다. 하나만 빨갛게 남으면 마스코트는 멈췄는데 링은 살아 있어서,
-    /// 아직 뭔가 되는 것처럼 읽힌다.
+    /// **세션이든 주간이든 하나만 차도 세션은 못 쓴다.** 그래서 이쪽이 더 자주 켜진다.
+    /// </param>
+    /// <param name="weeklySpentColor">
+    /// 안쪽(주간) 링에 칠할 회색.
+    ///
+    /// **주간이 스스로 찼을 때만 켠다.** 세션만 찬 것으로 여기까지 회색을 칠하면,
+    /// 다음 창이 열리면 실제로 쓸 수 있는 여유를 숨기는 셈이다.
+    /// </param>
+    /// <param name="scopedPercent">
+    /// 제일 안쪽 모델별 링(예: Fable). **없으면 아예 안 그린다.**
+    ///
+    /// 서버가 줄 때만 있는 값이라 늘 자리를 비워 두면, 링이 있는 사람과 없는 사람의
+    /// 가운데 그림 크기가 달라진다.
+    /// </param>
+    /// <param name="scopedSpentColor">
+    /// 모델별 링에 칠할 회색. **주간과 짝이다** — 모델별도 주간 창이라 주간이 차면
+    /// 같이 죽는다.
     /// </param>
     public static void Draw(
         DrawingContext context,
@@ -79,22 +94,46 @@ public static class RingRenderer
         double? weeklyPercent,
         Color trackColor,
         bool grayscale,
-        Color? spentColor = null,
-        double scale = 1)
+        Color? sessionSpentColor = null,
+        Color? weeklySpentColor = null,
+        double scale = 1,
+        double? scopedPercent = null)
     {
         // 선이 지름 밖으로 삐져나가지 않게 두께의 절반만큼 안으로 넣는다.
         var outerRadius = (outerDiameter - outerThickness) / 2;
-        var innerDiameter = outerDiameter - outerThickness * 2 - gap;
+        var innerDiameter = Nested(outerDiameter, outerThickness, gap);
         var innerRadius = (innerDiameter - innerThickness) / 2;
 
         DrawOne(context, center, outerRadius, outerThickness, sessionPercent, trackColor, grayscale,
-            spentColor, scale);
-        if (innerRadius > innerThickness)
-        {
-            DrawOne(context, center, innerRadius, innerThickness, weeklyPercent, trackColor, grayscale,
-                spentColor, scale);
-        }
+            sessionSpentColor, scale);
+        if (innerRadius <= innerThickness) return;
+
+        DrawOne(context, center, innerRadius, innerThickness, weeklyPercent, trackColor, grayscale,
+            weeklySpentColor, scale);
+
+        // **모델별은 값이 있을 때만.** 트랙만 그려 두면 "쓸 수 있는데 0%" 로 읽힌다.
+        if (scopedPercent is null) return;
+
+        var scopedDiameter = Nested(innerDiameter, innerThickness, gap);
+        var scopedRadius = (scopedDiameter - innerThickness) / 2;
+        if (scopedRadius <= innerThickness) return;
+
+        // **주간과 같은 색이다.** 모델별은 주간 창의 한 조각이라 따로 죽지 않는다 —
+        // 색을 따로 받으면 부르는 쪽이 둘을 다르게 줄 수 있는 것처럼 읽힌다.
+        DrawOne(context, center, scopedRadius, innerThickness, scopedPercent, trackColor, grayscale,
+            weeklySpentColor, scale);
     }
+
+    /// <summary>
+    /// 링 하나 안쪽에 들어가는 다음 링의 지름.
+    ///
+    /// <b>겹치는 규칙이 여기 하나뿐이어야 한다.</b> 그리는 쪽과 <b>가운데 그림 자리를
+    /// 재는 쪽</b>(<c>HudView.IconRoom</c>)이 따로 세면, 틈이나 굵기를 한 번 고쳤을 때
+    /// 마스코트가 제일 안쪽 링을 파고드는데도 <c>--probe-hud</c> 는 옛 숫자로 재면서
+    /// 통과시킨다 — 그 진단이 막으려던 바로 그 실패 모양이다.
+    /// </summary>
+    public static double Nested(double diameter, double thickness, double gap) =>
+        diameter - thickness * 2 - gap;
 
     private static void DrawOne(
         DrawingContext context,

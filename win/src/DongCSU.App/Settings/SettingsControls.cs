@@ -129,11 +129,15 @@ internal static class Ui
         return row;
     }
 
-    public static Border Divider(SettingsPalette palette) => new()
+    /// <param name="inset">
+    /// 선 둘레 여백. 사이드바의 묶음 가르는 선은 안쪽으로 물려 놓는다 — 카드 안의
+    /// 선과 <b>같은 굵기·같은 색</b>이어야 해서 여기서 같이 낸다.
+    /// </param>
+    public static Border Divider(SettingsPalette palette, Thickness inset = default) => new()
     {
         Height = 1,
         Background = palette.Brush(palette.Line),
-        Margin = new Thickness(0, 0, 0, 0),
+        Margin = inset,
     };
 
     // ── 토글 ────────────────────────────────────────────────────────
@@ -564,6 +568,29 @@ internal static class Ui
             FontSize = PillFontSize,
             FontWeight = PillFontWeight,
             Foreground = palette.Brush(color),
+        },
+    };
+
+    /// <summary>
+    /// 그림 위에 겹쳐 붙이는 작은 알약. <see cref="Pill"/> 의 작은 판이다.
+    ///
+    /// **<see cref="Pill"/> 을 그대로 못 쓴다.** 저쪽은 글자 11에 좌우 8이라 44px
+    /// 미리보기 위에 얹으면 그림을 통째로 덮는다. 맥도 타일 딱지만 따로 작게 그린다.
+    ///
+    /// <see cref="PillFontSize"/> 와 값을 나누지 않는다 — 저쪽은 변경 내역 딱지 폭을
+    /// 재는 데도 쓰여서(<c>SettingsWindow.BadgeWidth</c>) 여기 사정으로 흔들면 안 된다.
+    /// </summary>
+    public static Border SmallPill(SettingsPalette palette, string text, Color color) => new()
+    {
+        Background = palette.Brush(Color.FromArgb(0xE0, color.R, color.G, color.B)),
+        CornerRadius = new CornerRadius(999),
+        Padding = new Thickness(5, 1, 5, 1),
+        Child = new TextBlock
+        {
+            Text = text,
+            FontSize = 9,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = palette.Brush(Colors.Black),
         },
     };
 }

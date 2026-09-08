@@ -111,7 +111,7 @@ internal sealed class MeasureRecordDialog : Window
 
         // 조회 실패는 지금 상태이지 지난 기록의 성질이 아니다. 그래서 null 을 준다.
         stack.Children.Add(SettingsWindow.MeasureLimits(
-            palette, record.Tracks, errorText: null, emptyText: "잡힌 표본이 없습니다"));
+            palette, record.Tracks, errorText: null, emptyText: "잡힌 표본이 없다"));
 
         // 기록은 얼려 둔 값이라 지금 기록 폴더가 있든 없든 그대로 보여준다.
         stack.Children.Add(SettingsWindow.MeasureTokens(

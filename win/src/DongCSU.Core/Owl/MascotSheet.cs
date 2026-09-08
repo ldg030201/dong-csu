@@ -158,8 +158,9 @@ public static class MascotSheet
     ///
     /// 눈감음 짝도 같은 값을 든다 — 붙어 있는 동안 깜빡일 때 자리가 흔들리면 안 된다.
     ///
-    /// <b>아직 앱이 안 쓴다.</b> 창에 붙이기(맥 2.5.0)를 옮겨 올 때 쓸 자리라 값만 먼저
-    /// 맞춰 둔다 — 그림은 이미 이 값에 맞춰 그려져 있다.
+    /// **이것은 규격이고, 실제로 쓰는 값은 설정에서 온다**
+    /// (<c>AppSettings.PerchDepth</c>). 그리는 쪽이 규격을 정확히 맞추지 못해서 사람이
+    /// 손으로 고칠 통로를 뒀고, 여기는 그 <b>기본값</b>이다.
     /// </summary>
     public static double GripDepth(MascotSprite sprite) => sprite switch
     {
@@ -207,10 +208,14 @@ public static class MascotSheet
     /// 그 기분이 **평소에** 하고 있는 눈. 평소가 이미 감긴 기분(탈진)은 깜빡일 것이 없다 —
     /// 거기서 실눈을 뜨는 것은 감는 게 아니라 뜨는 것이다.
     /// </param>
+    /// <param name="perch">
+    /// 창 테두리에 붙어 있으면 어느 면인지. 붙어 있으면 <b>그 자세가 이긴다.</b>
+    /// </param>
     public static MascotSprite Choose(
-        OwlMood mood, OwlEyes eyes, PetGaitKind gait, int beat, OwlEyes restingEyes = OwlEyes.Open)
+        OwlMood mood, OwlEyes eyes, PetGaitKind gait, int beat,
+        OwlEyes restingEyes = OwlEyes.Open, MascotPerch? perch = null)
     {
-        var and = Base(mood, eyes, gait, beat);
+        var and = Base(mood, eyes, gait, beat, perch);
 
         // **감은 얼굴이 따로 있는 자세만 깜빡인다.** 없으면 뜬 얼굴 그대로다.
         //
@@ -222,11 +227,21 @@ public static class MascotSheet
     }
 
     /// <summary>눈을 빼고 본 자세.</summary>
-    private static MascotSprite Base(OwlMood mood, OwlEyes eyes, PetGaitKind gait, int beat)
+    private static MascotSprite Base(
+        OwlMood mood, OwlEyes eyes, PetGaitKind gait, int beat, MascotPerch? perch)
     {
         if (mood == OwlMood.Offline) return MascotSprite.Dead;
 
+        // **붙어 있으면 그 자세가 이긴다.** 붙는 자리는 이 칸의 알맹이를 재서 잡은
+        // 것이라, 다른 칸이 그려지면 자리가 그만큼 어긋난다 — 흔든 뒤 몇 초 동안
+        // 옆면에 붙은 마스코트가 삐져나오는 식이다.
+        //
+        // 끊김(Offline)만 이 앞이다. 회색으로 굳어야 할 때 살아 있는 그림이 나오면 안 된다.
+        if (perch is { } side) return side.Sprite();
+
         // **기분이 아니라 눈으로 본다.** 끌고 흔드는 동안 기분은 끌림 그대로이고 눈만 풀린다.
+        // (붙어 있으면 위에서 이미 갈렸다 — 끌고 가다 붙을 자리에 닿으면 놓기 전에
+        // 그 자세를 미리 잡는다.)
         if (eyes == OwlEyes.Dizzy) return MascotSprite.Dizzy;
 
         // **어느 쪽으로 끄는지 안 본다.** 그림 한 장이라 볼 것이 없다.
@@ -258,6 +273,45 @@ public static class MascotSheet
         }
         return second ? MascotSprite.WalkB : MascotSprite.WalkA;
     }
+}
+
+/// <summary>
+/// 다른 앱 창의 <b>어느 테두리에</b> 붙어 있는지.
+///
+/// **면 하나에서 자세와 반전이 둘 다 나온다.** 붙일 자리를 고르는 쪽이 어느 칸을 쓸지
+/// 까지 정하게 두면 그림 사정을 창 계산이 알아야 한다. 면만 알려주면 그림에 대한
+/// 판단은 여기 한 곳에 남는다. 맥 <c>MascotPerch</c> 를 옮겨 적은 것이다.
+/// </summary>
+public enum MascotPerch
+{
+    /// <summary>창 <b>위</b> 테두리에 앉았다.</summary>
+    Top,
+    /// <summary>창 <b>아래</b> 테두리에 거꾸로 매달렸다.</summary>
+    Bottom,
+    Left,
+    Right,
+}
+
+public static class MascotPerchExtensions
+{
+    /// <summary>그 면에서 쓰는 칸.</summary>
+    public static MascotSprite Sprite(this MascotPerch perch) => perch switch
+    {
+        MascotPerch.Top => MascotSprite.Sit,
+        MascotPerch.Bottom => MascotSprite.Ledge,
+        _ => MascotSprite.Cling,
+    };
+
+    /// <summary>가로 테두리(위·아래)인지. 세로(좌·우)와 재는 축이 다르다.</summary>
+    public static bool IsHorizontal(this MascotPerch perch) =>
+        perch is MascotPerch.Top or MascotPerch.Bottom;
+
+    /// <summary>
+    /// <b><c>Cling</c> 원본은 왼쪽이 벽인 옆모습이다.</b> 그래서 창 <b>오른쪽</b>
+    /// 테두리가 원본이고, 왼쪽 테두리일 때 뒤집는다. 헷갈리기 쉬운 자리라 여기
+    /// 한 줄로 못 박는다 — 창 왼쪽에 붙으면 벽은 마스코트의 <b>오른쪽</b>에 있다.
+    /// </summary>
+    public static bool FlipsSprite(this MascotPerch perch) => perch == MascotPerch.Left;
 }
 
 /// <summary>

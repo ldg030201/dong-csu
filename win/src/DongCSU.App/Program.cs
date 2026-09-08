@@ -5,6 +5,7 @@ using System.Net.Http;
 using System.Windows;
 using System.Windows.Threading;
 using DongCSU.App.Hud;
+using DongCSU.App.Rendering;
 using DongCSU.App.Services;
 using DongCSU.App.Settings;
 using DongCSU.App.Tray;
@@ -33,12 +34,37 @@ public static class Program
         // **다른 무엇보다 먼저 불러야 한다.** 창을 먼저 띄우면 설치 중에 창이 깜빡인다.
         VelopackApp.Build().Run();
 
+        // **어디서 죽든 한 줄은 남긴다.** 이것이 없으면 예외가 나도 윈도우 기본 오류
+        // 상자만 뜨고 기록은 통째로 비어서, "오류가 떴다" 는 말을 들어도 무엇이 어디서
+        // 났는지 짚을 자리가 없다. 실제로 그래서 못 짚었다.
+        //
+        // **삼키지 않는다.** 여기서 막으면 깨진 채로 계속 도는데, 그건 죽는 것보다
+        // 나쁘다 — 틀어진 값이 그대로 설정과 기록에 저장된다. 남기기만 하고 흘려보낸다.
+        AppLog.Start();
+        AppDomain.CurrentDomain.UnhandledException += (_, e) => AppLog.Write(
+            $"처리 못 한 예외 (끝남={e.IsTerminating}): {Describe(e.ExceptionObject as Exception)}");
+        TaskScheduler.UnobservedTaskException += (_, e) => AppLog.Write(
+            $"돌보지 않은 작업 예외: {Describe(e.Exception)}");
+
         var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+        application.DispatcherUnhandledException += (_, e) => AppLog.Write(
+            $"화면 쪽에서 처리 못 한 예외: {Describe(e.Exception)}");
+
         var controller = new AppController();
         application.Startup += (_, _) => controller.Start();
         application.Exit += (_, _) => controller.Dispose();
         return application.Run();
     }
+
+    /// <summary>
+    /// 기록에 남길 예외 한 덩어리.
+    ///
+    /// <b>토큰도 자격 증명도 여기 오지 않는다</b> — 갈래 · 메시지 · 호출 자리뿐이고,
+    /// 그 셋이면 어디서 났는지 짚기에 넉넉하다.
+    /// </summary>
+    private static string Describe(Exception? error) => error is null
+        ? "(무엇인지 모름)"
+        : $"{error.GetType().Name}: {error.Message}{Environment.NewLine}{error.StackTrace}";
 }
 
 /// <summary>창 · 트레이 · 조회를 잇는 곳. 맥판의 <c>AppDelegate</c> 자리다.</summary>
@@ -188,6 +214,11 @@ public sealed class AppController : IDisposable
         hud.PetToggled += TogglePet;
         // 손에 잡히면 멈추고, 놓으면 다시 걷는다. 잡혀 있는 동안은 끌리는 자세다.
         hud.HeldChanged += OnHeldChanged;
+        // 끌어다 놓았다. **붙을 자리가 있으면 여기서 붙는다** — 놓기 전에 자세를 미리
+        // 잡아 두는 것은 `OnDragging` 이 한다.
+        hud.Dropped += OnDropped;
+        // 끄는 동안 "놓으면 여기 걸린다" 를 보여준다.
+        hud.Dragging += OnDragging;
         // 크기를 옮기는 동안에는 걸음을 멈춰 뒀다. 끝나면 다시 켠다.
         hud.Settled += () => SyncMotion();
         hud.DizzyStarted += OnDizzyStarted;
@@ -275,6 +306,7 @@ public sealed class AppController : IDisposable
         hud.ExpandsLeft = settings.ExpandSide == HudExpandSide.Left;
         hud.View.Scale = settings.Scale.Factor();
         hud.View.ShowsProcessStats = settings.ShowsProcessStats;
+        hud.View.ShowsScopedLimit = settings.ShowsScopedLimit;
         // **배율과 자원 줄을 정한 뒤에 부른다** — 그래야 옮겨갈 크기를 제대로 잰다.
         // 크기가 달라지는 보기 갈아타기는 창이 애니메이션으로 옮긴다.
         hud.SetMode(settings.Mode);
@@ -333,9 +365,13 @@ public sealed class AppController : IDisposable
     {
         // **자원 줄은 펼침에만 그려진다.** 접힘·펫에서는 `OnRender` 가 그 자리에 닿지도
         // 않는데, `Mode != Collapsed` 로 두면 펫에서 2초마다 프로세스를 재고 다시 그린다.
+        //
+        // **규칙은 `HudView.Draws` 한 곳에서 나온다.** 여기에 `Mode == Expanded` 를
+        // 따로 적어 두면, 나중에 접은 카드에도 자원 줄을 붙이기로 했을 때 화면에는
+        // 나오는데 표본 타이머가 안 돌아 영영 `--` 로 남는다.
         var needed = settings.ShowsProcessStats
             && settings.IsHudVisible
-            && settings.Mode == HudMode.Expanded;
+            && HudView.Draws(HudElement.ProcessStats, settings.Mode);
 
         if (needed && !statsTimer.IsEnabled)
         {
@@ -407,9 +443,12 @@ public sealed class AppController : IDisposable
 
         var session = store.Snapshot?.FiveHour?.Utilization;
         var mood = OwlMoodResolver.Resolve(
-            OwlDocument.Embedded, session, store.IsDisconnected, store.IsWeeklySpent);
-        // 주간을 다 썼으면 자세는 탈진 그대로 두고 색을 뺀다. 링·숫자와 같은 규칙이다.
-        animator.IsUnusable = store.IsWeeklySpent;
+            OwlDocument.Embedded, session, store.IsDisconnected, store.IsSpent);
+        // 다 썼으면 자세는 탈진 그대로 두고 색을 뺀다. 링·숫자와 같은 규칙이다.
+        //
+        // **세션도 본다.** 세션을 다 쓴 사람은 다음 창이 열릴 때까지 한 글자도 못
+        // 보내는데, 주간만 보던 시절에는 마스코트만 멀쩡히 걸어다녔다.
+        animator.IsUnusable = store.IsSpent;
         if (animator.SetMood(mood))
         {
             StartFrameTimer();
@@ -429,6 +468,9 @@ public sealed class AppController : IDisposable
         hud.View.Snapshot = store.Snapshot;
         hud.View.IsDisconnected = store.IsDisconnected;
         hud.View.IsWeeklySpent = store.IsWeeklySpent;
+        // **세션 몫을 따로 넘긴다.** 세션 링·세션 줄만 회색이 되는 경우가 있어서
+        // 하나로 합칠 수 없다 — 주간은 다음 창이 열리면 실제로 쓸 수 있는 양이다.
+        hud.View.IsSessionSpent = store.IsSessionSpent;
         hud.View.IsStale = store.IsStale;
         hud.View.NeedsReauth = store.NeedsReauth;
         hud.View.IsRefreshing = store.IsRefreshing;
@@ -456,13 +498,12 @@ public sealed class AppController : IDisposable
         if (hud is null) return;
 
         var grid = animator.CurrentGrid;
-        var palette = MascotPalette();
 
         hud.View.OwlGrid = grid;
-        hud.View.OwlPaletteName = palette;
+        hud.View.OwlPaletteName = animator.PaletteName;
         hud.View.MascotFrame = animator.MascotFrame;
         hud.View.MascotFlipped = animator.SpriteFlipped;
-        tray?.UpdateOwl(grid, OwlDocument.Embedded.Palettes[palette]);
+        tray?.UpdateOwl(grid, OwlDocument.Embedded.Palettes[TrayPalette()]);
     }
 
     /// <summary>메뉴와 펫 툴팁에 쓰는 한 줄. 조회가 바뀔 때만 다시 만든다.</summary>
@@ -484,7 +525,8 @@ public sealed class AppController : IDisposable
         var executable = ClaudeCli.Resolve(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            File.Exists);
+            File.Exists,
+            Directory.EnumerateDirectories);
 
         if (ClaudeCli.LoginCommand(executable, insideWsl) is not { } command)
         {
@@ -501,11 +543,22 @@ public sealed class AppController : IDisposable
         try
         {
             Process.Start(new ProcessStartInfo(command.File, command.Arguments) { UseShellExecute = true });
-            AppLog.Write($"재로그인 창을 띄웠다{(insideWsl ? " (WSL)" : "")}");
+            // 어느 실행 파일을 띄웠는지 남긴다 — "재로그인을 눌렀는데 엉뚱한 claude 가
+            // 떴다" 를 기록만으로 짚을 수 있어야 한다. **토큰은 여기 없다.**
+            AppLog.Write($"재로그인 창을 띄웠다{(insideWsl ? " (WSL)" : "")}"
+                + $" · {executable ?? "wsl"}");
         }
         catch (Exception error) when (error is Win32Exception or InvalidOperationException)
         {
             AppLog.Write($"재로그인 창을 띄우지 못했다: {error.Message}");
+            // **조용히 물러나지 않는다.** 눌렀는데 아무 일도 안 일어나면 사용자는 앱이
+            // 고장 난 줄 안다 — 맥은 같은 자리에서 알림 창을 낸다.
+            MessageBox.Show(
+                "재로그인 창을 띄우지 못했습니다.\n\n"
+                + "터미널에서 직접 claude auth login 을 실행해 주세요.",
+                $"{AppInfo.Name} 재로그인",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
             return;
         }
 
@@ -522,13 +575,18 @@ public sealed class AppController : IDisposable
     }
 
     /// <summary>
-    /// 마스코트를 어떤 색으로 칠할지.
+    /// 트레이 아이콘을 어떤 색으로 칠할지.
     ///
     /// 테스트판은 보라로 칠해 두 판을 나란히 띄웠을 때 한눈에 갈린다. 다만 **끊김
     /// (회색)이 테스트 표시보다 세다** — 회색은 지금 값이 아니라는 뜻이라, 그것을
     /// 보라로 덮으면 낡은 숫자를 지금 값으로 믿게 된다.
+    ///
+    /// **HUD 마스코트에는 안 쓴다.** 한동안 거기도 보라로 칠했는데, 그러면 캐릭터가
+    /// 캐릭터로 안 보인다 — 새로 그린 그림을 확인하려고 띄운 테스트판에서 정작 그 색을
+    /// 못 본다. 두 판을 가르는 일은 여기 트레이 아이콘과 버전 딱지(<c>2.5.0 test</c>)가
+    /// 이미 하고 있다. 맥 2.5.2 가 같은 이유로 뺐고, 거기서도 메뉴바 아이콘만 남겼다.
     /// </summary>
-    private string MascotPalette()
+    private string TrayPalette()
     {
         var name = animator.PaletteName;
         return AppInfo.IsTestBuild && name == "normal" ? "test" : name;
@@ -612,10 +670,249 @@ public sealed class AppController : IDisposable
         // 조회가 끊긴 동안에는 멈춰 있는다. 회색으로 굳은 채 걸어다니면
         // "멈췄다"는 표시가 무색해진다.
         && !store.IsDisconnected
-        // **주간을 다 썼을 때도 같다.** 그때는 아예 죽은 것으로 다루므로 스스로 걷지도,
+        // **한도를 다 썼을 때도 같다.** 그때는 아예 죽은 것으로 다루므로 스스로 걷지도,
         // 커서를 피하지도 않는다. 색만 빼고 계속 돌아다니면 살아 있는 것으로 보인다.
-        && !store.IsWeeklySpent
+        //
+        // 주간뿐 아니라 **세션**도 본다(`IsSpent`) — 세션을 다 쓰면 주간이 아무리
+        // 남아 있어도 지금은 못 쓴다.
+        && !store.IsSpent
         && (settings.PetWanders || settings.PetDodgesCursor);
+
+    /// <summary>
+    /// 지금 <b>붙어 있어도 되는</b> 상황인지.
+    ///
+    /// <b><see cref="ShouldMove"/> 와 갈라 둔다.</b> 저쪽에는 눌림(<c>IsHeld</c>)과
+    /// 배회·회피 설정이 들어 있는데, 그건 <b>잠깐 멈추는 이유</b>일 뿐 떨어질 이유가
+    /// 아니다. 하나로 묶으면 붙여 놓은 것을 한 번 누르거나 우클릭 메뉴를 열기만 해도
+    /// 자세만 매달린 채 배회가 시작된다 — 맥에서 실제로 그랬다.
+    /// </summary>
+    private bool CanStayPerched => CanPerchNow && hud is { IsCarried: false };
+
+    /// <summary>
+    /// 붙을 수 있는 판인지. <b>손에 들려 있는지는 안 본다.</b>
+    ///
+    /// <see cref="CanStayPerched"/> 에서 그 한 조건만 뺀 것이다 — 끌고 가는 동안에는
+    /// 늘 들려 있어서(<c>IsCarried</c>) 붙어 있을 수는 없지만, <b>놓으면 붙을 수
+    /// 있는지</b>는 끄는 동안에도 보여줘야 한다.
+    ///
+    /// <b>조건을 두 벌로 두지 않는다.</b> 미리보기·놓기·기록이 저마다 같은 조건을 다시
+    /// 적고 있었고 그 중 하나는 이미 <c>UsesSheet()</c> 를 빠뜨린 채였다 — 조건이 하나
+    /// 늘 때마다 네 곳을 다 찾아야 하고, 한 곳만 놓치면 미리보기는 "붙는다" 고 하는데
+    /// 놓으면 안 붙는 꼴이 된다.
+    /// </summary>
+    private bool CanPerchNow =>
+        hud is not null
+        && settings.IsHudVisible
+        && settings.Mode == HudMode.Pet
+        && settings.PetPerches
+        // **매달린 자세가 있는 그림만 붙어 있는다.** 격자 부엉이와 Claude 쪽 그림에는
+        // 그 칸이 없어서, 붙여 놓아도 테두리에 그냥 선 것으로 보인다 — 붙어 있는 채로
+        // 캐릭터를 바꾼 사람이 그 꼴을 본다.
+        && settings.IconStyle.UsesSheet()
+        && !screensAsleep
+        && !store.IsDisconnected
+        && !store.IsSpent;
+
+    /// <summary>
+    /// 그림 사정과 화면 사정을 이어 붙이는 계산기. <b>진단 통로도 같은 것을 쓴다</b>
+    /// (<c>--probe-perch</c>) — 따로 셈하면 표에는 "가능" 이 뜨는데 실제로는 안 붙는
+    /// 자리가 생긴다.
+    /// </summary>
+    private PerchPlanner Planner(HudWindow window) =>
+        new(window.View, settings, stage?.WorkArea);
+
+    /// <summary>
+    /// 지금 떠 있는 창 목록. 우리 창은 빠진다.
+    ///
+    /// <b>한 번 뜬 것을 나눠 쓴다.</b> 목록 한 번이 창 수만큼 DWM 을 부르는데, 놓을
+    /// 때마다 붙을 자리를 찾느라 한 번 · 왜 안 붙었는지 적느라 또 한 번 뜨고 있었다.
+    /// </summary>
+    private IReadOnlyList<PerchWindow> SurveyWindows(HudWindow window) =>
+        stage is null ? [] : WindowSurvey.OnScreenWindows(stage, window.Handle);
+
+    /// <summary>
+    /// 끌고 가는 동안. 놓으면 걸릴 자리를 미리 보여주고 자세도 그때 잡는다.
+    ///
+    /// <b>이게 없으면 어디에 걸리는지 놓아 봐야 안다.</b> 붙는 문턱은 그림에서 재는데
+    /// 펫의 창은 그보다 훨씬 커서(링이 128) 눈으로는 얼마나 가까운지 가늠이 안 된다.
+    /// </summary>
+    private void OnDragging()
+    {
+        if (hud is not { } window) { ClearPerchHint(); return; }
+        // **끌고 있는 동안에는 `CanStayPerched` 가 거짓이다**(그게 떨어지는 조건이다).
+        // 여기서 볼 것은 "놓으면 붙을 수 있나" 라서 끌림만 뺀 쪽을 본다.
+        if (!CanPerchNow) { ClearPerchHint(); return; }
+
+        // **매 픽셀마다 창 목록을 뜨지 않는다.** `LocationChanged` 는 마우스가 움직일
+        // 때마다 오는데(초당 백 번 넘는다) 목록 한 번이 창 수만큼 DWM 을 부른다.
+        // 30Hz 면 눈에는 끊김이 안 보이고 값은 4분의 1이 된다.
+        var now = Environment.TickCount64;
+        if (now - lastHintAt < 33) return;
+        lastHintAt = now;
+
+        // **계산기는 한 번만 만든다.** 만들 때마다 작업 영역을 묻느라 모니터를 훑는데,
+        // 30Hz 로 두 벌을 만들면 같은 값을 초당 예순 번 다시 묻는 셈이다.
+        var planner = Planner(window);
+        if (planner.Snap(new Point(window.Left, window.Top), SurveyWindows(window))
+            is not { } spot)
+        {
+            ClearPerchHint();
+            return;
+        }
+
+        if (planner.Ink(spot.Edge) is not { } ink) { ClearPerchHint(); return; }
+
+        // 놓을 자세를 미리 잡는다. **어떤 자세로 붙을지는 마스코트가 말해 준다.**
+        if (animator.SetPerch(spot.Edge))
+        {
+            StartFrameTimer();
+            RefreshHud();
+        }
+
+        var sink = planner.Sink(spot);
+        var landing = PerchFinder.LandingArea(spot, ink.Width, ink.Height, sink);
+        perchHint ??= new PerchHint();
+        perchHint.Show(landing, spot.Edge, sink, below: window.Handle);
+    }
+
+    private void ClearPerchHint()
+    {
+        perchHint?.Hide();
+        // 붙어 있는 것이 아니라 미리보기였을 뿐이면 자세도 되돌린다.
+        if (motion.PerchedSpot is null && animator.SetPerch(null))
+        {
+            StartFrameTimer();
+            RefreshHud();
+        }
+    }
+
+    private PerchHint? perchHint;
+
+    /// <summary>끌 때 미리보기를 마지막으로 잰 시각(밀리초). 30Hz 로 조인다.</summary>
+    private long lastHintAt;
+
+    /// <summary>끌어다 놓았다. 붙을 자리가 있으면 붙인다.</summary>
+    private void OnDropped()
+    {
+        perchHint?.Hide();
+        if (hud is not { } window) return;
+
+        var planner = Planner(window);
+        var windows = SurveyWindows(window);
+
+        if (!CanStayPerched
+            || planner.Snap(new Point(window.Left, window.Top), windows) is not { } spot)
+        {
+            LogPerchAttempt(window, planner, windows);
+            // **붙어 있던 것도 놓는다.** 자세만 되돌리고 여기를 빼먹으면 그림은 선
+            // 자세인데 창은 계속 테두리를 따라다닌다 — 아무것도 안 잡고 모서리에 붙어
+            // 미끄러지는 꼴이다.
+            if (motion.ReleasePerch()) window.SetPerched(false);
+            // 미리보기로 잡아 둔 자세를 되돌린다.
+            if (animator.SetPerch(null)) { StartFrameTimer(); RefreshHud(); }
+            SyncMotion();
+            return;
+        }
+
+        if (planner.Origin(spot) is not { } at) { SyncMotion(); return; }
+        if (!motion.Perch(spot)) { SyncMotion(); return; }
+
+        window.Left = at.X;
+        window.Top = at.Y;
+        // **붙는 순간은 걷는 중이 아니라 `Tick` 의 `Settled` 를 못 탄다.** 여기서 직접
+        // 저장하지 않으면 붙은 자리가 안 남아서, 껐다 켜면 붙기 전 자리로 돌아간다.
+        window.SavePosition();
+
+        AppLog.Write($"창에 붙었다 — {spot.Edge} · 창 {spot.Window}");
+        // 붙은 면과 잠기는 깊이를 같이 넘긴다 — 창 안으로 넘어간 쪽이 마우스를 안 받게
+        // 하려면 창이 그 둘을 알아야 한다.
+        window.SetPerched(true, spot.Edge, planner.Sink(spot));
+        if (animator.SetPerch(spot.Edge)) StartFrameTimer();
+        ApplyGait(null);
+        RefreshHud();
+        // **타이머는 `SyncMotion` 이 잡는다.** 여기서 직접 걸면 커서 감시 타이머가
+        // 그대로 남아 붙어 있는 내내 0.4초마다 헛돈다 — 붙어 있으면 안 비키므로
+        // (`RequestDodge` 가 거른다) 깨어날 이유가 없다.
+        SyncMotion();
+    }
+
+    /// <summary>
+    /// 놓았는데 <b>안 붙었을 때</b> 왜 안 붙었는지 기록에 남긴다.
+    ///
+    /// <b>안 붙는다는 말을 들었을 때 볼 자리다.</b> 화면에는 아무 일도 안 일어난 것으로만
+    /// 보이고, <c>--probe-perch</c> 는 <b>그때</b> 어디에 놓았는지를 모른다 — 놓은 자리와
+    /// 그 순간의 창 목록이 같이 남아야 짚을 수 있다. 맥 <c>logPerchAttempt</c> 와 같은 자리다.
+    ///
+    /// <b>붙었을 때는 부르는 쪽이 한 줄만 적는다.</b> 잘 되는 경우까지 창 목록을 통째로
+    /// 남기면 기록이 금세 창 목록으로 뒤덮인다.
+    /// </summary>
+    /// <param name="planner">놓을 자리를 찾을 때 쓴 그 계산기. <b>다시 만들지 않는다.</b></param>
+    /// <param name="windows">
+    /// 그때 뜬 그 창 목록. <b>다시 뜨지 않는다</b> — 새로 뜨면 기록에 남는 것이 판정에
+    /// 쓰인 것과 다른 순간의 화면이 되어, 짚으라고 남긴 기록이 짚을 수 없게 된다.
+    /// </param>
+    private void LogPerchAttempt(
+        HudWindow window, PerchPlanner planner, IReadOnlyList<PerchWindow> windows)
+    {
+        // 붙이기를 껐거나 펫이 아니면 애초에 시도한 적이 없다. 기록을 더럽히지 않는다.
+        if (!CanPerchNow) return;
+
+        var origin = new Point(window.Left, window.Top);
+        if (planner.MascotRect(origin) is not { } mascot) return;
+
+        // **한 번에 쓴다.** `AppLog.Write` 는 부를 때마다 파일을 열고 닫아서, 창마다
+        // 부르면 놓을 때 한 번에 서른 번 넘게 디스크를 두드린다 — 그것도 화면 갈래에서.
+        AppLog.Write(string.Join(Environment.NewLine, [
+            $"창에 안 붙었다 — 그림 자리 {PerchFinder.Box(mascot)} "
+                + $"· 아이콘 {settings.IconStyle}",
+            .. planner.Explain(origin, windows),
+        ]));
+    }
+
+    /// <summary>붙어 있는 동안의 한 틱. 창을 따라가고 층을 맞춘다.</summary>
+    private void FollowPerch(HudWindow window)
+    {
+        if (stage is null) return;
+
+        var windows = SurveyWindows(window);
+        var planner = Planner(window);
+        var mascot = (motion.PerchedSpot is { } current ? planner.Ink(current.Edge) : null)
+            ?? new PetRect(0, 0, window.Width, window.Height);
+
+        var tick = motion.Follow(
+            windows,
+            mascot,
+            origin: planner.Origin,
+            buried: spot => planner.IsBuried(spot, windows),
+            WindowSurvey.IsDraggingSomething);
+
+        if (tick.Dropped)
+        {
+            window.SetPerched(false);
+            // **화면 안으로 되당긴다.** 창을 따라가다 화면 밖까지 나갔을 수 있는데,
+            // 그대로 놓으면 안 보이는 자리에서 걷기 시작한다. 맥 `unperch()` 가
+            // `clamped(frame().origin)` 으로 같은 일을 한다.
+            window.ClampIntoScreen();
+            if (animator.SetPerch(null)) StartFrameTimer();
+            RefreshHud();
+            SyncMotion();
+            return;
+        }
+
+        if (tick.MoveTo is { } at && (at.X != window.Left || at.Y != window.Top))
+        {
+            window.Left = at.X;
+            window.Top = at.Y;
+        }
+
+        // 깊이는 창을 따라가다 달라질 수 있다(화면 끝에서 더 깊이 앉는다).
+        if (motion.PerchedSpot is { } now) window.SetPerched(true, now.Edge, planner.Sink(now));
+
+        // **묻혔으면 앞으로 끌어올리지 않는다.** 올리면 그 창을 덮은 창 위에 펫만
+        // 떠서, 아무것도 없는 자리에 매달린 것으로 보인다.
+        window.SetPerchFront(tick.Front, motion.PerchedSpot?.Window ?? 0);
+        ScheduleMotion(tick.NextWakeup);
+    }
 
     /// <summary>잡혔다 놓였다. 자세를 바꾸고 움직임을 멈췄다 다시 켠다.</summary>
     private void OnHeldChanged()
@@ -657,6 +954,28 @@ public sealed class AppController : IDisposable
 
     private void SyncMotion()
     {
+        motion.Perches = settings.PetPerches;
+        motion.CanStayPerched = CanStayPerched;
+
+        // **붙어 있을 수 없게 됐으면 먼저 뗀다**(펫에서 나감·화면 잠김·설정 끔).
+        if (motion.ReleasePerchIfNeeded())
+        {
+            hud?.SetPerched(false);
+            if (animator.SetPerch(null)) StartFrameTimer();
+            RefreshHud();
+        }
+
+        // **붙어 있으면 자리를 지킨다.** 눌림·메뉴로 `ShouldMove` 가 거짓이 돼도
+        // 떨어지지 않는다 — 그건 잠깐 멈추는 이유일 뿐이다.
+        if (motion.PerchedSpot is not null)
+        {
+            motionTimer.Stop();
+            dodgeTimer.Stop();
+            hover.Reset();
+            ScheduleMotion(PetMotion.PerchTick);
+            return;
+        }
+
         if (!ShouldMove)
         {
             motionTimer.Stop();
@@ -671,6 +990,8 @@ public sealed class AppController : IDisposable
 
         motion.Wanders = settings.PetWanders;
         motion.DodgesCursor = settings.PetDodgesCursor;
+        // **기본은 꺼짐.** 켜면 걸어서든 커서를 피해서든 옆 화면으로 넘어간다.
+        motion.CrossesScreens = settings.PetCrossesScreens;
         // **기분을 그대로 쓴다.** `animator.Mood` 는 `OnStoreChanged` 가 `OwlMoodResolver`
         // 로 정해 넣은 값이라, 그림과 걸음이 같은 신호에서 나온다. 여기서 사용률을 다시
         // 견주면 마스코트는 주저앉았는데 산책은 계속 나가는 어긋남이 생긴다.
@@ -742,7 +1063,16 @@ public sealed class AppController : IDisposable
     private void OnMotionTick()
     {
         motionTimer.Stop();
-        if (hud is not { } window || stage is null || !ShouldMove) return;
+        if (hud is not { } window || stage is null) return;
+
+        // **붙어 있으면 걷는 갈래로 안 간다.** 창을 따라가는 것이 전부다.
+        if (motion.PerchedSpot is not null)
+        {
+            FollowPerch(window);
+            return;
+        }
+
+        if (!ShouldMove) return;
 
         // 글을 쓰는 동안에는 새로 걷지 않는다. 커서 피하기는 dodgeTimer 가 따로 본다.
         stage.SinceLastKey = window.SinceLastKey;
@@ -892,6 +1222,10 @@ public sealed class AppController : IDisposable
 
         settingsWindow?.Close();
         settingsWindow = null;
+        // **막대 창도 닫는다.** 남겨 두면 Velopack 이 프로세스가 안 끝났다고 보고
+        // 파일을 못 바꾼다 — HUD·트레이를 놓아 주는 것과 같은 이유다.
+        perchHint?.Close();
+        perchHint = null;
         hud?.SavePosition();
         hud?.Close();
         hud = null;
@@ -928,6 +1262,8 @@ public sealed class AppController : IDisposable
         motionTimer.Stop();
         dodgeTimer.Stop();
         scanTimer.Stop();
+        perchHint?.Close();
+        perchHint = null;
         tray?.Dispose();
         http.Dispose();
     }

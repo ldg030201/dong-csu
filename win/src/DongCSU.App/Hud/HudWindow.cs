@@ -7,6 +7,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using DongCSU.Core;
+using DongCSU.Core.Owl;
 using DongCSU.Core.Pet;
 
 namespace DongCSU.App.Hud;
@@ -155,6 +156,13 @@ public sealed class HudWindow : Window
         MouseLeftButtonUp += OnMouseUp;
         MouseDoubleClick += OnDoubleClick;
         MouseRightButtonUp += (_, _) => ContextMenuRequested?.Invoke();
+        // **`WM_NCHITTEST` 를 직접 받는다.** 붙어 있는 동안 창 안으로 넘어간 쪽을
+        // 마우스에서 빼려면 이 길밖에 없다(<see cref="OnHitTest"/>).
+        SourceInitialized += (_, _) =>
+        {
+            if (PresentationSource.FromVisual(this) is HwndSource hwnd) hwnd.AddHook(OnHitTest);
+        };
+
         LocationChanged += (_, _) =>
         {
             if (pressing)
@@ -179,6 +187,10 @@ public sealed class HudWindow : Window
                 // 두 번 왔으면 옛 속도가 그대로 남아 있는데, 그걸 지금 시각으로 다시
                 // 알리면 마우스가 선 뒤에도 한 칸 더 기울어져 있는다.
                 if (Shake.Measured) DragMoved?.Invoke(new PetPoint(Shake.Velocity.X, -Shake.Velocity.Y));
+
+                // 끄는 내내 "놓으면 여기 걸린다" 를 다시 잰다. **창 목록을 뜨는 일이라
+                // 공짜가 아니지만**, 끄는 동안에만 돌고 한 번이 1ms 도 안 걸린다.
+                Dragging?.Invoke();
             }
         };
         IsVisibleChanged += (_, _) => SyncTicker();
@@ -323,6 +335,130 @@ public sealed class HudWindow : Window
 
     /// <summary>크기 옮기기가 끝났다. 걸음을 다시 켜라는 신호다.</summary>
     public event Action? Settled;
+
+    /// <summary>
+    /// 끌어다 놓았다. <b>붙을 자리를 찾는 신호다.</b>
+    ///
+    /// <see cref="Settled"/> 와 따로 두는 이유: 저쪽은 <b>크기</b>를 옮기고 난 뒤라
+    /// 자리가 안 바뀐다. 여기는 사용자가 창을 옮겨 놓은 순간이다.
+    /// </summary>
+    public event Action? Dropped;
+
+    /// <summary>끌고 가는 중. 놓으면 걸릴 자리를 미리 보여주는 자리다.</summary>
+    public event Action? Dragging;
+
+    /// <summary>이 창의 핸들. 창 목록에서 우리를 빼는 데 쓴다.</summary>
+    public IntPtr Handle => new System.Windows.Interop.WindowInteropHelper(this).Handle;
+
+    /// <summary>
+    /// 창에 붙어 있는 동안인지. <b>층이 달라진다.</b>
+    ///
+    /// 붙어 있는 펫은 <b>그 창과 같은 층</b>에 있어야 한다 — <c>Topmost</c> 로 남겨 두면
+    /// 붙은 창이 다른 창에 가려져도 펫만 앞에 떠서, 아무것도 없는 자리에 매달린 것으로
+    /// 보인다. 전체화면 창 위에 펫이 떠 있는 것이 맥에서 그렇게 생겼다.
+    /// </summary>
+    public void SetPerched(bool perched, MascotPerch? edge = null, double sink = 0)
+    {
+        // **붙은 면과 깊이는 늘 갈아 끼운다.** 창을 따라가다 깊이가 달라질 수 있는데
+        // (화면 끝에서 더 깊이 앉는다) `isPerched` 만 보고 돌아 나가면 마우스가
+        // 넘어가는 자리가 옛 값에 남는다.
+        perchedEdge = perched ? edge : null;
+        perchedSink = perched ? sink : 0;
+
+        if (isPerched == perched) return;
+        isPerched = perched;
+        Topmost = !perched;
+        // 놓을 때는 늘 맨 앞으로 돌아온다. 붙어 있는 동안의 층은 `SetPerchFront` 가 잡는다.
+        if (!perched) perchedAbove = 0;
+    }
+
+    private bool isPerched;
+    private MascotPerch? perchedEdge;
+    private double perchedSink;
+
+    /// <summary>
+    /// 붙어 있는 동안 <b>창 안으로 넘어간 쪽은 마우스를 받지 않는다.</b>
+    ///
+    /// 넘어간 자리는 대개 <b>남의 창의 제목 표시줄</b>이라, 안 빼면 그 창을 끌려다
+    /// 펫이 잡힌다 — 붙여 놓고 나면 그 창을 못 옮기는 셈이다. 맥
+    /// <c>HUDPanel.petPointerRect</c> 와 같은 자리다.
+    ///
+    /// <b>WPF 로는 못 한다.</b> <c>AllowsTransparency</c> 창은 투명한 픽셀에서도 클릭을
+    /// 먹으므로, 창 밖으로 흘려보내려면 <c>WM_NCHITTEST</c> 에 <c>HTTRANSPARENT</c> 를
+    /// 돌려주는 수밖에 없다.
+    /// </summary>
+    private IntPtr OnHitTest(IntPtr handle, int message, IntPtr wParam, IntPtr lParam, ref bool handled)
+    {
+        if (message != NativeMethods.WmNcHitTest) return IntPtr.Zero;
+        if (!isPerched || perchedEdge is not { } edge) return IntPtr.Zero;
+        if (view.PetMascotInkRect(edge) is not { } ink) return IntPtr.Zero;
+
+        // lParam 은 **화면 물리 픽셀**이다. 창 좌표(DIP)로 옮긴다.
+        //
+        // **`ToInt32()` 를 쓰지 마라.** 주 화면 위나 왼쪽에 놓인 모니터에서는 좌표가
+        // 음수라 값이 `Int32` 범위를 벗어날 수 있고, 그러면 조용히 던져서 마우스가
+        // 통째로 안 먹는다. 아래 32비트만 잘라 쓰면 부호까지 그대로 남는다.
+        var raw = unchecked((int)(lParam.ToInt64() & 0xFFFFFFFF));
+        // **계수는 `PetStage` 가 안다.** 커서·작업 영역·창 목록이 다 거기서 오는데
+        // 여기만 따로 적으면, 배율을 다루는 방식이 바뀔 때 이 판정만 옛 셈으로 남는다.
+        var (scaleX, scaleY) = PetStage.DeviceToDip(this);
+        var x = (short)(raw & 0xFFFF) * scaleX - Left;
+        var y = (short)((raw >> 16) & 0xFFFF) * scaleY - Top;
+
+        // 창 테두리 선을 넘었는지. **막대를 놓는 것과 같은 셈이다**(`PerchLayout`) —
+        // 사용자가 눈으로 맞대 보는 짝이라 여기서 따로 적으면 안 된다.
+        if (!PerchLayout.CrossesBorder(
+            edge,
+            new PetRect(ink.X, ink.Y, ink.Width, ink.Height),
+            perchedSink,
+            new PetPoint(x, y)))
+        {
+            return IntPtr.Zero;
+        }
+
+        // **버튼 줄과 새 버전 표시는 남긴다.** 창 위 테두리에 앉으면 넘어간 띠가
+        // 버튼 줄까지 덮는데, 그것까지 흘려보내면 붙어 있는 동안 설정·새로고침을 못
+        // 누른다 — 맥도 `liveRects` 에 버튼 줄을 따로 남긴다.
+        //
+        // 마스코트와 빈 자리만 흘려보낸다. 잃는 것은 넘어간 부위(다리·발·앞다리)를
+        // 잡아서 끌 수 없다는 것뿐이고, 몸통은 그대로 잡힌다.
+        var hit = view.HitTest(new Point(x, y));
+        if (hit is not (HudHit.None or HudHit.Mascot)) return IntPtr.Zero;
+
+        handled = true;
+        return NativeMethods.HtTransparent;
+    }
+
+    /// <summary>붙은 창보다 우리가 앞이어야 한다고 마지막으로 판단한 창.</summary>
+    private long perchedAbove;
+
+    /// <summary>
+    /// 붙어 있는 동안 층을 맞춘다.
+    ///
+    /// <b>앞뒤 전이만 봐서는 모자라다.</b> 사용자가 <b>이미 맨 앞인 창을 한 번 더 누르면</b>
+    /// OS 가 그 창을 우리 위로 올리는데, 그때는 전이가 없어서 조건에 안 걸리고 창 안으로
+    /// 넘어간 다리·날개가 그대로 창 뒤에 묻힌다 — <b>잡고 있는 것으로 안 보인다.</b>
+    /// 그래서 <b>우리가 그 창보다 앞인지</b>를 직접 확인한다.
+    /// </summary>
+    public void SetPerchFront(bool front, long window)
+    {
+        if (!isPerched) return;
+
+        if (!front)
+        {
+            perchedAbove = 0;
+            return;
+        }
+
+        // 이미 앞이면 아무것도 안 한다. 매 틱 올리면 다른 창을 쓰는 동안 깜빡인다.
+        if (perchedAbove == window
+            && WindowSurvey.IsAhead(Handle, (IntPtr)window) == true) return;
+
+        perchedAbove = window;
+        NativeMethods.SetWindowPos(
+            Handle, NativeMethods.HwndTop, 0, 0, 0, 0,
+            NativeMethods.SwpNoMove | NativeMethods.SwpNoSize | NativeMethods.SwpNoActivate);
+    }
 
     /// <summary>끄는 동안의 속도(pt/s). 위가 양수다. 끌리는 자세가 이걸 보고 정해진다.</summary>
     public event Action<PetPoint>? DragMoved;
@@ -712,12 +848,21 @@ public sealed class HudWindow : Window
         }
         finally
         {
+            // **실제로 끌었는지 먼저 챙긴다.** 아래에서 지워 버리므로 순서가 중요하다.
+            var moved = isDragging;
+
             pressing = false;
             isDragging = false;
             view.IsDraggingPet = false;
             SyncPetRingFade();
             SavePosition();
             HeldChanged?.Invoke();
+
+            // **끌었을 때만 알린다.** `DragMove()` 는 버튼을 뗄 때까지 잡고 있어서
+            // 창이 한 픽셀도 안 움직인 그냥 클릭에서도 여기까지 온다 — 그때도 알리면
+            // 마스코트를 한 번 누르기만 해도 옆 창에 툭 붙는다(더블클릭의 첫 클릭까지
+            // 그렇다). 붙는 쪽이 창을 옮기므로 `SavePosition` 보다는 뒤여야 한다.
+            if (moved) Dropped?.Invoke();
         }
     }
 
@@ -792,6 +937,10 @@ public sealed class HudWindow : Window
 internal static partial class NativeMethods
 {
     public const int GwlExStyle = -20;
+
+    /// <summary>클릭이 통째로 뒤 창으로 넘어간다. 끌 때 보여주는 막대가 쓴다.</summary>
+    public const int WsExTransparent = 0x00000020;
+
     public const int WsExToolWindow = 0x00000080;
     public const int WsExNoActivate = 0x08000000;
 
@@ -808,7 +957,17 @@ internal static partial class NativeMethods
     public static partial bool SetWindowPos(
         IntPtr hWnd, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
 
+    public const uint SwpNoSize = 0x0001;
+    public const uint SwpNoMove = 0x0002;
     public const uint SwpNoZOrder = 0x0004;
     public const uint SwpNoActivate = 0x0010;
     public const uint SwpNoSendChanging = 0x0400;
+
+    /// <summary>맨 앞으로. 붙어 있는 동안 붙은 창을 따라 올라갈 때 쓴다.</summary>
+    public static readonly IntPtr HwndTop = IntPtr.Zero;
+
+    public const int WmNcHitTest = 0x0084;
+
+    /// <summary>"여기는 내 자리가 아니다" — 아래 창이 그 클릭을 받는다.</summary>
+    public static readonly IntPtr HtTransparent = new(-1);
 }

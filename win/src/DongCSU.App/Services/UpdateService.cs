@@ -254,10 +254,14 @@ public sealed class UpdateService(HttpClient http)
         Phase = UpdatePhase.Downloading;
         DownloadedPercent = 0;
         LastError = null;
+        downloading?.Dispose();
+        downloading = new CancellationTokenSource();
         Changed?.Invoke();
         try
         {
-            var update = await updateManager.CheckForUpdatesAsync().ConfigureAwait(false);
+            var update = await updateManager
+                .CheckForUpdatesAsync()
+                .ConfigureAwait(false);
             if (update is null)
             {
                 LastError = "받을 새 버전이 없습니다.";
@@ -266,12 +270,21 @@ public sealed class UpdateService(HttpClient http)
             }
 
             AppLog.Write($"업데이트 받는 중: {update.TargetFullRelease.Version}");
-            await updateManager.DownloadUpdatesAsync(update, Progress).ConfigureAwait(false);
+            await updateManager
+                .DownloadUpdatesAsync(update, Progress, downloading.Token)
+                .ConfigureAwait(false);
             AppLog.Write("업데이트 내려받기 끝 — 사람이 누르면 갈아 끼운다");
 
             downloaded = update;
             DownloadedPercent = 100;
             Phase = UpdatePhase.Ready;
+        }
+        catch (OperationCanceledException)
+        {
+            // **실패가 아니다.** 사람이 그만두라고 한 것이라 빨간 글씨를 남기지 않는다.
+            // 받아 둔 조각은 Velopack 이 들고 있어서 다음에 이어 받는다.
+            AppLog.Write("업데이트 받기를 사용자가 그만뒀다");
+            Phase = UpdatePhase.Idle;
         }
         catch (Exception error)
         {
@@ -281,8 +294,28 @@ public sealed class UpdateService(HttpClient http)
         }
         finally
         {
+            downloading?.Dispose();
+            downloading = null;
             Changed?.Invoke();
         }
+    }
+
+    /// <summary>받는 도중에 그만두게 하는 자리. 받는 중이 아니면 null.</summary>
+    private CancellationTokenSource? downloading;
+
+    /// <summary>
+    /// 받는 것을 그만둔다. <b>받아 둔 조각은 Velopack 이 들고 있어서 다음에 이어 받는다.</b>
+    ///
+    /// 설치본이 수십 MB 라 회선이 느리면 몇 분이 걸린다. 그동안 누를 것이 하나도 없으면
+    /// 앱이 멈춘 것으로 보인다 — 맥은 받는 동안 취소 버튼을 띄운다.
+    ///
+    /// <b>갈아끼우는 중에는 안 통한다.</b> 거기서 빠져나가는 길은 강제 종료뿐이다.
+    /// </summary>
+    public void Cancel()
+    {
+        if (Phase != UpdatePhase.Downloading) return;
+        AppLog.Write("업데이트 받기 취소 요청");
+        downloading?.Cancel();
     }
 
     private void Progress(int percent)

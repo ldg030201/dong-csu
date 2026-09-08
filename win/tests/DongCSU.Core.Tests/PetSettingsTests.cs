@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json.Serialization;
 using DongCSU.Core;
+using DongCSU.Core.Owl;
 
 namespace DongCSU.Core.Tests;
 
@@ -175,6 +176,66 @@ public class PetSettingsTests
         _ when type.IsEnum => Enum.GetValues(type).Cast<object>().First(v => !v.Equals(current)),
         _ => throw new NotSupportedException($"{type} 을 어떻게 어긋내야 할지 모른다"),
     };
+
+    /// <summary>
+    /// 잡는 깊이 기본값은 **칸 표에서 온다.** 여기에 숫자를 또 적으면 맥이 규격을
+    /// 바꿨을 때 한쪽만 낡는다.
+    /// </summary>
+    [Fact]
+    public void 잡는_깊이_기본값이_칸_표와_같다()
+    {
+        var fresh = new AppSettings();
+
+        Assert.Equal(MascotSheet.GripDepth(MascotSprite.Sit), fresh.PerchDepthTop);
+        Assert.Equal(MascotSheet.GripDepth(MascotSprite.Ledge), fresh.PerchDepthBottom);
+        Assert.Equal(MascotSheet.GripDepth(MascotSprite.Cling), fresh.PerchDepthSide);
+    }
+
+    /// <summary>변마다 제 깊이를 고른다. 좌우는 하나를 나눠 쓴다.</summary>
+    [Fact]
+    public void 변마다_제_깊이를_고른다()
+    {
+        var settings = new AppSettings
+        {
+            PerchDepthTop = 0.11,
+            PerchDepthBottom = 0.22,
+            PerchDepthSide = 0.33,
+        };
+
+        Assert.Equal(0.11, settings.PerchDepth(MascotPerch.Top));
+        Assert.Equal(0.22, settings.PerchDepth(MascotPerch.Bottom));
+        Assert.Equal(0.33, settings.PerchDepth(MascotPerch.Left));
+        Assert.Equal(0.33, settings.PerchDepth(MascotPerch.Right));
+    }
+
+    /// <summary>깊이 셋만 되돌린다. 나머지 설정은 그대로 둔다.</summary>
+    [Fact]
+    public void 기본값으로는_깊이_셋만_되돌린다()
+    {
+        var settings = new AppSettings
+        {
+            PerchDepthTop = 0.5,
+            PerchDepthSide = 0.5,
+            PetWanders = false,
+        };
+
+        settings.ResetPerchDepths();
+
+        Assert.Equal(MascotSheet.GripDepth(MascotSprite.Sit), settings.PerchDepthTop);
+        Assert.Equal(MascotSheet.GripDepth(MascotSprite.Cling), settings.PerchDepthSide);
+        Assert.False(settings.PetWanders);
+    }
+
+    /// <summary>
+    /// 보태 주는 몫의 한계와 사람이 맞추는 한계는 **다른 값이다.** 하나로 합치면
+    /// 자동 보정이 몸통까지 잠기게 하거나, 손으로 맞추는 범위가 쓸데없이 좁아진다.
+    /// </summary>
+    [Fact]
+    public void 두_한계는_서로_다르다()
+    {
+        Assert.Equal(0.6, AppSettings.MaxPerchDepth);
+        Assert.Equal(0.12, AppSettings.MaxAutoPerchExtra);
+    }
 
     /// <summary>보던 탭은 창을 닫았다 열 때까지만 산다 — 앱을 껐다 켜면 상태 탭이다.</summary>
     [Fact]

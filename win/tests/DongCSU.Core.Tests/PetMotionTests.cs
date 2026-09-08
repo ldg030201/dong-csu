@@ -436,6 +436,236 @@ public class PetMotionTests
         public PetRect? WorkArea { get; set; }
         public PetPoint Cursor { get; set; }
         public TimeSpan SinceLastKey { get; set; }
+
+        /// <summary>
+        /// 화면 목록. 안 넣으면 <see cref="WorkArea"/> 하나짜리로 본다.
+        ///
+        /// **기본값을 이렇게 두는 것이 중요하다** — 안 그러면 여기 있는 검사 스물몇
+        /// 개가 저마다 화면 목록을 다시 적어야 한다.
+        /// </summary>
+        public IReadOnlyList<PetRect> WorkAreas
+        {
+            get => screens ?? (WorkArea is { } one ? [one] : []);
+            set => screens = value;
+        }
+
+        private IReadOnlyList<PetRect>? screens;
+
+        /// <summary>눈금. 배율이 다른 화면으로 넘어가는 것을 흉내 낼 때만 만진다.</summary>
+        public double Scale { get; set; } = 1;
+    }
+
+    // ── 다른 화면으로 넘어가기 ──────────────────────────────────────
+
+    /// <summary>
+    /// 1920 짜리 화면 둘이 나란히 붙어 있다. 오른쪽 것이 조금 더 높다 — 이음매를
+    /// 넘은 뒤에도 갈 자리가 있어야 한다.
+    /// </summary>
+    private static Stage TwoScreens() => new()
+    {
+        Window = new PetRect(1700, 500, 128, 160),
+        WorkArea = new PetRect(0, 0, 1920, 1040),
+        WorkAreas = [new PetRect(0, 0, 1920, 1040), new PetRect(1920, 0, 1920, 1080)],
+        Cursor = new PetPoint(100, 100),
+        SinceLastKey = TimeSpan.MaxValue,
+    };
+
+    /// <summary>목적지를 정할 때까지 틱을 돌리고, 걷는 동안 창을 따라 옮겨 준다.</summary>
+    private static double WalkFor(PetMotion pet, Stage stage, FakeTime clock, int ticks)
+    {
+        var farthest = stage.Window.X;
+        for (var i = 0; i < ticks; i++)
+        {
+            var tick = pet.Tick(stage);
+            if (tick.MoveTo is { } to)
+            {
+                stage.Window = new PetRect(to.X, to.Y, stage.Window.Width, stage.Window.Height);
+                farthest = Math.Max(farthest, to.X);
+            }
+            clock.Advance(tick.NextWakeup ?? PetMotion.TickInterval);
+        }
+        return farthest;
+    }
+
+    /// <summary>
+    /// **꺼 두면 아무것도 안 바뀐다.** 이 검사가 대조군이다 — 넘어가기를 넣으면서
+    /// 화면 하나짜리 사람의 동작을 건드리면 여기가 먼저 빨개진다.
+    /// </summary>
+    [Fact]
+    public void 꺼_두면_지금_화면_안에서만_돈다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(3)) { Wanders = true };
+        var stage = TwoScreens();
+
+        var farthest = WalkFor(pet, stage, clock, 40000);
+
+        // 왼쪽 화면에서 창 왼쪽 위가 갈 수 있는 오른쪽 끝: 1920 - 8 - 128 = 1784.
+        Assert.True(farthest <= 1784 + 0.001, $"화면을 넘었다: {farthest}");
+    }
+
+    /// <summary>켜면 이음매를 넘어 오른쪽 화면까지 걸어간다.</summary>
+    [Fact]
+    public void 켜면_옆_화면_자리도_받는다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(3)) { Wanders = true, CrossesScreens = true };
+        var stage = TwoScreens();
+
+        var farthest = WalkFor(pet, stage, clock, 40000);
+
+        Assert.True(farthest > 1920, $"이음매를 못 넘었다: {farthest}");
+    }
+
+    /// <summary>
+    /// **이음매 위에서 멈추지 않는다.**
+    ///
+    /// 맥처럼 "어느 한 화면에 온전히 들어가야 한다" 로 재면 화면 사이에 창 폭 + 여백
+    /// 16 만큼의 죽은 띠가 생기는데, 한 걸음이 2.6 이라 거기 발을 들일 수가 없다 —
+    /// 경계 앞에 서서 목적지만 새로 고르고 영영 안 넘어간다.
+    /// </summary>
+    [Fact]
+    public void 이음매_위에서_멈추지_않는다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(3)) { Wanders = true, CrossesScreens = true };
+        var stage = TwoScreens();
+        // 왼쪽 화면의 오른쪽 끝. 여기서 한 걸음이라도 더 가야 넘어간다.
+        stage.Window = new PetRect(1784, 500, 128, 160);
+
+        var farthest = WalkFor(pet, stage, clock, 40000);
+
+        Assert.True(farthest > 1784, $"끝에 붙어서 안 움직였다: {farthest}");
+    }
+
+    /// <summary>
+    /// 화면이 떨어져 있으면 그 사이 빈 자리에는 안 선다. 거기 서면 마스코트가 통째로
+    /// 안 보인다.
+    /// </summary>
+    [Fact]
+    public void 화면_사이_빈_자리에는_안_선다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(3)) { Wanders = true, CrossesScreens = true };
+        var stage = TwoScreens();
+        stage.WorkAreas = [new PetRect(0, 0, 1920, 1040), new PetRect(2400, 0, 1600, 1040)];
+
+        var farthest = WalkFor(pet, stage, clock, 40000);
+
+        // 왼쪽 화면 끝(1784)까지는 가도, 빈 띠(1920~2400)에는 서면 안 된다.
+        Assert.True(
+            farthest <= 1784 + 0.001 || farthest >= 2400 + 8,
+            $"빈 자리에 섰다: {farthest}");
+    }
+
+    /// <summary>
+    /// **넘어갈 때만 크게 걷는다.** 같은 씨앗으로 뽑으면 켜짐 쪽이 더 멀리 간다 —
+    /// 화면 경계까지 한 걸음이 닿아야 넘어갈 수 있다.
+    /// </summary>
+    [Fact]
+    public void 켜면_한_걸음이_커진다()
+    {
+        // **첫 산책 하나만 잰다.** 오래 돌리면 둘 다 벽까지 가서 걸음 폭이 아니라
+        // 화면 크기를 재게 된다.
+        static double FirstWalk(bool crosses)
+        {
+            var clock = new FakeTime(Start);
+            var pet = new PetMotion(clock, new Random(7))
+            {
+                Wanders = true,
+                CrossesScreens = crosses,
+            };
+            // 아주 넓은 화면 한가운데 — 어느 쪽으로 얼마를 걸어도 안 막힌다.
+            var desk = new PetRect(0, 0, 20000, 1440);
+            var stage = new Stage
+            {
+                Window = new PetRect(10000, 500, 128, 160),
+                WorkArea = desk,
+                WorkAreas = [desk],
+                Cursor = new PetPoint(0, 0),
+                SinceLastKey = TimeSpan.MaxValue,
+            };
+
+            var start = stage.Window.X;
+            var farthest = 0.0;
+            for (var i = 0; i < 40000; i++)
+            {
+                var tick = pet.Tick(stage);
+                if (tick.MoveTo is { } to)
+                {
+                    stage.Window = new PetRect(to.X, to.Y, stage.Window.Width, stage.Window.Height);
+                    farthest = Math.Max(farthest, Math.Abs(to.X - start));
+                }
+                // 한 번 걷고 멈추면 거기까지가 한 걸음이다.
+                if (tick.Settled && farthest > 0) break;
+                clock.Advance(tick.NextWakeup ?? PetMotion.TickInterval);
+            }
+            return farthest;
+        }
+
+        Assert.True(FirstWalk(true) > FirstWalk(false), "켜도 걸음 폭이 그대로다");
+    }
+
+    /// <summary>
+    /// 배율이 다른 화면으로 넘어가면 좌표계 전체가 다시 늘어난다. **들고 있던 목적지도
+    /// 같은 비율로 옮겨 줘야** 넘어간 그 순간부터 엉뚱한 자리로 걷지 않는다.
+    /// </summary>
+    [Fact]
+    public void 배율이_바뀌면_목적지도_같이_늘어난다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(3)) { Wanders = true, CrossesScreens = true };
+        var stage = TwoScreens();
+
+        // 걷기 시작할 때까지 돌린다.
+        for (var i = 0; i < 200 && pet.Gait is null; i++)
+        {
+            var warm = pet.Tick(stage);
+            if (warm.MoveTo is { } to)
+            {
+                stage.Window = new PetRect(to.X, to.Y, stage.Window.Width, stage.Window.Height);
+            }
+            clock.Advance(warm.NextWakeup ?? PetMotion.TickInterval);
+        }
+        Assert.NotNull(pet.Gait);
+
+        var before = pet.Tick(stage).MoveTo;
+        Assert.NotNull(before);
+
+        // 배율 150% 화면으로 넘어갔다 — 눈금이 1 에서 2/3 으로 줄어든다.
+        stage.Scale = 2.0 / 3.0;
+        stage.Window = new PetRect(
+            stage.Window.X * stage.Scale, stage.Window.Y * stage.Scale,
+            stage.Window.Width, stage.Window.Height);
+
+        var after = pet.Tick(stage).MoveTo;
+
+        // 목적지가 같이 줄어들지 않으면 한 걸음이 옛 좌표계의 먼 자리를 향해 튄다.
+        Assert.NotNull(after);
+        Assert.True(
+            Math.Abs(after.Value.X - stage.Window.X) < 400,
+            $"목적지가 옛 좌표계에 남았다: {after.Value.X} (창 {stage.Window.X})");
+    }
+
+    /// <summary>
+    /// **커서를 피할 때도 넘어간다.** 몰아붙이면 옆 모니터로 달아나는 것이 이 설정을
+    /// 켠 사람이 기대하는 모습이다 (맥 2.5.2.1 이 같은 것을 고쳤다).
+    /// </summary>
+    [Fact]
+    public void 커서를_피할_때도_넘어간다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(3)) { CrossesScreens = true };
+        var stage = TwoScreens();
+        // 왼쪽 화면 끝에 서 있고 커서가 왼쪽에서 밀고 들어온다.
+        stage.Window = new PetRect(1784, 500, 128, 160);
+        stage.Cursor = new PetPoint(1780, 580);
+
+        Assert.True(pet.RequestDodge(stage));
+        var tick = pet.Tick(stage);
+
+        Assert.NotNull(tick.MoveTo);
+        Assert.True(tick.MoveTo.Value.X > 1784, $"이음매에 막혔다: {tick.MoveTo.Value.X}");
     }
 
 }

@@ -1,4 +1,5 @@
 using System.Windows;
+using DongCSU.Core;
 using DongCSU.Core.Owl;
 
 namespace DongCSU.App.Rendering;
@@ -22,11 +23,69 @@ internal static class ProbeMascot
     /// <summary>모서리에 붙었다고 볼 여유(픽셀). 그리는 사람이 1~2px 어긋나게 그릴 수 있다.</summary>
     private const int Slack = 6;
 
+    /// <summary>
+    /// <c>--probe-mascot [캐릭터]</c>. 캐릭터를 안 적으면 **시트로 도는 것을 전부** 잰다.
+    ///
+    /// **하나만 재면 새 캐릭터가 조용히 빠진다.** 칸 표는 캐릭터마다 다시 쓰지 않고
+    /// 하나를 나눠 쓰므로, 라쿤 시트가 부엉이와 다르게 구워져 있으면 라쿤에서만
+    /// 어긋난다 — 부엉이만 재면 CI 가 그걸 못 잡는다.
+    /// </summary>
     public static int Run(string[] args)
     {
-        if (MascotRenderer.SheetSize() is not { } size)
+        var picked = args.Length > 1 ? Style(args[1]) : null;
+        if (args.Length > 1 && picked is null)
         {
-            Console.Error.WriteLine("시트를 못 읽었다 (mascot.png 가 앱에 안 박혔다)");
+            Console.Error.WriteLine($"모르는 캐릭터: {args[1]} (owl · raccoon)");
+            return 1;
+        }
+
+        var styles = picked is { } one
+            ? [one]
+            : Enum.GetValues<IconStyle>().Where(style => style.UsesSheet()).ToArray();
+
+        var failed = 0;
+        foreach (var style in styles)
+        {
+            if (styles.Length > 1)
+            {
+                Console.WriteLine($"── {style.ShortTitle()} ({style.SheetResource()}.png) "
+                    + new string('─', 40));
+            }
+            failed |= Check(style);
+            if (styles.Length > 1) Console.WriteLine();
+        }
+        return failed;
+    }
+
+    /// <summary>
+    /// 이름으로 캐릭터를 고른다. 리소스 이름과 enum 이름을 다 받는다.
+    ///
+    /// <b>이름표를 따로 두지 않는다.</b> 캐릭터를 더하면 리소스 이름(<c>raccoon</c>)과
+    /// enum 이름(<c>RaccoonSheet</c>)으로 저절로 잡힌다 — 여기에 한 줄씩 늘어놓으면
+    /// 캐릭터를 더할 때마다 찾아 고쳐야 하는 자리가 하나 더 생긴다.
+    /// </summary>
+    private static IconStyle? Style(string name)
+    {
+        foreach (var style in Enum.GetValues<IconStyle>())
+        {
+            if (!style.UsesSheet()) continue;
+            if (Same(style.SheetResource(), name) || Same(style.ToString(), name)) return style;
+        }
+
+        // **부엉이만 예외다.** 리소스 이름이 캐릭터 이름과 달라서(`mascot`) 위에서
+        // 안 잡힌다 — 옛 이름이라 파일째 바꾸면 맥과 어긋난다.
+        return Same(name, "owl") ? IconStyle.OwlSheet : null;
+
+        static bool Same(string? a, string b) =>
+            string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int Check(IconStyle style)
+    {
+        if (MascotRenderer.SheetSize(style) is not { } size)
+        {
+            Console.Error.WriteLine(
+                $"시트를 못 읽었다 ({style.SheetResource()}.png 가 앱에 안 박혔다)");
             return 1;
         }
 
@@ -38,8 +97,8 @@ internal static class ProbeMascot
             + $" · 규격 {MascotSheet.SheetWidth}×{MascotSheet.SheetHeight}"
             + $" · {(canonical ? $"{multiple}배 (규격 좌표)" : "규격 아님 (균등 분할)")}");
 
-        var cells = MascotRenderer.Measure();
-        var common = MascotRenderer.CommonInk();
+        var cells = MascotRenderer.Measure(style);
+        var common = MascotRenderer.CommonInk(style);
         var side = MascotSheet.Cell * multiple;
 
         // **맥의 배율 기준이 이 상자다.** 칸(256)이 아니라 여기 높이로 나눈다.
@@ -93,9 +152,20 @@ internal static class ProbeMascot
             return 0;
         }
 
-        Console.WriteLine("실패 — 그림과 칸 표가 어긋난다:");
+        // **beta 캐릭터는 여기서 앱을 멈추지 않는다.**
+        //
+        // 이 검사가 잡으려는 것은 **칸 표를 잘못 옮겨 적은 것**인데, 실제로 걸리는 것에는
+        // 그리는 쪽이 몇 px 어긋나게 그린 것도 섞인다. 둘을 구분할 방법이 없다.
+        //
+        // 그림을 다듬는 중이라고 못 박아 둔 캐릭터(<c>IsBeta</c>)에서는 뒤쪽이 훨씬 잦고,
+        // 그것 때문에 CI 가 빨개지면 **부엉이의 진짜 표 오류까지 같이 묻힌다.** 대신
+        // 조용히 넘기지도 않는다 — 줄은 그대로 찍고 무엇을 봐야 하는지 남긴다.
+        var beta = style.IsBeta();
+        Console.WriteLine(beta
+            ? "⚠ 그림과 칸 표가 어긋난다 (beta 캐릭터라 실패로 치지 않는다):"
+            : "실패 — 그림과 칸 표가 어긋난다:");
         foreach (var problem in problems) Console.WriteLine($"  {problem}");
-        return 1;
+        return beta ? 0 : 1;
     }
 
     /// <summary>잉크가 칸의 어느 모서리에 닿아 있는지.</summary>

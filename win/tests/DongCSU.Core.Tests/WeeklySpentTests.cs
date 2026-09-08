@@ -11,29 +11,12 @@ namespace DongCSU.Core.Tests;
 /// </summary>
 public class WeeklySpentTests
 {
-    private static UsageWindow Window(double utilization) =>
-        new(utilization, DateTimeOffset.UtcNow.AddHours(1));
+    private static UsageWindow Window(double utilization) => SpentFixture.Window(utilization);
 
-    private static UsageStore Empty() =>
-        new(new UsageApi(new HttpClient(), new CredentialStore(new NoCredentials(), null, null)));
+    private static UsageStore Empty() => SpentFixture.Empty();
 
-    private static UsageStore Store(double? session, double? weekly)
-    {
-        var store = Empty();
-        store.Preview(new UsageSnapshot
-        {
-            FiveHour = session is { } s ? Window(s) : null,
-            SevenDay = weekly is { } w ? Window(w) : null,
-            FetchedAt = DateTimeOffset.UtcNow,
-        });
-        return store;
-    }
-
-    /// <summary>여기 테스트는 조회를 걸지 않는다. 자격 증명은 없어도 된다.</summary>
-    private sealed class NoCredentials : ICredentialSource
-    {
-        public ClaudeCredentials? Read() => null;
-    }
+    private static UsageStore Store(double? session, double? weekly) =>
+        SpentFixture.Store(session, weekly);
 
     [Fact]
     public void 주간이_백_퍼센트면_다_쓴_것이다()
@@ -64,7 +47,7 @@ public class WeeklySpentTests
     public void 주간을_다_쓰면_세션이_한가해도_탈진이다()
     {
         var mood = OwlMoodResolver.Resolve(
-            OwlDocument.Embedded, sessionUtilization: 3, isDisconnected: false, isWeeklySpent: true);
+            OwlDocument.Embedded, sessionUtilization: 3, isDisconnected: false, isSpent: true);
 
         Assert.Equal(OwlMood.Exhausted, mood);
     }
@@ -74,7 +57,7 @@ public class WeeklySpentTests
     public void 끊겼으면_주간을_다_썼어도_끊김이다()
     {
         var mood = OwlMoodResolver.Resolve(
-            OwlDocument.Embedded, sessionUtilization: 3, isDisconnected: true, isWeeklySpent: true);
+            OwlDocument.Embedded, sessionUtilization: 3, isDisconnected: true, isSpent: true);
 
         Assert.Equal(OwlMood.Offline, mood);
     }

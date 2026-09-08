@@ -42,6 +42,23 @@ public enum HudHit
     PetRow,
 }
 
+/// <summary>
+/// HUD 가 보기마다 그리는 것들. <see cref="HudView.Draws"/> 가 어느 보기에 그려지는지
+/// 답하고, 설정 창은 그걸 보고 토글을 잠근다.
+///
+/// <see cref="HudHit"/> 와 겹쳐 보이지만 뜻이 다르다 — 저쪽은 <b>마우스가 무엇 위에
+/// 있나</b>이고 여기는 <b>이 보기가 그것을 그리나</b>다.
+/// </summary>
+public enum HudElement
+{
+    /// <summary>아래 줄의 CPU · 메모리.</summary>
+    ProcessStats,
+    /// <summary>제일 안쪽 모델별 링.</summary>
+    ScopedRing,
+    /// <summary>모서리 버전 딱지.</summary>
+    VersionBadge,
+}
+
 public static class HudHitExtensions
 {
     /// <summary>
@@ -163,13 +180,48 @@ public sealed class HudView : FrameworkElement
     /// </summary>
     public const double BasePetButtonRow = 32;
 
-    private const double BasePetRingDiameter = 124;
+    /// <summary>
+    /// 펫에서 뒤에 두르는 링의 바깥 지름. **맥과 같은 123 이다.**
+    ///
+    /// 맥은 2.5.2 에서 124 → 123 으로 내렸다("124 로 두면 바깥 선이 창 밖으로 반 pt
+    /// 나가서 링 위아래가 아주 얇게 깎인다"). <b>우리는 그 문제를 겪지 않는다</b> —
+    /// <c>RingRenderer.DrawOne</c> 이 <c>반지름 = (지름 - 두께) / 2</c> 로 선을 지름
+    /// 안에 넣어서 덮는 폭이 정확히 지름이다.
+    ///
+    /// <b>그래도 맞춘다.</b> 맥도 <c>.padding(lineWidth / 2)</c> 로 같은 일을 해서
+    /// 실제로 덮는 폭이 곧 이 값인데, 124 로 두면 <b>두 판의 링이 1pt 다르게 그려진다.</b>
+    /// 두 판을 나란히 놓고 견주는 그림에서 그 1pt 가 그대로 보인다.
+    /// </summary>
+    private const double BasePetRingDiameter = 123;
     private const double BasePetOuterThickness = 5;
     private const double BasePetInnerThickness = 4;
     private const double BasePetOwlHeight = 84;
     private const double BasePetButton = 24;
 
     private const double BaseRingDiameter = 62;
+
+    /// <summary>
+    /// 모델별 링이 붙어 셋이 될 때의 바깥 지름.
+    ///
+    /// **셋이면 키워야 한다.** 62 안에 셋을 넣으면 가운데 그림 자리가 12 밖에 안 남아
+    /// 무슨 그림인지 안 보인다(84 면 34 다).
+    /// </summary>
+    private const double BaseScopedRingDiameter = 84;
+
+    /// <summary>
+    /// 링이 커진 몫. **카드도 가로·세로로 같이 이만큼 넓힌다.**
+    ///
+    /// 세로만 넓히고 가로를 그대로 두면 커진 링이 옆의 글자 자리를 그만큼 먹는다.
+    /// 창은 안 줄었는데 숫자가 밀려서 버튼 밑으로 파고든다 — 눈에는 "가로가 줄어든"
+    /// 것처럼 보인다.
+    /// </summary>
+    private const double BaseScopedGrowth = BaseScopedRingDiameter - BaseRingDiameter;
+
+    /// <summary>
+    /// 모델별 줄 하나가 먹는 높이. 세션 · 주간 줄과 같은 몫이다
+    /// (값 20 + 남은 시간 11 + 줄 사이 8 + 여백).
+    /// </summary>
+    private const double BaseScopedRowHeight = 46;
     private const double BaseOuterThickness = 6;
     private const double BaseInnerThickness = 5;
     private const double BaseRingGap = 7;
@@ -204,6 +256,18 @@ public sealed class HudView : FrameworkElement
     private const string GlyphStopwatch = "\uE916";
 
     private static readonly OwlDocument Document = OwlDocument.Embedded;
+
+    /// <summary>
+    /// 평소 글자.
+    ///
+    /// **맥이 <c>.medium</c> 을 쓰는 자리 셋(남은 시간 · 조회 카운트다운 · 자원 줄 값)도
+    /// 이걸 쓴다.** 옮기지 않은 것이 아니라 <b>옮길 것이 없다</b> — 윈도우에 깔린
+    /// <c>Segoe UI</c> 에는 Medium(500) 판이 아예 없어서(Light 300 · Semilight 350 ·
+    /// Regular 400 · Semibold 600 · Bold 700 · Black 900), <c>FontWeights.Medium</c> 을
+    /// 적어도 WPF 가 400 으로 눕힌다. 적어 두면 고쳤다고 믿게 되는 것이 더 나쁘다.
+    ///
+    /// 맥이 같이 쓰는 <c>design: .rounded</c> 도 같은 사정이다.
+    /// </summary>
     private static readonly Typeface Regular = new("Segoe UI");
     private static readonly Typeface Semibold = new(
         new FontFamily("Segoe UI"), FontStyles.Normal, FontWeights.SemiBold, FontStretches.Normal);
@@ -230,19 +294,29 @@ public sealed class HudView : FrameworkElement
     public bool IsDisconnected { get; set; }
 
     /// <summary>
-    /// 주간을 다 썼다. 세션 링과 세션 숫자의 색을 뺀다 — 세션만 초록으로 남아 있으면
-    /// 아직 여유가 있는 것처럼 보인다.
+    /// 주간을 다 썼다. **두 링과 두 줄이 다** 색을 뺀다 — 세션은 쓸 수 없어서고,
+    /// 주간은 그 자신이 죽은 이유라서다.
     /// </summary>
     public bool IsWeeklySpent { get; set; }
 
     /// <summary>
-    /// 지금 **다 씀 표시(회색)를 낼지.** 링 둘과 색점 둘이 이걸 같이 본다 —
-    /// 같은 판단을 여러 곳에 적으면 반드시 어긋난다.
+    /// 세션을 다 썼다. **세션 쪽만** 색이 빠진다.
+    ///
+    /// 주간까지 회색으로 만들지 않는 이유: 주간은 다음 창이 열리면 실제로 쓸 수 있는
+    /// 양이라, 그것까지 덮으면 있는 여유를 숨기는 셈이다.
+    /// </summary>
+    public bool IsSessionSpent { get; set; }
+
+    /// <summary>
+    /// **바깥 링(세션)과 세션 줄**이 회색이 될지. 둘 중 하나만 차도 지금은 못 쓴다.
     ///
     /// **겹칠 때는 끊김이 이긴다.** 회색은 "지금 값이 아니다"라는 뜻이라, 그것을
     /// 다 씀 표시로 덮으면 낡은 숫자를 지금 값으로 믿게 된다.
     /// </summary>
-    private bool ShowsSpent => IsWeeklySpent && !IsDisconnected;
+    private bool ShowsSessionSpent => (IsSessionSpent || IsWeeklySpent) && !IsDisconnected;
+
+    /// <summary>**안쪽 링(주간)과 주간 줄**이 회색이 될지. 주간이 스스로 찼을 때뿐이다.</summary>
+    private bool ShowsWeeklySpent => IsWeeklySpent && !IsDisconnected;
 
     /// <summary>마지막 성공값을 보여주는 중. 링과 숫자를 흐리게 한다.</summary>
     public bool IsStale { get; set; }
@@ -256,6 +330,37 @@ public sealed class HudView : FrameworkElement
 
     /// <summary>이 앱 자신의 CPU·메모리를 아래 줄에 붙일지. 접힌 모습에는 자리가 없다.</summary>
     public bool ShowsProcessStats { get; set; }
+
+    /// <summary>
+    /// 모델별 주간 한도를 링과 줄에 같이 그릴지. **설정에서 켰을 때만.**
+    ///
+    /// 켜 뒀어도 서버가 안 주면 아무것도 안 는다 — 판정은 <see cref="ScopedLimit"/>
+    /// 하나에서 나온다.
+    /// </summary>
+    public bool ShowsScopedLimit { get; set; }
+
+    /// <summary>
+    /// 제일 안쪽 링과 셋째 줄에 그릴 한도. 꺼져 있거나 서버가 안 주면 null.
+    ///
+    /// **여기 하나에서만 판단한다.** 링·줄·치수가 각자 물어보면 서버가 값을 안 준
+    /// 사람에게 카드만 커지고 링은 둘인 화면이 나온다.
+    /// </summary>
+    private UsageLimit? ScopedLimit => ShowsScopedLimit ? Snapshot?.ScopedLimit : null;
+
+    /// <summary>
+    /// 그 보기에서 링이 커지는가.
+    ///
+    /// **펫은 안 커진다** — 원래 링이 123 이라 셋이 그대로 들어간다.
+    ///
+    /// **설정만 본다. 값이 있는지는 안 본다** — 맥도 그렇다(<c>UsageHUDView.Card</c> 가
+    /// <c>settings.showsScopedLimit</c> 만 받는다). 값까지 보면 켜 둔 사람의 카드가
+    /// **앱을 켤 때마다 작게 떴다가 첫 조회에 툭 커진다** — 왼쪽으로 펼치는 설정에서는
+    /// 오른쪽 변을 붙잡느라 창이 가로로도 밀린다.
+    ///
+    /// 값이 없을 때 커진 자리는 비어 있다. 그림은 <see cref="ScopedLimit"/> 이 있을
+    /// 때만 그리므로(맥과 같다) 링은 여전히 둘이고, 가운데 그림이 그만큼 커진다.
+    /// </summary>
+    private bool GrowsFor(HudMode mode) => mode != HudMode.Pet && ShowsScopedLimit;
 
     public ProcessUsage? Stats { get; set; }
 
@@ -287,7 +392,25 @@ public sealed class HudView : FrameworkElement
     /// <summary>접힌 카드와 펫에는 자원 줄을 붙일 자리가 없다.</summary>
     private bool HasStatsRow => StatsRowIn(Mode);
 
-    private bool StatsRowIn(HudMode mode) => ShowsProcessStats && mode == HudMode.Expanded;
+    private bool StatsRowIn(HudMode mode) =>
+        ShowsProcessStats && Draws(HudElement.ProcessStats, mode);
+
+    /// <summary>
+    /// 이 보기가 실제로 그리는가.
+    ///
+    /// **설정 창이 토글을 잠글지 여기서 정한다.** 두 자리에 따로 적으면 반드시
+    /// 어긋난다 — 접어 놓으면 눈앞에 링이 보이는데도 못 끄거나, 안 그리는데 토글만
+    /// 열려 있어 눌러도 아무 일이 없다. 맥에서 둘 다 실제로 났던 꼴이다.
+    /// </summary>
+    public static bool Draws(HudElement element, HudMode mode) => element switch
+    {
+        // 아래 줄은 펼친 카드에만 있다.
+        HudElement.ProcessStats => mode == HudMode.Expanded,
+        // 링은 세 보기에 다 그린다.
+        HudElement.ScopedRing => true,
+        // 접은 카드는 링에 겹쳐서 안 붙이고, 펫에는 카드 자체가 없다.
+        _ => mode == HudMode.Expanded,
+    };
 
     public Size DesiredHudSize => SizeFor(Mode);
 
@@ -298,14 +421,33 @@ public sealed class HudView : FrameworkElement
     /// 따지면 아직 갈아타기 전이라 답이 틀린다 — 접힘에서 펼침으로 갈 때 17 이 모자란
     /// 크기로 옮겨가다 마지막 프레임에 툭 튄다.
     /// </summary>
-    public Size SizeFor(HudMode mode) => mode switch
+    public Size SizeFor(HudMode mode)
     {
-        HudMode.Pet => new Size(BasePetWidth * Scale, (BasePetWidth + BasePetButtonRow) * Scale),
-        HudMode.Collapsed => new Size(BaseCollapsedWidth * Scale, BaseCollapsedHeight * Scale),
-        _ => new Size(
-            BaseExpandedWidth * Scale,
-            (BaseExpandedHeight + (StatsRowIn(mode) ? BaseStatsRowHeight : 0)) * Scale),
-    };
+        // 모델별 링이 붙어 링이 커진 만큼 카드도 넓어진다.
+        var grown = GrowsFor(mode) ? BaseScopedGrowth : 0;
+
+        return mode switch
+        {
+            HudMode.Pet => new Size(BasePetWidth * Scale, (BasePetWidth + BasePetButtonRow) * Scale),
+            // 접은 카드에는 숫자가 없어서 자원 줄은 안 붙는다. 링은 그리므로 링이
+            // 커지면 카드도 가로·세로로 같이 커진다.
+            HudMode.Collapsed => new Size(
+                (BaseCollapsedWidth + grown) * Scale,
+                (BaseCollapsedHeight + grown) * Scale),
+            _ => new Size(
+                (BaseExpandedWidth + grown) * Scale,
+                ExpandedRowHeight(mode) + (StatsRowIn(mode) ? BaseStatsRowHeight * Scale : 0)),
+        };
+    }
+
+    /// <summary>
+    /// 펼친 카드에서 링 · 숫자가 놓이는 윗줄의 높이. 모델별 줄이 붙으면 46 커진다.
+    ///
+    /// **크기도 링 자리도 카운트다운도 다 여기서 가져간다.** 따로 유도하면 그림과
+    /// 판정이 어긋나서, 링 가장자리를 눌러도 마스코트로 안 잡힌다.
+    /// </summary>
+    private double ExpandedRowHeight(HudMode mode) =>
+        (BaseExpandedHeight + (GrowsFor(mode) ? BaseScopedRowHeight : 0)) * Scale;
 
     /// <summary>펫에서 마우스가 마스코트 위에 있는지. 창이 넣어 준다.</summary>
     public bool IsHovered { get; set; }
@@ -375,6 +517,51 @@ public sealed class HudView : FrameworkElement
 
     /// <summary>펼침·접힘의 버튼 칸 수. 맥의 <c>controlButtonCount</c> 와 같은 값이다.</summary>
     private const int ControlButtonCount = 4;
+
+    /// <summary>
+    /// 진단이 재는 자리들. **뷰가 실제로 쓰는 것을 그대로 낸다** — 여기서 셈을 다시
+    /// 적으면 진단이 진단을 못 한다(<see cref="ProbeHud"/>).
+    /// </summary>
+    internal Rect ProbeRingRect() => RingRect();
+
+    /// <inheritdoc cref="ProbeRingRect"/>
+    internal (HudHit Target, Rect Rect)[] ProbeButtonRects() => ButtonRects();
+
+    /// <inheritdoc cref="ProbeRingRect"/>
+    internal Rect ProbeUpdateBadgeRect() => UpdateBadgeRect();
+
+    /// <summary>
+    /// 링 안쪽에 남는 자리 — 가운데 그림이 들어갈 지름.
+    ///
+    /// **펫은 다르다.** 거기서는 마스코트가 링 위로 올라오는 것이 맞아서
+    /// <see cref="BasePetOwlHeight"/> 고정이다.
+    /// </summary>
+    internal double ProbeIconRoom() => IconRoom(RingRect().Width);
+
+    /// <summary>
+    /// 링 안쪽에 남는 자리 — 가운데 그림이 들어갈 지름.
+    ///
+    /// **겹치는 규칙이 여기 하나뿐이어야 한다.** 그리는 쪽과 재는 쪽이 따로 세면, 틈을
+    /// 한 번 고쳤을 때 마스코트가 제일 안쪽 링을 파고드는데도 <c>--probe-hud</c> 는 옛
+    /// 숫자로 재면서 통과시킨다 — 이 진단이 막으려던 바로 그 실패 모양이다.
+    /// </summary>
+    private double IconRoom(double outerDiameter)
+    {
+        if (Mode == HudMode.Pet) return BasePetOwlHeight * Scale;
+
+        var innerThickness = BaseInnerThickness * Scale;
+        var gap = BaseRingGap * Scale;
+        // **셈은 그리는 쪽 것을 쓴다**(<see cref="RingRenderer.Nested"/>).
+        var inner = RingRenderer.Nested(outerDiameter, BaseOuterThickness * Scale, gap);
+        // 링이 하나 더 생기면 그림도 그만큼 안으로 들어간다.
+        var innermost = ScopedLimit is null
+            ? inner
+            : RingRenderer.Nested(inner, innerThickness, gap);
+        return innermost - innerThickness * 2 - 4 * Scale;
+    }
+
+    /// <summary>모델별 링이 없을 때의 링 지름. 글자 자리가 안 줄었는지 재는 기준이다.</summary>
+    internal double ProbePlainRingDiameter() => BaseRingDiameter * Scale;
 
     /// <summary>
     /// 그 버튼 자리의 한가운데. 이 보기에 없는 자리(펫의 접기)면 null.
@@ -501,8 +688,10 @@ public sealed class HudView : FrameworkElement
             return new Rect((size.Width - pet) / 2, (area - pet) / 2, pet, pet);
         }
 
-        var ring = BaseRingDiameter * Scale;
-        var rowHeight = Mode == HudMode.Collapsed ? size.Height : BaseExpandedHeight * Scale;
+        // **링이 커지면 이 자리도 같이 커져야 한다.** 62 로 못 박아 두면 모델별 링을
+        // 켰을 때 링 가장자리를 눌러도 마스코트로 안 잡힌다.
+        var ring = (GrowsFor(Mode) ? BaseScopedRingDiameter : BaseRingDiameter) * Scale;
+        var rowHeight = Mode == HudMode.Collapsed ? size.Height : ExpandedRowHeight(Mode);
         var top = (rowHeight - ring) / 2;
 
         // 접힌 상태에서 왼쪽으로 펼치는 설정이면 버튼 열이 링 앞에 온다.
@@ -515,6 +704,84 @@ public sealed class HudView : FrameworkElement
             _ => size.Width - 13 * Scale - ring,
         };
         return new Rect(leading, top, ring, ring);
+    }
+
+    /// <summary>
+    /// 펫에서 마스코트가 <b>실제로 덮는 자리</b>(창 안 좌표). 시트 그림이 아니면 null.
+    ///
+    /// <b>창이 아니다.</b> 펫의 창은 링만큼 커서 그것으로 붙을 자리를 재면 아직 한참
+    /// 떨어져 있는데도 붙는다. 맥 <c>petMascotRect</c> · <c>petMascotInkRect</c> 와
+    /// 같은 자리다.
+    ///
+    /// <b>그리는 것과 같은 셈이어야 한다.</b> <c>MascotRenderer.Draw</c> 는 모든 칸의
+    /// 잉크를 묶은 상자 하나에만 배율을 매기고 칸은 구워진 자리 그대로 옮긴다 —
+    /// 여기서 칸마다 자리를 다시 잡으면 붙는 자리가 실제 그림과 어긋난다.
+    /// </summary>
+    /// <param name="perch">
+    /// 어느 테두리에 붙을 때의 자세인지. null 이면 선 자세(<c>Idle</c>).
+    /// <b>뒤집어 그리는 면은 여기서 같이 돌린다</b> — 왼쪽 벽에 붙을 때 닿는 변이
+    /// 반대쪽이 된다.
+    /// </param>
+    internal Rect? PetMascotInkRect(MascotPerch? perch) => perch is { } side
+        ? PetMascotInkRect(side.Sprite(), side.FlipsSprite())
+        : PetMascotInkRect(MascotSprite.Idle, flipped: false);
+
+    /// <summary>
+    /// 마스코트가 놓이는 <b>상자</b>(창 안 좌표). 자세를 안 본다.
+    ///
+    /// 붙을 자리를 찾을 때 쓴다 — 맥 <c>mascotScreenRect</c> 가 <c>petMascotRect</c> 를
+    /// 쓰는 것과 같다. <b>자세마다 다르게 재면 미리보기가 떨린다</b>(<see cref="PerchPlanner.MascotRect"/>).
+    /// </summary>
+    internal Rect? PetMascotBoxRect()
+    {
+        if (Mode != HudMode.Pet) return null;
+        if (!IconStyle.UsesSheet()) return null;
+        return PetMascotBox();
+    }
+
+    /// <inheritdoc cref="PetMascotInkRect(MascotPerch?)"/>
+    private Rect? PetMascotInkRect(MascotSprite sprite, bool flipped)
+    {
+        if (Mode != HudMode.Pet) return null;
+        if (!IconStyle.UsesSheet()) return null;
+        if (MascotRenderer.InkFraction(IconStyle, sprite) is not { } fraction) return null;
+
+        var box = PetMascotBox();
+        var minX = box.Left + fraction.X * box.Width;
+        var maxX = minX + fraction.Width * box.Width;
+
+        // 뒤집어 쓰는 자세는 상자 안에서 좌우가 미러링된다
+        // (`MascotRenderer.Draw` 의 `ScaleTransform(-1, 1, …)`).
+        // 축이 상자 한가운데라 여기서도 같은 축으로 돌린다.
+        if (flipped)
+        {
+            var center = box.Left + box.Width / 2;
+            (minX, maxX) = (2 * center - maxX, 2 * center - minX);
+        }
+
+        return new Rect(
+            minX,
+            box.Top + fraction.Y * box.Height,
+            maxX - minX,
+            fraction.Height * box.Height);
+    }
+
+    /// <summary>
+    /// 모든 칸의 잉크를 묶은 상자가 창 안에서 놓이는 자리.
+    ///
+    /// <c>MascotRenderer.Draw</c> 가 높이를 먼저 맞추고 상자를 자리 한가운데에 놓는다.
+    /// 펫은 <c>widthLimited: false</c> 라 폭을 안 막으므로, 폭은 상자 비율을 따라간다.
+    /// </summary>
+    private Rect PetMascotBox()
+    {
+        var ring = RingRect();
+        var center = new Point(ring.Left + ring.Width / 2, ring.Top + ring.Height / 2);
+        var height = BasePetOwlHeight * Scale;
+
+        var common = MascotRenderer.CommonInk(IconStyle);
+        var width = common.Height > 0 ? height * common.Width / common.Height : height;
+
+        return new Rect(center.X - width / 2, center.Y - height / 2, width, height);
     }
 
     /// <summary>
@@ -586,7 +853,7 @@ public sealed class HudView : FrameworkElement
         var s = Scale;
         var size = DesiredHudSize;
         var inset = HasStatsRow ? 13 * s : 10 * s;
-        var bottom = HasStatsRow ? size.Height - 4 * s : BaseExpandedHeight * s - 7 * s;
+        var bottom = HasStatsRow ? size.Height - 4 * s : ExpandedRowHeight(Mode) - 7 * s;
         var width = 76 * s;
         var top = bottom - 13 * s;
 
@@ -608,7 +875,10 @@ public sealed class HudView : FrameworkElement
 
     private Rect? VersionBadgeStrip()
     {
-        if (Mode == HudMode.Collapsed || VersionBadge is null) return null;
+        // **그리는 규칙과 같은 것을 본다.** 예전에는 접힘만 뺐는데 그리는 쪽은 펫도
+        // 빼서(`DrawCornerBadges`), 펫에서 안 보이는 딱지 자리에 도구 설명만 뜨고
+        // 있었다 — 규칙을 한 곳으로 옮긴 이유가 그거다.
+        if (!Draws(HudElement.VersionBadge, Mode) || VersionBadge is null) return null;
 
         var s = Scale;
         var rect = UpdateBadgeRect();
@@ -648,7 +918,7 @@ public sealed class HudView : FrameworkElement
     /// 올렸을 때 몇 초 남았는지 알려 준다 — 아무 일도 안 일어나면 고장으로 보인다.
     /// </summary>
     private string RefreshTooltip => ErrorText is { } error
-        ? $"갱신 실패: {error} — 눌러서 다시 시도"
+        ? $"갱신 실패: {error} — 클릭해서 다시 시도"
         : FetchCooldownSeconds > 0 ? $"새로고침 — {FetchCooldownSeconds}초 뒤에 가능" : "새로고침";
 
     /// <summary>
@@ -784,10 +1054,19 @@ public sealed class HudView : FrameworkElement
                 // 주간을 다 썼으면 **두 링 다** 색을 뺀다. 세션은 쓸 수 없어서고,
                 // 주간은 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는
                 // 죽었는데 링은 살아 있어서 아직 뭔가 되는 것처럼 읽힌다.
-                spentColor: ShowsSpent ? palette.RingSpent : null,
+                //
+                // **세션만 다 썼을 때는 세션 링만 뺀다.** 주간은 다음 창이 열리면 실제로
+                // 쓸 수 있는 양이라, 그것까지 회색으로 만들면 있는 여유를 숨긴다.
+                sessionSpentColor: ShowsSessionSpent ? palette.RingSpent : null,
+                weeklySpentColor: ShowsWeeklySpent ? palette.RingSpent : null,
                 // **배율을 넘겨야 후광이 따라 커진다.** 안 넘기면 기본값 1 로 떨어져서
                 // 크게 볼수록 후광이 상대적으로 얇아진다 — 맥은 반경이 1.5×배율이다.
-                scale: s);
+                scale: s,
+                // **제일 안쪽이 모델별이다.** 세션 · 주간은 누구에게나 있고 이건 없을
+                // 수도 있어서, 없을 때 자리가 비지 않는 쪽이 안쪽이다.
+                //
+                // 회색은 주간과 짝이다 — 모델별도 주간 창이라 주간이 차면 같이 죽는다.
+                scopedPercent: ScopedLimit?.Percent);
             if (ringOpacity < 1) context.Pop();
         }
 
@@ -806,9 +1085,9 @@ public sealed class HudView : FrameworkElement
             return;
         }
 
-        // 맥과 같은 산식 — 안지름에서 안쪽 링 두께 두 겹과 여유 4 를 뺀다.
-        var inner = frame.Width - outer * 2 - BaseRingGap * s;
-        var available = inner - innerThickness * 2 - 4 * s;
+        // 맥과 같은 산식. **셈은 `IconRoom` 한 곳에 있다** — 여기서 다시 적으면
+        // `--probe-hud` 가 옛 숫자로 재면서 통과시킨다.
+        var available = IconRoom(frame.Width);
         if (available <= 0) return;
 
         DrawIcon(context, center, available);
@@ -824,10 +1103,13 @@ public sealed class HudView : FrameworkElement
 
         switch (IconStyle)
         {
-            case IconStyle.OwlSheet:
+            // **캐릭터 이름으로 갈래를 늘리지 않는다.** 시트로 도는 그림은 읽는 통로가
+            // 같아서, 캐릭터를 더할 때 여기는 손대지 않는다.
+            case var sheet when sheet.UsesSheet():
                 // 시트를 못 읽으면 격자로 떨어진다 — 가운데가 비면 안 된다.
                 if (!MascotRenderer.Draw(
-                        context, MascotFrame, Square(center, available), MascotFlipped, widthLimited))
+                        context, IconStyle, MascotFrame, Square(center, available),
+                        MascotFlipped, widthLimited))
                 {
                     DrawPixelated(context, ctx => DrawOwl(ctx, center, available));
                 }
@@ -908,27 +1190,49 @@ public sealed class HudView : FrameworkElement
         context.DrawDrawing(group);
     }
 
-    /// <summary>세션 · 주간 두 블록. 각 블록은 두 줄이고, 앞의 색점이 링과 짝을 지어 준다.</summary>
+    /// <summary>
+    /// 세션 · 주간 블록. 모델별을 켜고 서버가 주면 셋이 된다. 각 블록은 두 줄이고,
+    /// 앞의 색점이 링과 짝을 지어 준다.
+    /// </summary>
     private void DrawMetrics(DrawingContext context, HudPalette palette, double s)
     {
         var now = DateTimeOffset.Now;
 
         // 링과 같은 규칙이다 — 링만 회색이고 점은 초록이면 앞뒤가 안 맞는다. 그래서
-        // 링이 보는 것과 **똑같은 판단**(ShowsSpent)을 두 줄에 다 넘긴다.
-        // 끊겼을 때 다 씀 표시가 지는 까닭도 거기 적어 뒀다.
-        var session = MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s, ShowsSpent);
-        var weekly = MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s, ShowsSpent);
+        // 링이 보는 것과 **똑같은 판단**을 줄마다 넘긴다. 세션 줄은 세션 링과, 주간
+        // 줄은 주간 링과 짝이다. 끊겼을 때 다 씀 표시가 지는 까닭도 거기 적어 뒀다.
+        var blocks = new List<Block>(3)
+        {
+            MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s, ShowsSessionSpent),
+            MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s, ShowsWeeklySpent),
+        };
 
-        var totalHeight = session.Height + 8 * s + weekly.Height;
-        var top = (BaseExpandedHeight * s - totalHeight) / 2;
+        // 링과 같은 순서로 맨 아래. 켜져 있고 서버가 줄 때만 나온다.
+        //
+        // **제목은 모델 이름 그대로다** — `UsageLimit.Title` 의 "주간 · Fable" 은 설정
+        // 창 상태 탭 것이라, 좁은 카드에 넣으면 줄이 넘친다.
+        //
+        // 회색도 주간과 짝이다 — 모델별도 주간 창이라 주간이 차면 같이 죽는다.
+        if (ScopedLimit is { ModelName: { } name } scoped)
+        {
+            blocks.Add(MeasureBlock(name, scoped.Window, now, palette, s, ShowsWeeklySpent));
+        }
+
+        var gap = 8 * s;
+        var totalHeight = blocks.Sum(block => block.Height) + gap * (blocks.Count - 1);
+        var top = (ExpandedRowHeight(Mode) - totalHeight) / 2;
 
         var ring = RingRect();
-        var width = Math.Max(session.Width, weekly.Width);
+        var width = blocks.Max(block => block.Width);
         // 왼쪽으로 펼치면 링이 오른쪽에 있으므로 블록을 그 앞에 붙인다.
         var left = ToRight ? ring.Right + 13 * s : ring.Left - 13 * s - width;
 
-        DrawBlock(context, session, new Point(left, top), palette, s);
-        DrawBlock(context, weekly, new Point(left, top + session.Height + 8 * s), palette, s);
+        var y = top;
+        foreach (var block in blocks)
+        {
+            DrawBlock(context, block, new Point(left, y), palette, s);
+            y += block.Height + gap;
+        }
     }
 
     /// <summary>
@@ -1031,7 +1335,7 @@ public sealed class HudView : FrameworkElement
         var inset = HasStatsRow ? 13 * s : 10 * s;
         var bottom = HasStatsRow
             ? size.Height - 4 * s
-            : BaseExpandedHeight * s - 7 * s;
+            : ExpandedRowHeight(Mode) - 7 * s;
         var right = size.Width - inset;
 
         if (StaleLabel(now) is { } warning)
@@ -1102,7 +1406,9 @@ public sealed class HudView : FrameworkElement
     private void DrawCornerBadges(DrawingContext context, HudPalette palette, double s)
     {
         // 접은 카드는 108 뿐이라 버전 딱지를 붙이면 링 위에 겹친다.
-        var badge = Mode == HudMode.Collapsed ? null : VersionBadge;
+        // **규칙이 한 곳에서 나온다.** 설정 창의 잠금도 같은 함수를 본다 — 여기에
+        // 조건을 따로 적으면 "눈앞에 보이는데 못 끄는" 꼴이 다시 생긴다.
+        var badge = Draws(HudElement.VersionBadge, Mode) ? VersionBadge : null;
         if (!HasUpdate && badge is null) return;
 
         var rect = UpdateBadgeRect();

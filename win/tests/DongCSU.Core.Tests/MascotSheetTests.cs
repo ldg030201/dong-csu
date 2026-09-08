@@ -232,6 +232,60 @@ public class MascotAnchorTests
         Assert.Equal(0, MascotSheet.GripDepth(MascotSprite.Held));
     }
 
+    /// <summary>
+    /// **붙어 있으면 그 자세가 이긴다.** 붙는 자리는 그 칸의 알맹이로 재서 잡은 것이라,
+    /// 다른 칸이 그려지면 자리가 그만큼 어긋난다 — 흔든 뒤 몇 초 동안 옆면에 붙은
+    /// 마스코트가 삐져나오는 식이다.
+    /// </summary>
+    [Theory]
+    [InlineData(MascotPerch.Top, MascotSprite.Sit)]
+    [InlineData(MascotPerch.Bottom, MascotSprite.Ledge)]
+    [InlineData(MascotPerch.Left, MascotSprite.Cling)]
+    [InlineData(MascotPerch.Right, MascotSprite.Cling)]
+    public void 붙어_있으면_그_자세가_이긴다(MascotPerch perch, MascotSprite expected)
+    {
+        // 끌림·어지러움·걸음이 다 걸려 있어도 붙은 자세가 나온다.
+        var sprite = MascotSheet.Choose(
+            OwlMood.Idle, OwlEyes.Dizzy, PetGaitKind.Dragged, beat: 1, perch: perch);
+
+        Assert.Equal(expected, sprite);
+    }
+
+    /// <summary>
+    /// **끊김만 붙기보다 세다.** 회색으로 굳어야 할 때 벽을 껴안은 그림이 나오면 안 된다.
+    /// </summary>
+    [Fact]
+    public void 끊김은_붙기보다_세다()
+    {
+        var sprite = MascotSheet.Choose(
+            OwlMood.Offline, OwlEyes.Open, PetGaitKind.Still, beat: 0, perch: MascotPerch.Top);
+
+        Assert.Equal(MascotSprite.Dead, sprite);
+    }
+
+    /// <summary>
+    /// **`Cling` 원본은 왼쪽이 벽인 옆모습이다.** 그래서 창 **오른쪽** 테두리가 원본이고
+    /// 왼쪽 테두리일 때 뒤집는다 — 한 번 헷갈리면 절반이 반대로 나온다.
+    /// </summary>
+    [Fact]
+    public void 왼쪽_테두리에서만_뒤집는다()
+    {
+        Assert.True(MascotPerch.Left.FlipsSprite());
+        Assert.False(MascotPerch.Right.FlipsSprite());
+        Assert.False(MascotPerch.Top.FlipsSprite());
+        Assert.False(MascotPerch.Bottom.FlipsSprite());
+    }
+
+    /// <summary>가로 테두리(위·아래)와 세로 테두리는 재는 축이 다르다.</summary>
+    [Fact]
+    public void 가로_테두리는_위와_아래다()
+    {
+        Assert.True(MascotPerch.Top.IsHorizontal());
+        Assert.True(MascotPerch.Bottom.IsHorizontal());
+        Assert.False(MascotPerch.Left.IsHorizontal());
+        Assert.False(MascotPerch.Right.IsHorizontal());
+    }
+
     [Fact]
     public void 뜬_높이를_지키는_칸은_걸음뿐이다()
     {

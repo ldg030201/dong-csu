@@ -77,6 +77,36 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     /// </summary>
     public bool IsWeeklySpent => Snapshot?.SevenDay?.Utilization >= 100;
 
+    /// <summary>
+    /// 화면에 그릴 모델별 주간 한도 하나. 없으면 null.
+    ///
+    /// **셈은 <see cref="UsageSnapshot.ScopedLimit"/> 이 한다** — HUD 는 스토어를 모르고
+    /// 스냅숏만 들고 있어서, 여기에 셈을 적으면 두 곳이 서로 다른 한도를 고른다.
+    /// </summary>
+    public UsageLimit? ScopedLimit => Snapshot?.ScopedLimit;
+
+    /// <summary>
+    /// 세션(5시간) 한도를 다 썼다.
+    ///
+    /// **주간과 달리 곧 풀린다.** 그래서 이것만으로 주간 링까지 회색으로 만들지
+    /// 않는다 — 다음 창이 열리면 실제로 쓸 수 있는 양이라, 그것까지 덮으면 있는
+    /// 여유를 숨기는 셈이다. 갈리는 자리는 <c>HudView.ShowsWeeklySpent</c> 다.
+    /// </summary>
+    public bool IsSessionSpent => Snapshot?.FiveHour?.Utilization >= 100;
+
+    /// <summary>
+    /// 지금 이 순간 쓸 수 없다. **마스코트가 죽는 조건이다.**
+    ///
+    /// **둘 중 하나만 차도 못 쓴다.** 예전에는 주간만 봤는데, 세션을 다 쓴 사람은
+    /// 다음 창이 열릴 때까지 한 글자도 못 보내면서 마스코트만 멀쩡히 걸어다녔다.
+    /// 다시 쓸 수 있게 되기까지가 얼마나 남았는지는 링이 말하므로, 여기서는
+    /// **지금 되느냐** 만 본다.
+    ///
+    /// 여러 곳에서 따로 판단하면 어긋나서 마스코트만 멈추고 링은 살아 있는 꼴이
+    /// 되므로 여기 한 곳에 둔다.
+    /// </summary>
+    public bool IsSpent => IsWeeklySpent || IsSessionSpent;
+
     /// <summary>값이 바뀔 때마다 부른다. 화면이 여기 붙어서 다시 그린다.</summary>
     public event Action? Changed;
 

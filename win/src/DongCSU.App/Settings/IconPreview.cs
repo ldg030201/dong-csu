@@ -69,11 +69,12 @@ internal sealed class IconPreview : FrameworkElement
         {
             // 미리보기는 늘 서 있는 칸이다. 타일마다 다른 자세를 보이면 무엇이 다른
             // 그림인지가 아니라 무엇이 다른 자세인지로 읽힌다.
-            case IconStyle.OwlSheet
-                when MascotRenderer.Draw(context, MascotSprite.Idle, box):
+            case var sheet when sheet.UsesSheet()
+                && MascotRenderer.Draw(context, IconStyle, MascotSprite.Idle, box):
                 break;
 
-            case IconStyle.OwlSheet:
+            // 시트를 못 읽었다. 격자 부엉이로 떨어져 타일이 비지 않게 한다.
+            case var sheet when sheet.UsesSheet():
             case IconStyle.Owl:
                 var cell = OwlRenderer.CellSize(side, Document.Grid.Lines);
                 var size = OwlRenderer.MeasuredSize(cell, Document.Grid);

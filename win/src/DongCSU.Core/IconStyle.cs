@@ -27,6 +27,17 @@ public enum IconStyle
     /// 가운데에 끼우면 이미 저장된 값이 다른 그림을 가리킨다.
     /// </summary>
     OwlSheet,
+    /// <summary>
+    /// 그림 파일 한 장으로 도는 라쿤.
+    ///
+    /// **부엉이와 코드를 하나도 안 나눠 쓴다.** 같은 규격 시트를 읽는 통로에 파일
+    /// 이름만 다르게 물린 것이라, 캐릭터를 더하는 값은 <see cref="IconStyleExtensions.SheetResource"/>
+    /// 한 줄이다.
+    ///
+    /// **맥과 달리 맨 끝에 둔다.** 맥은 문자열로 저장해서 가운데에 끼워도 되지만
+    /// 여기는 위의 이유로 끝에만 더한다.
+    /// </summary>
+    RaccoonSheet,
 }
 
 /// <summary>
@@ -52,7 +63,11 @@ public static class IconStyleExtensions
 {
     public static IconStyleGroup Group(this IconStyle style) => style switch
     {
-        IconStyle.OwlSheet => IconStyleGroup.Character,
+        // **캐릭터 이름을 여기 늘어놓지 않는다.** 늘어놓으면 캐릭터를 더할 때마다
+        // 흩어진 자리를 다 찾아야 하고, 하나만 빠뜨리면 그 캐릭터만 엉뚱한 묶음으로
+        // 간다 — `UsesSheet()` 를 만든 이유가 그거다. (`IsAnimated` 는 일부러 이름을
+        // 적는다. 새로 그린 캐릭터가 자세를 갖추기 전까지는 정지 그림이라서다.)
+        _ when style.UsesSheet() => IconStyleGroup.Character,
         IconStyle.Owl => IconStyleGroup.Original,
         _ => IconStyleGroup.Claude,
     };
@@ -63,6 +78,7 @@ public static class IconStyleExtensions
     public static string Title(this IconStyle style) => style switch
     {
         IconStyle.OwlSheet => "부엉이 (dong-csu 마스코트)",
+        IconStyle.RaccoonSheet => "라쿤",
         IconStyle.Owl => "부엉이 오리지널 (코드로 그린 첫 판)",
         IconStyle.Clawd => "Clawd (Claude Code 마스코트)",
         IconStyle.AppIcon => "Claude 아이콘",
@@ -73,6 +89,7 @@ public static class IconStyleExtensions
     public static string ShortTitle(this IconStyle style) => style switch
     {
         IconStyle.OwlSheet => "부엉이",
+        IconStyle.RaccoonSheet => "라쿤",
         IconStyle.Owl => "오리지널",
         IconStyle.Clawd => "Clawd",
         IconStyle.AppIcon => "Claude 아이콘",
@@ -90,7 +107,38 @@ public static class IconStyleExtensions
     /// 전까지는 정지 그림이라, 그때 여기에 한 줄을 더하는 게 맞다.
     /// </summary>
     public static bool IsAnimated(this IconStyle style) =>
-        style is IconStyle.Owl or IconStyle.OwlSheet;
+        style is IconStyle.Owl or IconStyle.OwlSheet or IconStyle.RaccoonSheet;
+
+    /// <summary>
+    /// 앱에 구워 둔 규격 시트의 리소스 이름. 시트로 도는 그림만 값이 있다.
+    ///
+    /// **캐릭터를 더할 때 손대는 곳이 여기다.** 그림을 맥 <c>Resources/&lt;이름&gt;.png</c> 로
+    /// 두고 <c>DongCSU.App.csproj</c> 에 <c>EmbeddedResource</c> 한 줄과 여기 한 줄을
+    /// 더하면 나머지(그리기 · 미리보기 · 창에 붙기)가 전부 따라온다.
+    /// </summary>
+    public static string? SheetResource(this IconStyle style) => style switch
+    {
+        IconStyle.OwlSheet => "mascot",
+        IconStyle.RaccoonSheet => "raccoon",
+        _ => null,
+    };
+
+    /// <summary>
+    /// 그림 시트로 도는지. 창에 붙는 자세가 있는 것은 이쪽뿐이다.
+    ///
+    /// **캐릭터 이름으로 견주지 않는다.** <c>== IconStyle.OwlSheet</c> 로 적어 두면
+    /// 캐릭터를 더할 때마다 흩어진 자리를 다 찾아 고쳐야 하고, 하나만 빠뜨려도 그
+    /// 캐릭터에서만 붙이기가 조용히 죽는다.
+    /// </summary>
+    public static bool UsesSheet(this IconStyle style) => style.SheetResource() is not null;
+
+    /// <summary>
+    /// 아직 다듬는 중인 캐릭터인지. 타일 위에 <c>beta</c> 딱지가 붙는다.
+    ///
+    /// **고르는 것을 막지는 않는다.** 설정 탭의 <c>beta</c> 와 같은 뜻이다 — 써도
+    /// 되는데 아직 손볼 데가 남았다는 표시다.
+    /// </summary>
+    public static bool IsBeta(this IconStyle style) => style is IconStyle.RaccoonSheet;
 
     public static string Title(this IconStyleGroup group) => group switch
     {

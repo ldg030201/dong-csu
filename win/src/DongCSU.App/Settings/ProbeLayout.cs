@@ -212,9 +212,6 @@ internal static class ProbeLayout
     internal static SettingsWindow ProbeWindow(
         AppSettings settings, string? latestVersion = null, UsageMeter? meter = null)
     {
-        // 테스트 바이너리로 돌려도 정식판 색으로 본다. 렌더 통로와 같은 판단이다.
-        MascotRenderer.TestLook = false;
-
         var http = UsageApi.CreateHttpClient();
         var credentials = new CredentialStore(
             new FileCredentialSource(fallbackPaths: WslCredentialPaths.All),
@@ -233,6 +230,19 @@ internal static class ProbeLayout
                 // 이 둘은 자격 증명에서 온다. 계정 탭이 보여주는 줄이라 같이 꽂는다.
                 RateLimitTier = "default_claude_max_5x",
                 TokenExpiresAt = now.AddHours(6).AddMinutes(41),
+                // **모델별 한도는 서버가 줄 때만 온다.** 고정값에 없으면 상태 탭의 그 줄도,
+                // 표시 탭의 제목·설명도, HUD 의 모델별 링도 **한 번도 재지지 않는다** —
+                // 사용자 화면에는 있는데 진단에는 없는 줄이 생긴다.
+                Limits =
+                [
+                    new UsageLimit
+                    {
+                        Kind = "weekly_scoped",
+                        ModelName = "Fable",
+                        Percent = 12,
+                        ResetsAt = now.AddHours(26),
+                    },
+                ],
             },
             // 상태 탭이 조회 카운트다운을 그린다. 예정 시각까지 넣어야 실제와 같아진다.
             nextPoll: now.AddMinutes(7).AddSeconds(12));

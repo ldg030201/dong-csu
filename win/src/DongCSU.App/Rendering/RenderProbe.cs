@@ -32,12 +32,10 @@ internal static class RenderProbe
     /// </summary>
     public static int Hud(string[] args)
     {
-        ReleaseLook();
-
         if (args.Length < 2)
         {
             Console.WriteLine("--render <out.png> [세션%] [주간%] [expanded|collapsed|pet] "
-                + "[owl|owlsheet|clawd|appicon|mark] [small|normal|large|xlarge] [dark|light]");
+                + "[owl|owlsheet|raccoon|clawd|appicon|mark] [small|normal|large|xlarge] [dark|light]");
             return 2;
         }
 
@@ -52,6 +50,7 @@ internal static class RenderProbe
         var icon = Word(args, 5) switch
         {
             "owl" => IconStyle.Owl,
+            "raccoon" => IconStyle.RaccoonSheet,
             "clawd" => IconStyle.Clawd,
             "appicon" => IconStyle.AppIcon,
             "mark" => IconStyle.Mark,
@@ -111,12 +110,13 @@ internal static class RenderProbe
     {
         var animator = new OwlAnimator(OwlDocument.Embedded);
 
-        // **<see cref="UsageStore.IsWeeklySpent"/> 와 같은 기준이어야 한다**(SevenDay >= 100).
+        // **<see cref="UsageStore.IsSpent"/> 와 같은 기준이어야 한다**(둘 중 하나라도 100).
         // 여기만 다르게 적으면 그림과 실제 앱이 어긋나서, 그림으로 한 검증이 무의미해진다.
-        var spent = weekly >= 100;
+        var weeklySpent = weekly >= 100;
+        var spent = weeklySpent || session >= 100;
         // 문턱은 owl.json 이 들고 있다. 숫자를 여기 적어 두면 맥이 기준을 바꿨을 때 어긋난다.
         var mood = OwlMoodResolver.Resolve(
-            OwlDocument.Embedded, session, isDisconnected: false, isWeeklySpent: spent);
+            OwlDocument.Embedded, session, isDisconnected: false, isSpent: spent);
 
         // **`SetMood` 보다 먼저 꽂는다.** `IsUnusable` 이 팔레트와 시트 칸을 모두 덮으므로
         // 순서가 뒤집히면 방금 읽어 둔 값이 낡는다.
@@ -124,16 +124,18 @@ internal static class RenderProbe
         animator.SetMood(mood);
 
         view.OwlGrid = animator.CurrentGrid;
-        // **`Program.MascotPalette()` 를 흉내내지 않는다.** 그쪽은 테스트판이면 `normal` 을
-        // `test` 로 바꾸는데, 렌더 통로는 <see cref="ReleaseLook"/> 로 정식판 색을 못 박아
-        // 뒀다. 여기서 또 바꾸면 두 통로가 서로 다른 색을 그린다.
+        // **팔레트 이름을 손대지 않는다.** 테스트판 보라색은 `Program.TrayPalette()` 가
+        // 트레이 아이콘에만 물리므로, HUD 는 앱에서도 여기서도 애니메이터가 고른 것을
+        // 그대로 쓴다 — 여기서 한 번 더 바꾸면 그림과 실제 앱이 갈린다.
         view.OwlPaletteName = animator.PaletteName;
         view.MascotFrame = animator.MascotFrame;
         // 격자 부엉이에는 안 걸리지만 `owlsheet` 는 이 값을 본다. 같이 옮겨야 두 아이콘
         // 스타일이 같은 자세로 나온다.
         view.MascotFlipped = animator.SpriteFlipped;
         // 자세만 탈진하고 색이 안 빠지면 "아직 여유가 있다"로 읽힌다. 링·숫자와 같은 규칙이다.
-        view.IsWeeklySpent = spent;
+        // **둘을 갈라 꽂는다.** 세션만 다 쓴 것과 주간까지 다 쓴 것은 링 색이 다르다.
+        view.IsWeeklySpent = weeklySpent;
+        view.IsSessionSpent = session >= 100;
     }
 
     /// <summary>
@@ -143,8 +145,6 @@ internal static class RenderProbe
     /// </summary>
     public static int SettingsTab(string[] args)
     {
-        ReleaseLook();
-
         if (args.Length < 2)
         {
             Console.WriteLine("--render-settings <out.png> "
@@ -401,13 +401,6 @@ internal static class RenderProbe
         image.Freeze();
         return image;
     }
-
-    /// <summary>
-    /// **정식판 색으로 그린다.** 문서 그림은 테스트 바이너리로 뽑는데, 그대로 두면
-    /// 마스코트가 전부 보라색이고 버전 딱지에 `test` 가 붙는다 — 사용자가 볼 화면이
-    /// 아니다. 테스트판 모습을 보고 싶으면 앱을 띄워서 본다.
-    /// </summary>
-    private static void ReleaseLook() => MascotRenderer.TestLook = false;
 
     // ── 도구 ────────────────────────────────────────────────────────
 

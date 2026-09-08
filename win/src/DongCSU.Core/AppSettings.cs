@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DongCSU.Core.Owl;
 
 namespace DongCSU.Core;
 
@@ -109,6 +110,14 @@ public sealed class AppSettings
     public bool ShowsProcessStats { get; set; }
 
     /// <summary>
+    /// 모델별로 갈린 주간 한도(예: Fable)를 링과 줄에 같이 보여줄지. **기본은 꺼짐이다.**
+    ///
+    /// 서버가 줄 때만 있는 값이라 켜 놓으면 어떤 사람에게는 아무것도 안 늘고, 링만
+    /// 하나 더 그려서 셋이 겹쳐 보인다. 쓰는 사람이 켠다.
+    /// </summary>
+    public bool ShowsScopedLimit { get; set; }
+
+    /// <summary>
     /// 측정 화면에서 캐시 토큰까지 세어 보여줄지. **기본은 꺼짐이다.**
     ///
     /// 캐시 읽기가 보통 전체의 90% 를 넘어서, 켜 두면 어느 측정이나 억 단위로 보이고
@@ -128,7 +137,7 @@ public sealed class AppSettings
     public bool AnimatesMascot { get; set; } = true;
 
     /// <summary>
-    /// 배경 불투명도. **맥과 같은 0.92 다.**
+    /// 배경 불투명도. **맥과 같은 1.0 이다.**
     ///
     /// 값 자체는 그대로 두고 <see cref="Backdrop"/> 에서 잘라 쓴다. 파일을 손으로
     /// 고쳐 0.05 같은 값을 넣으면 글자가 배경에 묻혀 아무것도 안 읽힌다.
@@ -156,6 +165,76 @@ public sealed class AppSettings
 
     /// <summary>커서가 위에 머물면 비켜설지.</summary>
     public bool PetDodgesCursor { get; set; } = true;
+
+    /// <summary>
+    /// 배회할 때 다른 화면으로 걸어 넘어갈지.
+    ///
+    /// **기본은 꺼짐이다.** 켜 두면 마스코트가 옆 화면으로 사라져서, 보려고 켜 둔
+    /// 사람이 어디 갔는지 찾게 된다. 화면이 하나뿐인 사람에게는 아무 일도 안 한다.
+    /// </summary>
+    public bool PetCrossesScreens { get; set; }
+
+    /// <summary>끌어다 놓으면 다른 앱 창 테두리에 붙을지.</summary>
+    public bool PetPerches { get; set; } = true;
+
+    /// <summary>
+    /// 창 위 테두리에 걸터앉을 때 창 안으로 넘어가는 깊이(잉크 <b>세로</b>에 대한 비율).
+    ///
+    /// **그림마다 맞는 값이 다르다.** 규격은 "걸터앉기의 아래 15% 는 다리와 발" 이라고
+    /// 못 박아 두었지만 그리는 쪽이 그걸 정확히 맞추지 못한다 — 맥에서 실제로 받아 본
+    /// 시트는 매달리기 칸의 발·다리가 위 24% 를 차지해서, 15% 로는 다리가 창 밖에
+    /// 삐져나왔다. 그림을 다시 받는 대신 여기서 맞춘다.
+    ///
+    /// **기본값을 숫자로 적지 않는다.** 규격은 <see cref="MascotSheet.GripDepth"/> 가
+    /// 들고 있고, 거기가 맥 <c>MascotSprite.swift</c> 를 옮겨 적은 유일한 자리다.
+    /// </summary>
+    public double PerchDepthTop { get; set; } = MascotSheet.GripDepth(MascotSprite.Sit);
+
+    /// <summary>창 아래 테두리에 매달릴 때의 깊이. <inheritdoc cref="PerchDepthTop"/></summary>
+    public double PerchDepthBottom { get; set; } = MascotSheet.GripDepth(MascotSprite.Ledge);
+
+    /// <summary>창 좌우 테두리를 껴안을 때의 깊이(잉크 <b>가로</b>에 대한 비율).</summary>
+    public double PerchDepthSide { get; set; } = MascotSheet.GripDepth(MascotSprite.Cling);
+
+    /// <summary>
+    /// 손으로 맞출 수 있는 깊이의 위 끝.
+    ///
+    /// **자리가 모자랄 때 앱이 보태 주는 몫의 한계(<see cref="MaxAutoPerchExtra"/>, 12%)와
+    /// 다른 값이다.** 저쪽은 "조금 모자라면 보태 준다"는 자동 보정이라 몸이 잠기기 전에
+    /// 멈춰야 하지만, 여기는 사람이 눈으로 보고 정하는 값이라 막을 이유가 없다.
+    /// 그림마다 붙잡는 부위가 어디까지인지가 달라서 60% 가 필요한 그림도 있다.
+    /// </summary>
+    public const double MaxPerchDepth = 0.6;
+
+    /// <summary>
+    /// 붙을 자리가 모자랄 때 **앱이 보태 주는 몫**의 한계. 잉크에 대한 비율이다.
+    ///
+    /// **깊이의 한계가 아니라 보태 주는 양의 한계다.** 깊이로 못 박아 두면 기본값이
+    /// 얕은 자세(15%)는 많이 보태지고 깊은 자세(25%)는 조금만 보태져서, 같은 만큼
+    /// 모자란 자리에서 자세마다 다르게 군다.
+    /// </summary>
+    public const double MaxAutoPerchExtra = 0.12;
+
+    /// <summary>붙는 깊이 셋만 규격 기본값으로 되돌린다. 나머지 설정은 그대로 둔다.</summary>
+    public void ResetPerchDepths()
+    {
+        PerchDepthTop = MascotSheet.GripDepth(MascotSprite.Sit);
+        PerchDepthBottom = MascotSheet.GripDepth(MascotSprite.Ledge);
+        PerchDepthSide = MascotSheet.GripDepth(MascotSprite.Cling);
+    }
+
+    /// <summary>
+    /// 그 테두리에 붙을 때 쓸 깊이. <b>설정 셋 중 하나를 고른다.</b>
+    ///
+    /// 자리 계산과 가림 판정이 **같은 값을 봐야 한다** — 두 곳에서 따로 고르면 미리보기와
+    /// 실제 착지가 갈린다.
+    /// </summary>
+    public double PerchDepth(MascotPerch perch) => perch switch
+    {
+        MascotPerch.Top => PerchDepthTop,
+        MascotPerch.Bottom => PerchDepthBottom,
+        _ => PerchDepthSide,
+    };
 
     /// <summary>창 위치. 처음에는 없다 — 그때는 오른쪽 위에 붙인다.</summary>
     public double? WindowLeft { get; set; }

@@ -31,6 +31,13 @@ public sealed record UsageLimit
     /// </summary>
     public string Id => ModelName is { } model ? $"{Kind}/{model}" : Kind;
 
+    /// <summary>
+    /// 링·숫자가 쓰는 꼴. **세 곳에서 같은 두 줄을 적고 있었다** — HUD 링 · HUD 줄 ·
+    /// 설정 창 상태 탭이 저마다 <c>new UsageWindow(Percent, ResetsAt)</c> 를 적으면,
+    /// 나중에 한도에 칸이 하나 늘 때 한 곳만 빠뜨려도 세 자리가 서로 다른 값을 그린다.
+    /// </summary>
+    public UsageWindow Window => new(Percent, ResetsAt);
+
     /// <summary>화면에 쓰는 이름. 모르는 <see cref="Kind"/> 는 원문을 그대로 둔다.</summary>
     public string Title => ModelName is { } model
         ? $"주간 · {model}"
@@ -60,6 +67,20 @@ public sealed record UsageSnapshot
     /// 이 칸을 뺀 비교를 따로 만들어야 한다.
     /// </summary>
     public IReadOnlyList<UsageLimit> Limits { get; init; } = [];
+
+    /// <summary>
+    /// 화면에 그릴 모델별 주간 한도(<c>weekly_scoped</c>) 하나. **제일 많이 쓴 것.**
+    ///
+    /// **세션·주간과 달리 없을 수 있다.** 요금제와 쓴 모델에 따라 달라서, 화면에서도
+    /// 있을 때만 그린다. 여럿이면 많이 쓴 것을 준다 — 링은 하나만 그릴 수 있다.
+    ///
+    /// **<c>Kind</c> 로 거르지 않는다.** 지금은 <c>weekly_scoped</c> 뿐이지만 서버가
+    /// 다른 이름으로 모델별을 줘도 잡히도록 <see cref="UsageLimit.ModelName"/> 로 본다.
+    ///
+    /// <c>MaxBy</c> 는 동점이면 앞의 것을 남긴다 — 맥의 <c>max(by:)</c> 와 같다.
+    /// </summary>
+    public UsageLimit? ScopedLimit =>
+        Limits.Where(limit => limit.ModelName is not null).MaxBy(limit => limit.Percent);
 
     // 아래 둘은 서버가 아니라 **자격 증명에서 온다.** 계정 탭이 보여준다.
     // 조회할 때 자격 증명을 이미 읽으므로 같이 실어 보내면 따로 읽을 일이 없다.

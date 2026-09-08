@@ -27,18 +27,43 @@ internal static class MascotRenderer
     /// </summary>
     private sealed record Slice(BitmapSource Image, Int32Rect Ink, int HeadCenterX);
 
-    private static readonly Dictionary<MascotSprite, Slice?> Cache = [];
-    private static BitmapSource? sheet;
-    private static bool tried;
+    /// <summary>
+    /// 시트 한 장에서 잘라 낸 것 전부. **캐릭터마다 한 벌이다.**
+    ///
+    /// 한 벌만 들고 있으면 설정 창에서 캐릭터 타일을 나란히 그릴 때 한 칸 그릴
+    /// 때마다 다른 시트를 다시 읽는다. 맥 <c>MascotSpriteStore.bundled(style)</c> 가
+    /// 캐릭터마다 캐시하는 것과 같은 자리다.
+    /// </summary>
+    private sealed class SheetSet(BitmapSource image)
+    {
+        public BitmapSource Image { get; } = image;
+        public Dictionary<MascotSprite, Slice?> Cells { get; } = [];
+
+        /// <summary>
+        /// 모든 칸의 잉크를 묶은 상자. **프레임마다 다시 재지 않는다** — 시트를 읽을
+        /// 때 한 번 재고 들고 있는다. 스물한 칸을 훑는 일이라 초당 열 번 하면 값이
+        /// 아깝다.
+        /// </summary>
+        public Int32Rect CommonInk { get; set; }
+    }
 
     /// <summary>
-    /// 모든 칸의 잉크를 묶은 상자. **프레임마다 다시 재지 않는다** — 시트를 읽을 때
-    /// 한 번 재고 들고 있는다. 스물한 칸을 훑는 일이라 초당 열 번 하면 값이 아깝다.
+    /// 캐릭터마다 한 벌. **못 찾은 것도 기억한다** — 시트가 없는 빌드에서 프레임마다
+    /// 어셈블리 리소스를 뒤지지 않게 한다(그래서 값이 두 겹 <c>null</c> 이다).
     /// </summary>
-    private static Int32Rect commonInk;
+    private static readonly Dictionary<string, SheetSet?> Sets = [];
 
-    /// <summary>시트가 있으면 true. 없으면 부르는 쪽이 격자로 떨어진다.</summary>
-    public static bool IsAvailable => Sheet() is not null;
+    /// <summary>그 캐릭터의 시트. 시트로 도는 그림이 아니거나 못 읽으면 null.</summary>
+    private static SheetSet? Set(IconStyle style)
+    {
+        if (style.SheetResource() is not { } resource) return null;
+        if (Sets.TryGetValue(resource, out var cached)) return cached;
+
+        var made = Load(resource);
+        Sets[resource] = made;
+        if (made is not null) MeasureCommonInk(made);
+        return made;
+    }
 
     /// <summary>
     /// 칸 하나를 <paramref name="bounds"/> 안에 그린다.
@@ -65,12 +90,13 @@ internal static class MascotRenderer
     /// 끄면 높이에만 맞춰 커진다.
     /// </param>
     public static bool Draw(
-        DrawingContext context, MascotSprite sprite, Rect bounds,
+        DrawingContext context, IconStyle style, MascotSprite sprite, Rect bounds,
         bool flipped = false, bool widthLimited = true)
     {
-        if (Resolve(sprite) is not { } slice) return false;
+        if (Set(style) is not { } set) return false;
+        if (Resolve(set, sprite) is not { } slice) return false;
 
-        var box = CommonInk();
+        var box = set.CommonInk;
         if (box.Width <= 0 || box.Height <= 0) return false;
 
         // **높이를 먼저 맞춘다.** 격자 부엉이가 같은 값을 높이로 받으므로, 이래야
@@ -138,29 +164,29 @@ internal static class MascotRenderer
     }
 
     /// <summary>안 그려진 칸이면 대신할 칸으로 내려간다. 끝까지 없으면 null.</summary>
-    private static Slice? Resolve(MascotSprite sprite)
+    private static Slice? Resolve(SheetSet set, MascotSprite sprite)
     {
         for (var i = 0; i < 8; i++)
         {
-            if (SliceOf(sprite) is { } found) return found;
+            if (SliceOf(set, sprite) is { } found) return found;
             if (MascotSheet.Fallback(sprite) is not { } next) return null;
             sprite = next;
         }
         return null;
     }
 
-    private static Slice? SliceOf(MascotSprite sprite)
+    private static Slice? SliceOf(SheetSet set, MascotSprite sprite)
     {
-        if (Cache.TryGetValue(sprite, out var cached)) return cached;
+        if (set.Cells.TryGetValue(sprite, out var cached)) return cached;
 
-        var made = Cut(sprite);
-        Cache[sprite] = made;
+        var made = Cut(set, sprite);
+        set.Cells[sprite] = made;
         return made;
     }
 
-    private static Slice? Cut(MascotSprite sprite)
+    private static Slice? Cut(SheetSet set, MascotSprite sprite)
     {
-        if (Sheet() is not { } source) return null;
+        var source = set.Image;
 
         // 시트가 규격의 몇 배인지. 정수배로 그려도 좌표가 맞는다.
         var multiple = Math.Max(1, source.PixelWidth / MascotSheet.SheetWidth);
@@ -239,14 +265,20 @@ internal static class MascotRenderer
         return alpha;
     }
 
-    private static BitmapSource? Sheet()
+    /// <summary>
+    /// 앱에 구워 둔 시트 한 장을 읽는다. 못 읽으면 null — 부르는 쪽이 격자로 떨어진다.
+    ///
+    /// **테스트판이라고 색을 돌리지 않는다.** 한동안 테스트판은 마스코트까지 보라색으로
+    /// 그렸는데(색상 42도 회전), 그러면 캐릭터가 캐릭터로 안 보인다 — 새로 그린 그림을
+    /// 확인하려고 띄운 테스트판에서 정작 그 색을 못 본다. 구분은 트레이 아이콘과 버전
+    /// 딱지가 한다. 맥 2.5.2 가 같은 이유로 뺐다.
+    /// </summary>
+    private static SheetSet? Load(string resource)
     {
-        if (tried) return sheet;
-        tried = true;
-
         try
         {
-            using var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("mascot.png");
+            using var stream = Assembly.GetExecutingAssembly()
+                .GetManifestResourceStream($"{resource}.png");
             if (stream is null) return null;
 
             var image = new BitmapImage();
@@ -255,10 +287,7 @@ internal static class MascotRenderer
             image.CacheOption = BitmapCacheOption.OnLoad;
             image.EndInit();
             image.Freeze();
-            sheet = (TestLook ?? AppInfo.IsTestBuild) ? HueRotated(image, TestLookDegrees) : image;
-
-            MeasureCommonInk();
-            return sheet;
+            return new SheetSet(image);
         }
         catch (Exception)
         {
@@ -268,111 +297,25 @@ internal static class MascotRenderer
     }
 
     /// <summary>
-    /// 테스트판에서 색상을 돌리는 각도.
-    ///
-    /// **링도 카드도 없는 펫 모드에서는 정식판과 구분할 방법이 색뿐이다.** 격자
-    /// 부엉이가 보라색 팔레트로 하던 일을, 그림이 기본이 되면서 여기가 이어받는다.
-    /// 색을 정해 칠하지 않고 **돌리는** 이유는 어떤 그림이 들어올지 모르기 때문이다 —
-    /// 나중에 사용자 그림을 받게 돼도 그대로 먹는다. 맥과 같은 42도다.
-    /// </summary>
-    private const double TestLookDegrees = 42;
-
-    /// <summary>
-    /// 테스트판 색으로 그릴지. **null 이면 지금 빌드를 따른다.**
-    ///
-    /// 렌더 통로가 <c>false</c> 를 꽂는다 — 문서 그림은 테스트 바이너리로 뽑는데,
-    /// 그대로 두면 **전부 보라색이 된다.** 시트를 읽기 전에 정해야 한다.
-    /// </summary>
-    public static bool? TestLook { get; set; }
-
-    /// <summary>
-    /// 시트 전체의 색상을 돌린다. **불러올 때 한 번만** 한다 — 칸마다 돌리면 같은
-    /// 계산을 스물한 번 하고, 그리는 순간에 돌리면 프레임마다 한다.
-    ///
-    /// 채도·밝기·투명도는 건드리지 않는다. 옮기는 것은 색상뿐이다.
-    /// </summary>
-    private static BitmapSource HueRotated(BitmapSource source, double degrees)
-    {
-        var converted = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
-        converted.Freeze();
-
-        var width = converted.PixelWidth;
-        var height = converted.PixelHeight;
-        var stride = width * 4;
-        var pixels = new byte[stride * height];
-        converted.CopyPixels(pixels, stride, 0);
-
-        for (var i = 0; i < pixels.Length; i += 4)
-        {
-            // 투명한 자리는 색이 없다. 돌려 봐야 보이지 않고 계산만 는다.
-            if (pixels[i + 3] == 0) continue;
-            Rotate(ref pixels[i + 2], ref pixels[i + 1], ref pixels[i], degrees);
-        }
-
-        var rotated = BitmapSource.Create(
-            width, height, converted.DpiX, converted.DpiY,
-            PixelFormats.Bgra32, null, pixels, stride);
-        rotated.Freeze();
-        return rotated;
-    }
-
-    /// <summary>한 점의 색상만 돌린다. HSV 로 옮겼다 되돌린다.</summary>
-    private static void Rotate(ref byte red, ref byte green, ref byte blue, double degrees)
-    {
-        double r = red / 255.0, g = green / 255.0, b = blue / 255.0;
-
-        var max = Math.Max(r, Math.Max(g, b));
-        var min = Math.Min(r, Math.Min(g, b));
-        var span = max - min;
-
-        // 회색에는 돌릴 색상이 없다. 눈동자의 흰자·검은자가 여기 걸린다.
-        if (span <= 0) return;
-
-        var hue = max == r ? (g - b) / span
-            : max == g ? (b - r) / span + 2
-            : (r - g) / span + 4;
-        hue = (hue * 60 + degrees) % 360;
-        if (hue < 0) hue += 360;
-
-        var sector = (int)(hue / 60) % 6;
-        var fraction = hue / 60 - (int)(hue / 60);
-        var p = min;
-        var q = max - span * fraction;
-        var t = min + span * fraction;
-
-        (r, g, b) = sector switch
-        {
-            0 => (max, t, p),
-            1 => (q, max, p),
-            2 => (p, max, t),
-            3 => (p, q, max),
-            4 => (t, p, max),
-            _ => (max, p, q),
-        };
-
-        red = (byte)Math.Round(r * 255);
-        green = (byte)Math.Round(g * 255);
-        blue = (byte)Math.Round(b * 255);
-    }
-
-    /// <summary>
     /// 모든 칸의 잉크를 묶은 상자를 한 번 잰다. **맥의 <c>trimTogether</c> 와 같은 셈이다.**
     ///
     /// 맥은 자를 때 이 상자로 모든 칸을 함께 잘라내고, 그릴 때는 이 상자 하나에만
     /// 배율을 매긴다. 그래서 칸에 구워 둔 상대 위치가 그대로 남는다.
     /// </summary>
-    private static void MeasureCommonInk()
+    private static void MeasureCommonInk(SheetSet set)
     {
         int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;
         foreach (var sprite in Enum.GetValues<MascotSprite>())
         {
-            if (SliceOf(sprite) is not { } slice) continue;
+            if (SliceOf(set, sprite) is not { } slice) continue;
             minX = Math.Min(minX, slice.Ink.X);
             minY = Math.Min(minY, slice.Ink.Y);
             maxX = Math.Max(maxX, slice.Ink.X + slice.Ink.Width - 1);
             maxY = Math.Max(maxY, slice.Ink.Y + slice.Ink.Height - 1);
         }
-        commonInk = maxX < 0 ? default : new Int32Rect(minX, minY, maxX - minX + 1, maxY - minY + 1);
+        set.CommonInk = maxX < 0
+            ? default
+            : new Int32Rect(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 
     /// <summary>칸 하나를 잰 결과. 진단 통로가 읽는다.</summary>
@@ -390,17 +333,18 @@ internal static class MascotRenderer
     /// 알파를 훑으면 그리는 쪽과 다른 답을 내놓을 수 있는데, 그러면 진단이 진단을
     /// 못 한다.
     /// </summary>
-    internal static IReadOnlyList<CellReport> Measure()
+    internal static IReadOnlyList<CellReport> Measure(IconStyle style)
     {
         var found = new List<CellReport>();
+        if (Set(style) is not { } set) return found;
         foreach (var sprite in Enum.GetValues<MascotSprite>())
         {
-            var drawn = DrawnCell(sprite);
-            if (SliceOf(sprite) is { } own)
+            var drawn = DrawnCell(set, sprite);
+            if (SliceOf(set, sprite) is { } own)
             {
                 found.Add(new CellReport(sprite, sprite, own.Ink, own.HeadCenterX));
             }
-            else if (drawn is { } step && SliceOf(step) is { } borrowed)
+            else if (drawn is { } step && SliceOf(set, step) is { } borrowed)
             {
                 found.Add(new CellReport(sprite, step, borrowed.Ink, borrowed.HeadCenterX));
             }
@@ -413,11 +357,11 @@ internal static class MascotRenderer
     }
 
     /// <summary>그 자세를 그리면 실제로 나오는 칸. 하나도 없으면 null.</summary>
-    private static MascotSprite? DrawnCell(MascotSprite sprite)
+    private static MascotSprite? DrawnCell(SheetSet set, MascotSprite sprite)
     {
         for (var i = 0; i < 8; i++)
         {
-            if (SliceOf(sprite) is not null) return sprite;
+            if (SliceOf(set, sprite) is not null) return sprite;
             if (MascotSheet.Fallback(sprite) is not { } next) return null;
             sprite = next;
         }
@@ -425,15 +369,52 @@ internal static class MascotRenderer
     }
 
     /// <summary>시트의 픽셀 크기. 규격의 몇 배인지 보여줄 때 쓴다.</summary>
-    internal static (int Width, int Height)? SheetSize()
-        => Sheet() is { } found ? (found.PixelWidth, found.PixelHeight) : null;
+    internal static (int Width, int Height)? SheetSize(IconStyle style)
+        => Set(style) is { Image: var found } ? (found.PixelWidth, found.PixelHeight) : null;
 
     /// <summary>모든 칸의 잉크를 묶은 상자. 시트를 못 읽었으면 빈 값이다.</summary>
-    internal static Int32Rect CommonInk()
+    internal static Int32Rect CommonInk(IconStyle style) => Set(style)?.CommonInk ?? default;
+
+    /// <summary>
+    /// 그 자세의 그림이 **묶음 상자 안에서 덮는 자리**(0~1, 위가 0).
+    ///
+    /// 창 테두리에 붙일 때 쓴다. 매달린 칸은 손이 상자 위쪽에, 앉은 칸은 발이 아래쪽에
+    /// 그려져 있어서, 상자를 그대로 테두리에 대면 자세마다 몇십 px 씩 뜬다.
+    ///
+    /// **상수로 못 박지 않는다.** 캐릭터마다 칸 안의 자리가 달라서, 부엉이에 맞춘 숫자를
+    /// 박아 두면 라쿤에서는 반드시 틀린다. 그림에서 잰다 — 맥
+    /// <c>MascotSpriteSet.inkFraction</c> 과 같은 자리다.
+    ///
+    /// **그림과 같은 칸을 봐야 한다** — 시트에 없어서 대신 그려지는 칸이 있으면 그 칸을
+    /// 잰다. 다른 칸을 재면 실제로 그려진 것과 다른 자리에 붙는다.
+    /// </summary>
+    internal static Rect? InkFraction(IconStyle style, MascotSprite sprite)
     {
-        Sheet();
-        return commonInk;
+        if (Set(style) is not { } set) return null;
+        if (Resolve(set, sprite) is not { } slice) return null;
+
+        var box = set.CommonInk;
+        if (box.Width <= 0 || box.Height <= 0) return null;
+
+        // 칸은 묶음 상자에 **구워진 자리 그대로** 놓인다(`Draw` 와 같은 셈이다).
+        // 그래서 칸 좌표에서 상자 좌표를 빼면 곧 상자 안의 자리다.
+        return new Rect(
+            (slice.Ink.X - box.X) / (double)box.Width,
+            (slice.Ink.Y - box.Y) / (double)box.Height,
+            slice.Ink.Width / (double)box.Width,
+            slice.Ink.Height / (double)box.Height);
     }
+
+    /// <summary>
+    /// 그 자세를 그리면 <b>실제로 어느 칸이 나오는지.</b> 시트에 없으면 대신할 칸으로
+    /// 내려간 것이고, 하나도 없으면 null.
+    ///
+    /// **잉크를 재는 칸과 다른 칸의 값을 읽지 않으려고 둔다.** 벽붙기를 안 그린 시트에서
+    /// 잉크는 선 자세에서 나오는데 창에 얼마나 걸칠지(<c>MascotSheet.GripDepth</c>)를
+    /// 벽붙기에서 읽으면, **붙잡는 앞다리가 없는 그림을 앞다리가 있는 만큼 밀어 넣는다.**
+    /// </summary>
+    internal static MascotSprite? ResolvedSprite(IconStyle style, MascotSprite sprite)
+        => Set(style) is { } set ? DrawnCell(set, sprite) : null;
 }
 
 

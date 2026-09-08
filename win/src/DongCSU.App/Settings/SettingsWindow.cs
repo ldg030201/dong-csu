@@ -6,6 +6,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using DongCSU.App.Hud;
 using DongCSU.App.Rendering;
 using DongCSU.App.Services;
 using DongCSU.Core;
@@ -16,7 +17,8 @@ namespace DongCSU.App.Settings;
 /// <summary>
 /// 설정 창. 왼쪽에 탭, 오른쪽에 내용, 아래에 버전과 종료.
 ///
-/// 맥판과 같은 여섯 탭이다. 펫은 아직 만드는 중이라 링 표시까지만 열려 있다.
+/// 맥판과 같은 일곱 탭이고, 사이드바는 <b>네 묶음</b>으로 갈려 있다
+/// (지금 값 · 어떻게 보일지 · 펫 · 앱 자체). 묶음 이름은 안 적고 선만 긋는다.
 ///
 /// **크기를 고정하지 않는다.** 고DPI 나 큰 글꼴에서 항목이 잘리고, 창을 키워 편하게
 /// 볼 수도 없다. 내용은 늘어나고, 좁히면 스크롤이 생긴다.
@@ -57,6 +59,14 @@ public sealed partial class SettingsWindow : Window
     /// <summary>상태 탭은 카운트다운이 초 단위로 움직인다. 그 탭일 때만 돈다.</summary>
     private readonly DispatcherTimer tick = new() { Interval = TimeSpan.FromSeconds(1) };
 
+    /// <summary>
+    /// 계정 탭의 "토큰 만료" 값 글자. 1초마다 <b>이것만</b> 갈아 끼운다.
+    ///
+    /// 다른 탭이거나 아직 한 번도 조회하지 못했으면 null — 그때는 그 카드를 아예
+    /// 안 그린다.
+    /// </summary>
+    private TextBlock? accountExpiry;
+
     private readonly List<Border> navItems = [];
 
     /// <summary>
@@ -89,19 +99,44 @@ public sealed partial class SettingsWindow : Window
     /// **키를 바꾸지 마라.** 변경 내역이 <c>tab: "pet"</c> 으로 탭을 가리키고
     /// (<c>ChangelogGroup.Tab</c>), 저장된 설정 탭도 이 값으로 남아 있다. 제목은
     /// 사이드바와 본문 제목이 같이 쓴다(<see cref="TabTitle"/>).
+    ///
+    /// <c>Group</c> 은 <b>사이드바에서 몇 번째 묶음인지</b>다. 번호가 바뀌는 자리에
+    /// 선이 그어질 뿐 <b>묶음 이름은 화면에 안 나온다</b> — 선만으로 충분하고 이름을
+    /// 달면 목록이 두 배로 길어진다. 맥과 같은 판단이다.
+    ///
+    /// <b>이 배열의 차례가 곧 묶음 차례여야 한다.</b> 새 탭은 제 묶음 옆에 끼워라 —
+    /// 같은 번호가 떨어져 있으면 한 묶음이 두 번 잘려서 선이 엉뚱한 데 그어진다.
     /// </summary>
-    internal static readonly (string Key, string Title)[] TabList =
+    internal static readonly (string Key, string Title, int Group)[] TabList =
     [
-        ("status", "상태"),
+        // 0 — 지금 값을 보는 곳.
+        ("status", "상태", 0),
         // **상태 다음이다**(맥과 같은 차례). 둘 다 "지금 값을 보는 곳"이라 붙어 있어야 한다.
         // 중간에 끼워도 저장된 탭이 안 어긋난다 — `Selected` 가 번호가 아니라 키로 찾는다.
-        ("measure", "측정"),
-        ("display", "표시"),
-        ("icon", "아이콘"),
-        ("pet", "펫 모드"),
-        ("account", "계정"),
-        ("version", "버전"),
+        ("measure", "측정", 0),
+        // 1 — 어떻게 보일지.
+        ("display", "표시", 1),
+        ("icon", "아이콘", 1),
+        // 2 — 펫이 하는 것.
+        ("pet", "펫 모드", 2),
+        // 3 — 앱 자체.
+        ("account", "계정", 3),
+        ("version", "버전", 3),
     ];
+
+    /// <summary>
+    /// 사이드바 묶음 사이에 긋는 선의 여백.
+    ///
+    /// **가로 8 은 탭 줄의 <c>Margin</c>(8) 과 같은 값이어야 한다.** 선이 줄보다 넓으면
+    /// 고른 줄의 둥근 배경 밖으로 삐져나가고, 좁으면 줄 안에 뜬 조각으로 보인다.
+    /// 맥은 사이드바 <c>padding(8)</c> 안에 <c>Divider</c> 를 넣어 같은 자리를 얻는다.
+    ///
+    /// **세로 7 은 6 이 아니다.** 맥은 <c>Divider().padding(.vertical, 6)</c> 에
+    /// <c>VStack(spacing: 2)</c> 가 더해져 한쪽 8pt 가 되는데, 우리 탭 줄은 위아래
+    /// <c>Margin</c> 이 1 씩이라 7 을 줘야 같은 8pt 가 나온다. 맞출 것은 값이 아니라
+    /// <b>선과 줄 사이가 8pt</b> 라는 결과다.
+    /// </summary>
+    private static readonly Thickness GroupRuleInset = new(8, 7, 8, 7);
 
     /// <summary>
     /// 탭 내용 둘레 여백. **한 곳에서만 적는다** — 변경 내역 목록에 줄 높이를 여기서 빼기
@@ -164,10 +199,31 @@ public sealed partial class SettingsWindow : Window
             var key = TabList[Selected].Key;
             if (key == "status") ShowTab();
             else if (key == "measure") TickMeasure();
+            // **계정 탭은 다시 그리지 않는다.** 여기서 `ShowTab()` 을 부르면 매초
+            // 자격 증명 파일을 훑는다 — WSL 경로까지 1초마다 두드리게 되고, 그건
+            // 2.4.0 에서 일부러 없앤 일이다. 매초 달라지는 것은 만료까지 남은
+            // 시간 하나뿐이라 그 글자만 갈아 끼운다.
+            else if (key == "account") TickAccount();
         };
 
         HookMeasure();
         Rebuild();
+    }
+
+    /// <summary>
+    /// 계정 탭에서 매초 도는 것. <b>글자 하나뿐이다.</b>
+    ///
+    /// 맥은 계정 탭 전체를 <c>TimelineView(.periodic(by: 1))</c> 로 매초 다시 그리는데,
+    /// 거기는 값이 이미 메모리에 있어서 공짜다. <b>우리는 그릴 때마다
+    /// <c>FileCredentialSource.Inspect()</c> 로 디스크(WSL 경로 포함)를 훑는다</b> —
+    /// 같은 방식으로 하면 2.4.0 에서 고친 문제가 그대로 돌아온다.
+    ///
+    /// 카드를 안 그렸으면(조회 전) 아무것도 안 한다.
+    /// </summary>
+    private void TickAccount()
+    {
+        if (accountExpiry is null) return;
+        accountExpiry.Text = TokenExpiryText(store.Snapshot?.TokenExpiresAt);
     }
 
     /// <summary>
@@ -258,6 +314,16 @@ public sealed partial class SettingsWindow : Window
         for (var i = 0; i < TabList.Length; i++)
         {
             var index = i;
+
+            // **묶음이 바뀌는 자리에만 선을 긋는다.** 맨 위에는 안 긋는다 — 거기 선을
+            // 그으면 위의 앱 이름이 첫 묶음에 딸린 것처럼 읽힌다.
+            //
+            // **`navItems` 에는 넣지 않는다.** `PaintNav` 가 `navItems[i]` 를 탭 번호로
+            // 그대로 쓰므로, 선까지 담으면 고른 탭과 물드는 줄이 어긋난다.
+            if (i > 0 && TabList[i].Group != TabList[i - 1].Group)
+            {
+                nav.Children.Add(Ui.Divider(palette, GroupRuleInset));
+            }
 
             // 아이콘 + 이름. **변경 내역 묶음이 같은 아이콘을 쓴다** — 어느 메뉴 이야기인지
             // 여기와 눈으로 맞춰 보라고 붙인 것이라, 한쪽만 바꾸면 뜻이 없어진다.
@@ -393,7 +459,7 @@ public sealed partial class SettingsWindow : Window
 
         // **재고 있지 않은 측정 탭에서는 안 돈다.** 경과 시간도 표본 문구도 안 그려져
         // 있는데 1초마다 깨우는 것은 그냥 낭비다.
-        var needed = key == "status" || (key == "measure" && meter.IsRunning);
+        var needed = key is "status" or "account" || (key == "measure" && meter.IsRunning);
         if (needed && !tick.IsEnabled) tick.Start();
         else if (!needed && tick.IsEnabled) tick.Stop();
 
@@ -479,11 +545,23 @@ public sealed partial class SettingsWindow : Window
         else if (store.IsStale) header.Children.Add(Ui.Pill(palette, "오래된 값", palette.Warning));
         panel.Children.Add(header);
 
-        panel.Children.Add(Ui.Card(palette,
+        var limits = new List<UIElement>
+        {
             // HUD 는 좁아서 "세션·주간"만 쓰지만, 여기서는 몇 시간짜리인지까지 밝힌다.
             UsageRow(palette, "세션 (5시간)", store.Snapshot?.FiveHour, now),
             Ui.Divider(palette),
-            UsageRow(palette, "주간 (7일)", store.Snapshot?.SevenDay, now)));
+            UsageRow(palette, "주간 (7일)", store.Snapshot?.SevenDay, now),
+        };
+
+        // 모델별은 서버가 줄 때만 있다. **여기는 상태를 보는 자리라 표시 설정과
+        // 상관없이 늘 보여준다** — HUD 에 안 띄워 뒀어도 값은 알 수 있어야 한다.
+        if (store.ScopedLimit is { } scoped)
+        {
+            limits.Add(Ui.Divider(palette));
+            limits.Add(UsageRow(palette, scoped.Title, scoped.Window, now));
+        }
+
+        panel.Children.Add(Ui.Card(palette, [.. limits]));
 
         panel.Children.Add(Ui.Section(palette, "조회"));
         panel.Children.Add(Ui.Card(palette,
@@ -539,12 +617,21 @@ public sealed partial class SettingsWindow : Window
     }
 
     private static UIElement InfoRow(SettingsPalette palette, string label, string value) =>
-        Ui.Row(palette, label, new TextBlock
-        {
-            Text = value,
-            FontSize = 12.5,
-            Foreground = palette.Brush(palette.Secondary),
-        });
+        Ui.Row(palette, label, InfoValue(palette, value));
+
+    /// <summary>
+    /// <see cref="InfoRow"/> 가 오른쪽에 놓는 값 글자.
+    ///
+    /// **따로 뺀 이유는 참조를 들고 있어야 하는 자리가 있어서다** — 계정 탭의 토큰
+    /// 만료는 1초마다 줄어드는데, 탭을 통째로 다시 그리면 그때마다 자격 증명 파일을
+    /// 훑게 된다(<see cref="TickAccount"/>).
+    /// </summary>
+    private static TextBlock InfoValue(SettingsPalette palette, string value) => new()
+    {
+        Text = value,
+        FontSize = 12.5,
+        Foreground = palette.Brush(palette.Secondary),
+    };
 
     /// <summary>
     /// 고를 수 있는 조회 주기. **초와 문구가 한 곳에서 나온다** — 예전에는 분절 컨트롤에
@@ -630,13 +717,13 @@ public sealed partial class SettingsWindow : Window
             }), hint: settings.Mode == HudMode.Pet ? "펫에서 나왔을 때의 모습이다." : null,
                 enabled: visible),
             Ui.Divider(palette),
-            Ui.Row(palette, "펼침 방향", Ui.Segmented(palette, ["오른쪽", "왼쪽"],
+            Ui.Row(palette, "펼침 방향", Ui.Segmented(palette, ExpandSideTitles,
                 (int)settings.ExpandSide,
                 index => { settings.ExpandSide = (HudExpandSide)index; Apply(); }), enabled: visible)));
 
         panel.Children.Add(Ui.Section(palette, "모양"));
         panel.Children.Add(Ui.Card(palette,
-            Ui.Row(palette, "테마", Ui.Segmented(palette, ["시스템", "밝게", "어둡게"],
+            Ui.Row(palette, "테마", Ui.Segmented(palette, ThemeTitles,
                 (int)settings.Theme,
                 index => { settings.Theme = (HudTheme)index; Apply(); Rebuild(); })),
             Ui.Divider(palette),
@@ -662,12 +749,21 @@ public sealed partial class SettingsWindow : Window
             Ui.Row(palette,
                 AppInfo.IsTestBuild ? "왼쪽 위에 버전 표시 (테스트판은 test)" : "왼쪽 위에 버전 표시",
                 Ui.Toggle(palette, settings.ShowsVersionBadge,
-                value => { settings.ShowsVersionBadge = value; Apply(); }), enabled: visible),
+                value => { settings.ShowsVersionBadge = value; Apply(); }),
+                // **잠글지 말지를 여기서 정하지 않는다.** 지금 보기가 그것을 그리는지는
+                // HUD 가 안다 — `HudView.Draws` 에 물어본다. 여기에 조건을 따로 적으면
+                // HUD 를 고칠 때 같이 안 고쳐져서, 눈앞에 보이는데 못 끄는 꼴이 난다.
+                enabled: CanToggle(HudElement.VersionBadge)),
+            Ui.Divider(palette),
+            Ui.Row(palette, ScopedLimitTitle, Ui.Toggle(palette, settings.ShowsScopedLimit,
+                value => { settings.ShowsScopedLimit = value; ApplyAndRedraw(); }),
+                hint: ScopedLimitHint,
+                enabled: CanToggle(HudElement.ScopedRing)),
             Ui.Divider(palette),
             Ui.Row(palette, "아래 줄에 CPU·메모리 표시", Ui.Toggle(palette, settings.ShowsProcessStats,
                 value => { settings.ShowsProcessStats = value; Apply(); }),
                 hint: "dong-csu 자신이 쓰는 자원이다. 켜면 카드가 한 줄 길어진다.",
-                enabled: visible && expanded)));
+                enabled: CanToggle(HudElement.ProcessStats))));
 
         panel.Children.Add(Ui.Section(palette, "조회"));
         panel.Children.Add(Ui.Card(palette,
@@ -765,11 +861,19 @@ public sealed partial class SettingsWindow : Window
             // 접힌 채로 두면 어디서 고른 것인지 찾을 수 없다.
             if (group.IsCollapsed())
             {
+                // 접어 두는 묶음에는 **왜 접혀 있는지**를 한 줄 붙인다. 눌러서 펼친
+                // 사람도 이게 지금 부엉이와 무엇이 다른지 알 수 없어서다.
+                // 맥 아이콘 탭과 같은 문구다.
+                var inside = new StackPanel();
+                inside.Children.Add(strip);
+                inside.Children.Add(Ui.Hint(palette,
+                    "처음에 코드로 그렸던 부엉이다. 지금 부엉이와 자세가 조금 다르다."));
+
                 panel.Children.Add(new Expander
                 {
                     Header = group.Title(),
                     Foreground = new SolidColorBrush(palette.Secondary),
-                    Content = strip,
+                    Content = inside,
                     IsExpanded = settings.IconStyle.Group() == group,
                     Margin = new Thickness(0, 14, 0, 0),
                 });
@@ -825,6 +929,25 @@ public sealed partial class SettingsWindow : Window
             Margin = new Thickness(0, 6, 0, 0),
         });
 
+        // **이름 옆이 아니라 그림 위에 붙인다.** 타일이 92px 뿐이라 이름 옆에 두면
+        // "Claude 아이콘" 같은 긴 이름에서 줄이 바뀌고, 타일마다 캡션 높이가 달라져
+        // 한 줄로 늘어놓은 것이 어긋나 보인다. 맥이 같은 이유로 타일 위에 얹는다.
+        UIElement child = stack;
+        if (style.IsBeta())
+        {
+            // **딱지 색은 테마를 안 따른다.** 바로 위 `IsDark = true` 와 같은 이유다 —
+            // `IconPreview` 가 어느 테마에서든 어두운 판을 깔고 딱지가 그 위에 얹힌다.
+            var badge = Ui.SmallPill(palette, "beta", SettingsPalette.Dark.Warning);
+            badge.HorizontalAlignment = HorizontalAlignment.Right;
+            badge.VerticalAlignment = VerticalAlignment.Top;
+            badge.Margin = new Thickness(0, -2, -2, 0);
+
+            var layered = new Grid();
+            layered.Children.Add(stack);
+            layered.Children.Add(badge);
+            child = layered;
+        }
+
         var tile = new Border
         {
             Width = 92,
@@ -835,8 +958,8 @@ public sealed partial class SettingsWindow : Window
             Padding = new Thickness(10, 12, 10, 10),
             Margin = new Thickness(0, 0, 10, 10),
             Cursor = Cursors.Hand,
-            ToolTip = style.Title(),
-            Child = stack,
+            ToolTip = style.IsBeta() ? $"{style.Title()} — 아직 다듬는 중" : style.Title(),
+            Child = child,
         };
         tile.MouseLeftButtonUp += (_, _) =>
         {
@@ -867,7 +990,7 @@ public sealed partial class SettingsWindow : Window
                 RingTitles,
                 (int)settings.PetRingDisplay,
                 index => { settings.PetRingDisplay = (PetRingDisplay)index; Apply(); }),
-                hint: "펫 뒤에 두르는 이중 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간. "
+                hint: "펫 뒤에 두르는 사용량 링이다. 바깥이 5시간 세션, 안쪽이 7일 주간. "
                     + "\"올리면\"은 마우스를 올려둔 동안에만 나타난다.",
                 enabled: visible && isPet)));
 
@@ -875,14 +998,25 @@ public sealed partial class SettingsWindow : Window
         panel.Children.Add(Ui.Section(palette, "스스로 움직이기 (펫 모드에서만)"));
         panel.Children.Add(Ui.Card(palette,
             Ui.Row(palette, "혼자 돌아다니기", Ui.Toggle(palette, settings.PetWanders,
-                value => { settings.PetWanders = value; Apply(); }),
+                // 이 둘이 다 꺼지면 아래 "다른 화면으로 넘어가기" 가 잠겨야 한다.
+                // 잠금 상태는 그릴 때 한 번 정해지므로 탭을 다시 그린다.
+                value => { settings.PetWanders = value; ApplyAndRedraw(); }),
                 hint: "가만히 두면 화면을 천천히 걸어다닌다. 글을 쓰는 동안에는 멈춘다.",
                 enabled: visible && isPet),
             Ui.Divider(palette),
             Ui.Row(palette, "커서 피하기", Ui.Toggle(palette, settings.PetDodgesCursor,
-                value => { settings.PetDodgesCursor = value; Apply(); }),
+                value => { settings.PetDodgesCursor = value; ApplyAndRedraw(); }),
                 hint: "커서를 올려둔 채 1초 가까이 잡지 않으면 반대쪽으로 비켜준다.",
                 enabled: visible && isPet),
+            Ui.Divider(palette),
+            Ui.Row(palette, "다른 화면으로 넘어가기", Ui.Toggle(palette, settings.PetCrossesScreens,
+                value => { settings.PetCrossesScreens = value; Apply(); }),
+                hint: ScreenCount > 1
+                    ? "걸어다니다 옆 화면으로 넘어간다. 꺼 두면 지금 있는 화면 안에서만 돈다."
+                    : "화면이 하나뿐이라 지금은 아무 일도 하지 않는다. "
+                      + "화면을 더 연결하면 걸어서 넘어간다.",
+                // 걷지도 비키지도 않으면 넘어갈 일이 없다.
+                enabled: visible && isPet && (settings.PetWanders || settings.PetDodgesCursor)),
             Ui.Divider(palette),
             Ui.Row(palette, "들고 있을 때 감추기", Ui.Toggle(palette, settings.PetHidesRingWhileHeld,
                 value => { settings.PetHidesRingWhileHeld = value; Apply(); }),
@@ -890,11 +1024,68 @@ public sealed partial class SettingsWindow : Window
                     + "들고 있는 동안은 안 보인다.",
                 enabled: visible && isPet)));
 
+        // ── 창에 붙이기 ────────────────────────────────────────────
+        //
+        // **그림 시트로 도는 캐릭터만 붙는다.** 격자 부엉이와 Claude 쪽 그림에는
+        // 매달린 자세 자체가 없어서, 붙여 놓아도 테두리에 그냥 선 것으로 보인다.
+        var sheet = settings.IconStyle.UsesSheet();
+
+        panel.Children.Add(Ui.Section(palette, "창에 붙이기"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "창 테두리에 붙기", Ui.Toggle(palette, settings.PetPerches,
+                value => { settings.PetPerches = value; ApplyAndRedraw(); }),
+                hint: sheet
+                    ? "끌어다 다른 앱 창 테두리 가까이 놓으면 앉거나 매달린다. 창을 옮기면 따라간다."
+                    : $"{settings.IconStyle.ShortTitle()}에는 매달린 자세가 없어서 안 붙는다. "
+                      + "아이콘 탭에서 캐릭터를 고르면 켤 수 있다.",
+                enabled: visible && isPet && sheet)));
+
+        // **깊이는 그림마다 맞는 값이 다르다.** 규격은 "걸터앉기의 아래 15% 는 다리와
+        // 발" 이라고 못 박아 두었지만 그리는 쪽이 그걸 정확히 맞추지 못한다 — 맥에서
+        // 실제로 받아 본 시트는 매달리기 발이 위 24% 에 왔다.
+        var canGrip = visible && isPet && sheet && settings.PetPerches;
+        panel.Children.Add(Ui.Section(palette, "잡는 깊이"));
+        panel.Children.Add(Ui.Card(palette,
+            Ui.Row(palette, "걸터앉기",
+                Ui.Slider(palette, settings.PerchDepthTop, 0, AppSettings.MaxPerchDepth,
+                    value => { settings.PerchDepthTop = value; Apply(); }),
+                hint: "창 위 테두리에 앉을 때 다리가 창 안으로 들어가는 깊이다.",
+                enabled: canGrip),
+            Ui.Divider(palette),
+            Ui.Row(palette, "매달리기",
+                Ui.Slider(palette, settings.PerchDepthBottom, 0, AppSettings.MaxPerchDepth,
+                    value => { settings.PerchDepthBottom = value; Apply(); }),
+                hint: "창 아래 테두리에 거꾸로 매달릴 때.",
+                enabled: canGrip),
+            Ui.Divider(palette),
+            Ui.Row(palette, "껴안기",
+                Ui.Slider(palette, settings.PerchDepthSide, 0, AppSettings.MaxPerchDepth,
+                    value => { settings.PerchDepthSide = value; Apply(); }),
+                hint: "창 좌우 테두리를 껴안을 때. 이쪽만 그림의 가로를 기준으로 잰다.",
+                enabled: canGrip)));
+
+        panel.Children.Add(Ui.ButtonRow(
+            Ui.Button(palette, "기본값으로", () =>
+            {
+                settings.ResetPerchDepths();
+                ApplyAndRedraw();
+            })));
+
         panel.Children.Add(Ui.Hint(palette,
             "잡고 있는 동안, 글을 쓰는 동안, 화면이 잠긴 동안, 조회가 끊긴 동안에는 움직이지 않는다."));
 
         return panel;
     }
+
+    /// <summary>
+    /// 붙어 있는 화면 수. **설명 문구를 가르는 데만 쓴다** — 화면이 하나뿐인 사람이
+    /// 켜 놓고 왜 아무 일도 안 일어나는지 몰라 헤매지 않게 한다.
+    ///
+    /// 좌표를 재는 것이 아니라 세기만 하므로 여기서는 <c>Forms.Screen</c> 이라도 걸릴
+    /// 것이 없다 — 자리를 재는 쪽(<c>PetStage.WorkAreas</c>)은 배율 때문에 같은 API 를
+    /// 써야 하지만, 개수는 단위가 없다.
+    /// </summary>
+    private static int ScreenCount => System.Windows.Forms.Screen.AllScreens.Length;
 
     /// <summary>
     /// 사용량 링 분절 컨트롤의 문구. **<c>PetRingDisplay.Title()</c> 을 그대로 쓰지 않는다.**
@@ -931,6 +1122,10 @@ public sealed partial class SettingsWindow : Window
         var attempts = new FileCredentialSource(fallbackPaths: WslCredentialPaths.All).Inspect();
         var success = attempts.FirstOrDefault(a => a.Found);
 
+        // **먼저 지운다.** 아래에서 카드를 안 그리는 경우(조회 전)에 옛 글자가 남아
+        // 있으면 이미 사라진 화면을 1초마다 갈아 끼우게 된다.
+        accountExpiry = null;
+
         var header = new StackPanel { Orientation = Orientation.Horizontal };
         header.Children.Add(new TextBlock
         {
@@ -951,7 +1146,19 @@ public sealed partial class SettingsWindow : Window
         // 서버가 주고, 등급과 만료는 자격 증명에서 온다.
         if (store.Snapshot is { } snapshot)
         {
-            panel.Children.Add(Ui.Section(palette, "로그인"));
+            // 맥 계정 탭과 같은 곁말. 이 카드의 값이 우리 것이 아니라 Claude Code 의
+            // 자격 증명에서 온 것임을 밝힌다 — 아래 "찾아본 자리" 와 이어서 읽힌다.
+            var loginHead = new StackPanel { Orientation = Orientation.Horizontal };
+            loginHead.Children.Add(Ui.Section(palette, "로그인"));
+            loginHead.Children.Add(new TextBlock
+            {
+                Text = "Claude Code에서 가져옴",
+                FontSize = 11.5,
+                Foreground = palette.Brush(palette.Tertiary),
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Margin = new Thickness(8, 0, 0, 7),
+            });
+            panel.Children.Add(loginHead);
 
             var rows = new StackPanel();
             rows.Children.Add(InfoRow(palette, "플랜", snapshot.PlanName ?? "—"));
@@ -961,7 +1168,9 @@ public sealed partial class SettingsWindow : Window
                 rows.Children.Add(InfoRow(palette, "한도 등급", tier));
             }
             rows.Children.Add(Ui.Divider(palette));
-            rows.Children.Add(InfoRow(palette, "토큰 만료", TokenExpiryText(snapshot.TokenExpiresAt)));
+            // **참조를 들고 있는다.** 1초마다 이 글자 하나만 갈아 끼운다.
+            accountExpiry = InfoValue(palette, TokenExpiryText(snapshot.TokenExpiresAt));
+            rows.Children.Add(Ui.Row(palette, "토큰 만료", accountExpiry));
 
             panel.Children.Add(Ui.Card(palette, rows));
         }
@@ -1013,7 +1222,9 @@ public sealed partial class SettingsWindow : Window
                     ? "토큰이 만료됐고 갱신도 실패했습니다. 아래 재로그인을 누르면 창이 하나 열리고, "
                       + "거기서 로그인을 마치면 조회가 다시 시작됩니다."
                     : "만료된 토큰은 앱이 스스로 갱신합니다. Claude Code를 켜 두지 않아도 사용량이 계속 들어옵니다. "
-                      + "토큰은 Authorization 헤더로만 쓰이고 어디에도 다시 쓰거나 남기지 않습니다.",
+                      + "토큰은 Authorization 헤더로만 쓰이고 어디에도 다시 쓰거나 남기지 않습니다. "
+                      + "아래 재로그인은 평소에 누를 일이 없습니다 — 계정을 바꾸거나 "
+                      + "Claude Code 쪽 로그인이 풀렸을 때만 쓰세요.",
             FontSize = 12.5,
             TextWrapping = TextWrapping.Wrap,
             LineHeight = 20,
@@ -1027,9 +1238,18 @@ public sealed partial class SettingsWindow : Window
             Ui.Button(palette, "기록 열기", () => OpenPath(AppLog.DefaultPath)),
         };
 
-        // **재로그인이 필요할 때만 나온다.** 평소에는 앱이 스스로 갱신하므로 누를 일이
-        // 없고, 늘 띄워 두면 멀쩡한 로그인을 다시 하게 만든다.
-        if (store.NeedsReauth) buttons.Add(Ui.Button(palette, "Claude Code 재로그인…", onLogin));
+        // **늘 둔다. 맥과 같은 자리다**(`SettingsWindow.swift` 의 `accountSection`).
+        //
+        // 한동안 `NeedsReauth` 일 때만 냈는데 거꾸로였다 — 윈도우는 갱신한 토큰을 제
+        // 폴더에 따로 들고 있어서(`%APPDATA%\DongCSU\token.json`) **우리 조회가 멀쩡해도
+        // Claude Code 쪽 로그인은 이미 풀려 있을 수 있다.** 그때 `NeedsReauth` 가 안 서니
+        // 단추도 영영 안 나오고, 사용자는 이 기능이 아예 없는 줄 안다. 계정을 바꾸고
+        // 싶을 때도 마찬가지다.
+        //
+        // **트레이 메뉴는 그대로 조건부로 둔다**(`TrayIcon.reloginItem`). 거기는 지금
+        // 당장 할 일 하나를 굵게 내미는 자리라, 평소에도 떠 있으면 자주 누르는
+        // 새로고침이 파묻힌다 — 맥도 똑같이 갈라 놨다.
+        buttons.Add(Ui.Button(palette, "Claude Code 재로그인…", onLogin));
 
         buttons.Add(Ui.Button(palette, "다시 확인", async () =>
         {
@@ -1075,6 +1295,48 @@ public sealed partial class SettingsWindow : Window
         var now = DateTimeOffset.UtcNow;
         return at <= now ? "만료됨 (곧 갱신)" : $"{RemainingTime.ClockText(at, now)} 뒤";
     }
+
+    /// <summary>
+    /// 지금 보기에서 만질 수 있는 토글인가. HUD 가 꺼져 있거나, 지금 보기가 그것을 안
+    /// 그리면 잠근다.
+    ///
+    /// **펫에 들어가 있으면 복귀 지점이 기준이다** — 펫에서 설정을 여는 사람에게
+    /// "펫에서는 못 만짐" 은 답이 아니다. 표시 탭의 다른 항목도 같은 기준을 쓴다.
+    /// 맥은 <c>settings.mode</c> 를 그대로 보는데, 윈도우는 복귀 지점을 저장하므로
+    /// (<c>handoff.md</c> 의 "일부러 다르게 한 것") 이쪽이 맞다.
+    /// </summary>
+    private bool CanToggle(HudElement element)
+    {
+        var effective = settings.Mode == HudMode.Pet ? settings.ModeBeforePet : settings.Mode;
+        return settings.IsHudVisible && HudView.Draws(element, effective);
+    }
+
+    /// <summary>
+    /// 모델별 한도 토글에 쓰는 글. **서버가 준 이름이 있으면 그걸 쓴다.**
+    ///
+    /// 이름을 박아 두지 않는다 — 지금은 Fable 이지만 서버가 다른 모델을 줄 수도 있고,
+    /// 아무것도 안 줄 수도 있다.
+    /// </summary>
+    private string ScopedLimitTitle =>
+        store.ScopedLimit?.ModelName is { } name ? $"{name} 사용량 표시" : "모델별 사용량 표시";
+
+    /// <summary>서버가 아직 안 준 사람에게는 켜도 아무 일이 없다. 그 사실을 밝힌다.</summary>
+    private string ScopedLimitHint => store.ScopedLimit is null
+        ? "서버가 모델별 한도를 줄 때만 나온다. 지금은 안 오고 있어서 켜도 카드만 커진다."
+        : "링과 숫자가 하나씩 늘고 카드가 그만큼 커진다.";
+
+    /// <summary>
+    /// 테마 분절 문구. **맥의 펼침 메뉴 문구("시스템 설정 따름" · "라이트" · "다크")보다
+    /// 짧다.**
+    ///
+    /// 맥은 한 번에 하나만 보이지만 우리는 세 칸이 한 줄에 늘어선다 — 그대로 넣으면 최소
+    /// 폭(480)에서 오른쪽 칸이 잘린다. 줄 이름이 이미 "테마" 라 칸마다 "설정 따름" 을
+    /// 붙일 자리도 아니다. 조회 주기·사용량 링과 같은 사정이다.
+    /// </summary>
+    private static readonly string[] ThemeTitles = ["시스템", "밝게", "어둡게"];
+
+    /// <inheritdoc cref="ThemeTitles"/>
+    private static readonly string[] ExpandSideTitles = ["오른쪽", "왼쪽"];
 
     /// <summary>탐색기로 Claude 설정 폴더를 연다. 없으면 만들지 않고 상위를 연다.</summary>
     private static void OpenClaudeFolder()
@@ -1319,6 +1581,13 @@ public sealed partial class SettingsWindow : Window
                 BorderThickness = new Thickness(0),
                 Margin = new Thickness(0, 0, 0, 4),
             });
+
+            // **받는 동안에도 누를 것을 둔다.** 설치본이 수십 MB 라 회선이 느리면 몇
+            // 분이 걸리는데, 그동안 아무것도 못 누르면 앱이 멈춘 것으로 보인다.
+            // 받아 둔 조각은 Velopack 이 들고 있어서 다음에 이어 받는다 — 맥도 받는
+            // 동안 취소 버튼을 띄운다.
+            rows.Children.Add(Ui.ButtonRow(
+                Ui.Button(palette, "그만두기", () => { updates.Cancel(); ShowTab(); })));
         }
 
         if (updates.Phase == UpdateService.UpdatePhase.Ready)

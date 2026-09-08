@@ -35,17 +35,22 @@ public static class OwlMoodResolver
     /// 지쳐 가는 정도는 세션(5시간)으로 본다 — 주간은 며칠에 걸쳐 천천히 차서,
     /// 그걸로 지치면 한 주 내내 지친 얼굴로 있게 된다.
     ///
-    /// **다만 주간을 다 쓴 것은 다르다.** 그때는 세션이 얼마 남았든 쓸 수 없으므로,
-    /// 세션 숫자를 보지 않고 곧바로 탈진이다. "천천히 지쳐 간다"가 아니라 "끝났다"다.
+    /// **다만 한도를 다 쓴 것은 다르다.** 주간이 찼으면 세션이 얼마 남았든 쓸 수 없고,
+    /// 세션이 찼으면 주간이 얼마 남았든 지금은 못 쓴다. 어느 쪽이든 곧바로 탈진이다 —
+    /// 이건 "천천히 지쳐 간다"가 아니라 "끝났다"라서 백분율로 재는 갈래가 아니다.
     /// </summary>
+    /// <param name="isSpent">
+    /// <c>UsageStore.IsSpent</c> — 세션이든 주간이든 하나가 찼다. **여기서 다시 100 을
+    /// 견주지 마라**, 판단은 저장소 한 곳에 있다.
+    /// </param>
     public static OwlMood Resolve(
         OwlDocument document,
         double? sessionUtilization,
         bool isDisconnected,
-        bool isWeeklySpent = false)
+        bool isSpent = false)
     {
         if (isDisconnected) return OwlMood.Offline;
-        if (isWeeklySpent) return OwlMood.Exhausted;
+        if (isSpent) return OwlMood.Exhausted;
         if (sessionUtilization is not { } utilization) return OwlMood.Idle;
 
         // **없는 값을 대괄호로 꺼내지 않는다.** owl.json 은 맥에서 뽑혀 오는 파일이라
@@ -148,6 +153,12 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
             // **어지러울 때는 기울어진 쪽을 반전으로 만든다.** 그림이 한쪽으로 기운 채
             // 한 장뿐이라, 뒤집어서 반대쪽 기울기를 얻는다. 걷던 방향을 그대로 쓰면
             // 늘 같은 쪽으로만 기울어 "비틀거린다"가 아니라 "기대 있다"로 보인다.
+            // **붙은 면이 걷던 방향과 끌던 손을 다 이긴다.** 왼쪽으로 걸어가다 창
+            // 오른쪽 테두리에 붙으면 벽을 등지고 서 있는 그림이 된다 — 옆으로 붙는
+            // 자세는 벽이 어느 쪽인지가 그림의 뜻이라, 마지막으로 걷던 쪽을 쓰면
+            // 절반은 반대로 나온다.
+            if (IsPerched && perch is { } side) return side.FlipsSprite();
+
             var pose = dragged ? carried : CurrentFrame.Pose;
             if (pose.Eyes == OwlEyes.Dizzy) return pose.Lean + pose.FaceLean > 0;
             // 들려 있는 동안에는 보던 쪽 그대로. 매달린 것에 방향이 있을 이유가 없다.
@@ -235,6 +246,10 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
             // **다 썼으면 무엇보다 먼저다.** 죽은 것으로 보이게 해 놓고 집어 들면
             // 버둥거리고 흔들면 어지러워하면, 아직 살아 있는 것으로 읽힌다.
             if (IsUnusable) return OwlMood.Exhausted.Name();
+            // **붙어 있으면 걸음이 빠진다.** 자세는 `Recompose` 가 첫 칸으로 굳히고,
+            // 그림 칸은 `MascotFrame` 이 붙은 면에서 고른다. 여기서는 팔레트와
+            // "평소 눈" 을 어디서 읽을지만 정하면 된다.
+            if (IsPerched) return StillName;
             if (dragged) return "dragged";
             if (dizzy) return "dizzy";
             return gait switch
@@ -304,6 +319,14 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
         if (IsUnusable)
         {
             made = null;
+            return;
+        }
+
+        // **붙어 있으면 자세가 굳고 눈만 깜빡인다.** 붙여 놓으면 몇 분씩 이어지는데
+        // 그동안 한 번도 안 깜빡이면 죽은 것으로 보인다.
+        if (IsPerched)
+        {
+            made = OwlComposer.Compose(document, PerchPose with { Eyes = eyes });
             return;
         }
 
@@ -414,6 +437,69 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     private OwlPose MoodPose => Named(mood.Name()).Frames[0].Pose;
 
     /// <summary>
+    /// 다른 앱 창 테두리에 붙어 있으면 어느 면인지. 안 붙어 있으면 null.
+    ///
+    /// 기분을 새로 만들지 않는 이유는 <see cref="IsUnusable"/> 과 같다 —
+    /// <c>OwlMood</c> 를 늘리면 <c>owl.json</c> 에 애니메이션이 하나 더 생기고 맥·문서
+    /// GIF 까지 딸려 온다. 게다가 격자 부엉이에는 매달린 자세 자체가 없어서 새 기분에
+    /// 넣을 프레임표가 없다. <b>자세만 그림 쪽에서 갈아 끼우는 것</b>이라 여기 얹는
+    /// 편이 옮길 것이 없다.
+    /// </summary>
+    private MascotPerch? perch;
+
+    /// <summary>
+    /// 붙어 있는 것으로 쳐야 하는지.
+    ///
+    /// <b>끊김과 소진은 붙기보다 세다.</b> 회색으로 굳어야 할 때 벽을 껴안고 눈을
+    /// 깜빡이면, 멈췄다는 표시가 무색해진다.
+    /// </summary>
+    private bool IsPerched => perch is not null && !IsUnusable && mood != OwlMood.Offline;
+
+    /// <summary>
+    /// 붙어 있는 동안 굳는 자세. 맥 <c>advancePerch</c> 의 <c>mood.frames[0].pose</c> 와
+    /// 같은 값이다.
+    ///
+    /// <b>걸음만 빠진다.</b> 테두리에 붙어 있는데 다리를 갈아 딛으면 벽을 밟고 달리는
+    /// 꼴이다. 끌림·어지러움은 그대로 둔다 — 맥의 <c>mood</c> 가 그 둘을 품는 값이라
+    /// 거기서 갈리지 않는다.
+    /// </summary>
+    private OwlPose PerchPose => Named(StillName).Frames[0].Pose;
+
+    /// <summary>걸음을 뺀 지금 이름.</summary>
+    private string StillName => dragged ? "dragged" : dizzy ? "dizzy" : mood.Name();
+
+    /// <summary>
+    /// 붙어 있는 동안 눈을 고쳐 다는 주기.
+    ///
+    /// <b>걸음과 같은 눈금이다.</b> 더 늘리면 깜빡임 한 번이 그만큼 길어져서, 잠깐
+    /// 감았다 뜨는 것이 아니라 질끈 감는 것으로 보인다. 숫자를 여기 적지 않는다 —
+    /// 맥이 <c>OwlGait.walk.tick</c> 을 쓰므로 <c>owl.json</c> 의 걷기 칸에서 읽는다.
+    /// 지터는 안 얹는다.
+    /// </summary>
+    private TimeSpan PerchTick => TimeSpan.FromSeconds(Named("walk").Frames[0].Duration);
+
+    /// <summary>
+    /// 창 테두리에 붙었는지 알려 준다. 자세만 바뀌고 기분·색은 그대로다.
+    ///
+    /// <b><see cref="IsUnusable"/> 과 달리 자세를 굳히지 않는다.</b> 붙어 있는 것은 굳은
+    /// 것이 아니라 가만히 있는 것이라, 그동안에도 눈은 깜빡여야 한다.
+    ///
+    /// <b>되감는다.</b> <c>frameIndex</c> 가 걸음의 박자와 기분 프레임의 칸 번호를
+    /// 겸해서, 걷다 붙었다 떨어지면 눈 감은 칸에서 다시 선다.
+    /// </summary>
+    /// <returns>바뀌었으면 true. 다시 그리고 타이머를 다시 걸어야 한다.</returns>
+    public bool SetPerch(MascotPerch? next)
+    {
+        if (perch == next) return false;
+        perch = next;
+        frameIndex = 0;
+        // 붙는 순간의 눈은 기분이 준 그대로. 첫 칸부터 깜빡이면 어색하다.
+        if (perch is not null) eyes = PerchPose.Eyes;
+        Recompose();
+        return true;
+    }
+
+    /// <summary>
     /// 걷는 자세 한 칸. 기분이 준 자세에서 <b>발·기울임·날개만</b> 바꾼다.
     ///
     /// **뛸 때는 발을 모으는 칸마다 날개를 펼친다.** 부엉이는 다리가 짧아서 발만 빨리
@@ -465,7 +551,7 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     }
 
     /// <summary>
-    /// 다 써서 쓸 수 없는 상태.
+    /// 다 써서 쓸 수 없는 상태. **세션이든 주간이든** 하나가 차면 켜진다.
     ///
     /// **색만 빼는 게 아니라 통째로 멈춘다.** 죽은 것으로 보이게 해 놓고 걷거나
     /// 버둥거리거나 눈을 깜빡이면 앞뒤가 안 맞는다. 켜는 순간 자세를 굳힌다.
@@ -510,7 +596,13 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
         // **끌리는 동안에는 합성해 둔 자세에서 읽는다.** 그때 눈을 고르는 것은
         // `AdvanceDrag` 이고 결과가 `carried` 에만 들어가서, 여기서 `eyes` 를 보면
         // 잡고 있는 내내 낡은 값이 나온다 — 매달린 부엉이가 영영 안 깜빡였다.
-        dragged ? carried.Eyes : IsWalking ? eyes : CurrentFrame.Pose.Eyes,
+        // **붙어 있으면 끌림보다 앞이다.** 눈을 고르는 것은 `Advance` 의 붙기 갈래이고
+        // 결과가 `eyes` 에만 들어가서, 여기서 `carried` 를 보면 붙어 있는 내내 낡은
+        // 값이 나온다.
+        IsPerched ? eyes
+            : dragged ? carried.Eyes
+            : IsWalking ? eyes
+            : CurrentFrame.Pose.Eyes,
         dragged ? PetGaitKind.Dragged
             : gait switch
             {
@@ -524,7 +616,10 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
         // **기분이 아니라 지금 자세에서 본다.** 기분으로 보면 탈진한 부엉이를 집어
         // 들었을 때 매달린 얼굴은 눈을 뜨고 있는데도 깜빡임이 막힌다 — 걸러야 할 것은
         // "탈진해서 감고 있음"이지 "탈진한 적이 있음"이 아니다.
-        Animation.Frames[0].Pose.Eyes);
+        Animation.Frames[0].Pose.Eyes,
+        // 붙어 있으면 그 면이 칸을 정한다. **끊김·소진일 때는 안 넘긴다** — 회색으로
+        // 굳어야 할 때 벽을 껴안은 그림이 나오면 안 된다(`IsPerched` 가 이미 거른다).
+        IsPerched ? perch : null);
 
     /// <summary>지금 칠할 팔레트 이름. 다 썼으면 색이 빠진다.</summary>
     public string PaletteName =>
@@ -561,6 +656,14 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
         // 한 갈래씩 막으면 언젠가 새로 생긴 갈래를 빠뜨린다.
         if (IsUnusable) return HoldStill();
 
+        // **끌림보다 앞이다.** 끌고 가다 붙을 자리에 닿으면 놓기 전에 자세를 미리 잡는다.
+        if (IsPerched)
+        {
+            eyes = BlinkingEyes(PerchPose.Eyes);
+            Recompose();
+            return PerchTick;
+        }
+
         // 끌리는 동안에는 프레임을 넘기지 않고 **속도로 자세를 만든다.**
         if (dragged)
         {
@@ -573,7 +676,7 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
 
         // **다리 주기는 네 칸이다.** 걷기 그림이 여덟 칸인 것은 뒤 네 개에 눈 깜빡임이
         // 얹혀 있어서인데, 우리는 눈을 따로 돌리므로 앞 네 칸만 쓴다. 여덟 칸을 통째로
-        // 돌리면 한 걸음마다(1.1초) 깜빡여서 경련하는 것처럼 보인다.
+        // 돌리면 한 걸음에 한 번꼴로 깜빡여서 경련하는 것처럼 보인다.
         if (IsWalking)
         {
             frameIndex = (frameIndex + 1) % 4;
@@ -590,6 +693,7 @@ public sealed class OwlAnimator(OwlDocument document, Random? random = null, Tim
     /// <summary>지금 프레임을 얼마나 더 보여줄지. 타이머를 처음 걸 때 쓴다.</summary>
     public TimeSpan? CurrentDelay()
     {
+        if (IsPerched) return PerchTick;
         if (dragged) return DragTick;
 
         var frames = Animation.Frames;
