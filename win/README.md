@@ -22,13 +22,13 @@
 Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁금해진다.
 확인하려면 하던 걸 멈추고 `/usage`를 쳐야 한다. 그 숫자를 화면 구석에 그냥 띄워둔다.
 
-- 🔵 **이중 링** — 바깥이 5시간 세션, 안쪽이 7일 주간
+- 🔵 **사용량 링** — 바깥이 5시간 세션, 안쪽이 7일 주간. 모델별 한도(예: Fable)를 켜면 제일 안쪽에 하나 더
 - 🎨 사용률이 오를수록 **초록 → 노랑 → 빨강**으로 연속해서 변한다. 숫자 앞의 색점이
   어느 링 얘기인지 이어준다
 - ⏱️ 초기화까지 남은 시간, 다음 조회까지 남은 시간
 - 🔔 새 버전이 나오면 알려주고, **앱이 스스로 받아서 갈아 끼운다**
-- 🦉 **[픽셀 마스코트](../docs/characters/README.md)** — 한도가 차면 지치고, 조회가 끊기면 색이 빠진다.
-  Clawd · Claude 아이콘 · 버스트 마크로 바꿀 수도 있다
+- 🦉 **[마스코트](../docs/characters/README.md)** — 한도가 차면 지치고, 다 쓰면 죽고, 조회가 끊기면 색이 빠진다
+- 🦝 **[부엉이와 라쿤](../docs/characters/README.md)** 중에 고른다. Clawd · Claude 아이콘 · 버스트 마크도 있다
 - 🔑 **토큰이 만료되면 스스로 갱신한다** — Claude Code를 켜 두지 않아도 계속 들어온다
 - 🖥️ 항상 위에. 작업 표시줄 없이 트레이에만
 - ⚙️ **로그인할 때 자동 시작** — 관리자 권한을 묻지 않는다
@@ -67,7 +67,7 @@ Claude Code를 쓰다 보면 "지금 한도를 얼마나 썼지?"가 계속 궁�
 <td align="center"><img src="../docs/characters/owl/dizzy.gif" width="96" alt="어지러움"><br><sub><b>어지러움</b><br>마구 흔들면</sub></td>
 <td align="center"><img src="../docs/characters/owl/walk.gif" width="96" alt="걷기"><br><sub><b>걷기</b><br>혼자 다닐 때</sub></td>
 <td align="center"><img src="../docs/characters/owl/run.gif" width="96" alt="달리기"><br><sub><b>달리기</b><br>커서가 쫓아올 때</sub></td>
-<td colspan="2" align="left"><sub>펫 모드에서는 <b>혼자 돌아다닌다.</b><br>커서를 올려두면 비켜주고, 계속 쫓아가면 <b>뛰어서</b> 달아난다.<br><b>타이핑 중에는 가만히 있는다.</b> 설정 창의 <b>펫</b> 탭에서 끌 수 있다.</sub></td>
+<td colspan="2" align="left"><sub>펫 모드에서는 <b>혼자 돌아다닌다.</b><br>커서를 올려두면 비켜주고, 계속 쫓아가면 <b>뛰어서</b> 달아난다.<br><b>타이핑 중에는 가만히 있는다.</b> 끌어다 놓으면 <b>다른 앱 창 테두리에 붙는다.</b><br>화면이 여럿이면 <b>옆 화면으로 걸어 넘어가게</b> 할 수도 있다(기본 꺼짐).<br>전부 설정 창의 <b>펫 모드</b> 탭에서 켜고 끈다.</sub></td>
 </tr>
 </table>
 
@@ -155,7 +155,7 @@ dotnet test
 | [사용량과 토큰](docs/privacy.md) | 무엇을 읽고 어디에 접속하는지 |
 | [작업 규칙](CLAUDE.md) | 프로젝트 구성, 진단 통로, 배포 |
 | [이어받기](docs/handoff.md) | 윈도우 쪽에서 개발을 이어받을 때 |
-| [캐릭터](../docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](../docs/characters/owl.md) |
+| [캐릭터](../docs/characters/README.md) | 마스코트 목록 · [🦉 부엉이](../docs/characters/owl.md) · [🦝 라쿤](../docs/characters/raccoon.md) |
 | [나눠 쓰는 데이터](../shared/README.md) | 맥과 같은 그림을 그리는 방법 |
 
 ## 라이선스
