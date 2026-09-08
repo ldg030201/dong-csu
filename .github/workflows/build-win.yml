@@ -81,6 +81,28 @@ jobs:
             exit 1
           }
 
+      # 카드가 모든 조합에서 안 넘치는지. **넘친 그림은 창 경계에서 잘려서 눈에 안
+      # 보이고**, `--render` 는 내용에 맞춰 그리므로 넘칠 자리 자체가 없다 — 그래서
+      # 화면이 아니라 치수를 잰다. 보기 3 × 모델별 × CPU × 배율 4 = 48가지.
+      #
+      # 창에 붙는 규칙과 다른 화면으로 넘어가는 계산도 같이 본다. **셋 다 바깥 것에
+      # 안 기댄다** — 자격 증명도 네트워크도 안 보고, 모니터가 하나뿐이면 넘어가기는
+      # 잴 것이 없다고 적고 통과한다.
+      - name: 치수 · 붙기 · 화면 넘어가기
+        shell: pwsh
+        run: |
+          $exe = "src/DongCSU.App/bin/Release/net10.0-windows/win-x64/DongCSU.exe"
+          foreach ($probe in @(@('--probe-hud'), @('--probe-perch','selftest'), @('--probe-pet'))) {
+            $log = Join-Path $env:RUNNER_TEMP "probe.txt"
+            $run = Start-Process -FilePath $exe -ArgumentList $probe `
+              -Wait -PassThru -NoNewWindow -RedirectStandardOutput $log
+            Get-Content $log -Encoding UTF8
+            if ($run.ExitCode -ne 0) {
+              Write-Error "$($probe -join ' ') 가 실패했다"
+              exit 1
+            }
+          }
+
       # 측정 화면의 버튼이 실제로 먹는지. **그리는 것과 다른 검사다** —
       # `--render-settings` 는 화면을 보여줄 뿐이고, *시작을 누르면 정말 재기 시작하는가*
       # 는 눌러 보고 그 뒤 상태를 봐야 안다. 배치를 바꾸다 버튼과 판정이 어긋나면
