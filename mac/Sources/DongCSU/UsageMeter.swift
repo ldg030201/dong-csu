@@ -139,7 +139,7 @@ final class UsageMeter: ObservableObject {
         scanTokens()
         // **기준점은 지금 값이어야 한다.** 마지막 조회는 10분 전 것일 수 있고, 그걸
         // 기준으로 삼으면 시작을 누르기 전에 쓴 몫이 이번 측정에 들어간다.
-        requestSample()
+        requestSample(force: true)
     }
 
     /// 잠깐 세운다. 세워 둔 동안 쓴 것은 이번 측정에 안 들어간다.
@@ -162,7 +162,7 @@ final class UsageMeter: ObservableObject {
         save()
 
         startScanTimer()
-        requestSample()
+        requestSample(force: true)
     }
 
     /// 다음 표본은 더하지 말고 기준만 옮긴다. 일시정지에서 돌아올 때 쓴다.
@@ -172,8 +172,13 @@ final class UsageMeter: ObservableObject {
     ///
     /// 시작·중지·계속을 연달아 누르면 그때마다 조회가 나가는데, 사용량 API는 창이
     /// 좁아서 금방 막힌다. 최근에 부탁했으면 건너뛴다 — 어차피 폴링이 곧 가져온다.
-    private func requestSample() {
-        if let last = lastSampleRequestAt, Date().timeIntervalSince(last) < Self.minSampleInterval {
+    /// `force` 는 **사람이 누른 것**에만 쓴다(시작 · 계속 · 중지). 그 셋은 기준점을
+    /// 잡는 조회라 건너뛰면 측정 자체가 틀어진다 — 시작 30초 안에 멈추면 중지 조회가
+    /// 통째로 안 나가서, 한참 뒤 폴링이 마지막 표본이 되곤 했다.
+    /// 요청 제한은 저장소 쪽(10초 바닥 · 429 백오프)이 어차피 다시 막는다.
+    private func requestSample(force: Bool = false) {
+        if !force, let last = lastSampleRequestAt,
+           Date().timeIntervalSince(last) < Self.minSampleInterval {
             return
         }
         lastSampleRequestAt = Date()
@@ -190,7 +195,8 @@ final class UsageMeter: ObservableObject {
         // 시작 때 하나뿐이라 소모량이 늘 0%p가 된다. 시작과 중지에서 각각 한 번씩
         // 재면 아무리 짧게 재도 두 점 사이의 차이가 남는다.
         acceptsFinalSample = true
-        requestSample()
+        finalSampleUntil = Date().addingTimeInterval(Self.finalSampleWindow)
+        requestSample(force: true)
 
         if let pausedAt = state.pausedAt {
             state.pausedTotal += Date().timeIntervalSince(pausedAt)
@@ -256,8 +262,28 @@ final class UsageMeter: ObservableObject {
     /// 그때는 이미 `stoppedAt` 이 찍혀 있다.
     private var acceptsFinalSample = false
 
+    /// 중지 뒤 **이 시각까지 떠 온 조회만** 마지막 표본으로 받는다.
+    ///
+    /// "딱 한 번 더 받는다" 로는 모자랐다. 중지가 부탁한 조회는 조용히 버려질 수 있는데
+    /// (이미 날아간 요청 · 저장소의 10초 바닥 · 429 백오프 최대 5분), 그러면 깃발만 켜진
+    /// 채 남아서 **한참 뒤의 평범한 폴링**이 마지막 표본이 된다 — 20초 재고 멈춘 측정에
+    /// 10분치 소모가 붙었다. 시각으로 막으면 늦게 온 것은 그냥 안 받는다.
+    private var finalSampleUntil: Date?
+
+    /// 중지 뒤 마지막 표본을 기다려 주는 시간.
+    /// 조회 한 번은 보통 1초 안쪽이고, 백오프에 걸렸으면 어차피 기다릴 값어치가 없다.
+    private static let finalSampleWindow: TimeInterval = 90
+
     /// 멈춘 뒤 **딱 한 번** 더 훑는 것을 받아 준다. `stop()` 이 켜고 훑기가 끈다.
     private var acceptsFinalScan = false
+
+    /// 멈춘 뒤 도착한 이 조회를 마지막 표본으로 칠지.
+    /// **떠 온 시각으로 가른다** — 도착 시각이 아니라 서버에서 읽어 온 시각이라야,
+    /// 느리게 돌아온 조회와 한참 뒤의 새 조회가 구별된다.
+    private func takesAsFinalSample(_ snapshot: UsageSnapshot) -> Bool {
+        guard acceptsFinalSample, let until = finalSampleUntil else { return false }
+        return snapshot.fetchedAt <= until
+    }
 
     // MARK: - 한도
 
@@ -267,8 +293,8 @@ final class UsageMeter: ObservableObject {
     /// 그때 값이 0으로 떨어지므로 그냥 빼면 기록이 날아간다. 리셋을 만나면 새 창에서
     /// 쓴 몫을 그대로 더한다.
     func record(_ snapshot: UsageSnapshot) {
-        guard isCounting || acceptsFinalSample else { return }
-        if !isCounting { acceptsFinalSample = false }
+        guard isCounting || takesAsFinalSample(snapshot) else { return }
+        if !isCounting { acceptsFinalSample = false; finalSampleUntil = nil }
 
         for limit in Self.limits(of: snapshot) {
             guard let track = state.tracks[limit.id] else {
