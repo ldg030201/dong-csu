@@ -132,7 +132,11 @@ enum MascotSprite: String, CaseIterable {
     /// 나머지는 전부 아래다 — 발이 한 줄에 서야 상태가 바뀔 때 캐릭터가 오르내리지 않는다.
     var anchor: MascotAnchor {
         switch self {
-        case .ledge: return .top
+        // **눈감음 짝도 같이 묶는다.** 짝이 다른 모서리에 붙으면 `SheetPrep.compose` 가
+        // 두 칸을 다른 규칙으로 앉혀서, 창에 매달린 채 깜빡일 때마다 잡은 손이
+        // 테두리에서 떨어졌다 붙는다(라쿤에서 3.3pt 였다). 바로 아래 `gripDepth` 가
+        // 같은 이유로 둘을 한 줄에 묶어 둔 것과 짝이 맞아야 한다.
+        case .ledge, .blinkLedge: return .top
         // 붙잡은 쪽이 상자 왼쪽 끝에 닿아야 창 테두리에 붙는다.
         case .cling, .blinkCling: return .leading
         default: return .bottom
