@@ -533,6 +533,29 @@ final class PetMotionController {
         }
     }
 
+    /// 맞붙은 두 화면의 **이음매에 걸친** 자리인지.
+    ///
+    /// `standable` 은 화면 하나에 **온전히** 들어가는 자리만 센다. 그래서 맞붙은 두 화면
+    /// 사이에는 어느 쪽에도 안 들어가는 띠가 `창 폭 + 가장자리 여유 둘`(펫이면 128+16 =
+    /// 144pt) 만큼 생기는데, 한 걸음이 2.6~30pt 라 **걸어서는 못 건넌다** — 경계 8pt 앞에서
+    /// 매번 되당겨지고 "도착" 으로 쳐서 쉬었다. 넘어가기를 켜도 보폭만 늘고 실제로는
+    /// 한 번도 못 넘어갔다.
+    ///
+    /// 이음매 위에서는 창이 두 화면에 **걸쳐 있기만** 하면 된다. 네 귀퉁이와 한가운데가
+    /// 각각 어느 화면이든 보이는 자리 안에 있으면 걸친 것으로 본다 — 가운데까지 보는 것은
+    /// 떨어져 있는 화면 사이를 귀퉁이만으로 건너뛰지 않게 하려는 것이다.
+    private func straddles(_ origin: NSPoint) -> Bool {
+        let box = NSRect(origin: origin, size: frame().size)
+        let points = [
+            NSPoint(x: box.minX, y: box.minY), NSPoint(x: box.maxX, y: box.minY),
+            NSPoint(x: box.minX, y: box.maxY), NSPoint(x: box.maxX, y: box.maxY),
+            NSPoint(x: box.midX, y: box.midY),
+        ]
+        return points.allSatisfy { point in
+            NSScreen.screens.contains { $0.visibleFrame.insetBy(dx: -1, dy: -1).contains(point) }
+        }
+    }
+
     /// 창 원점을 설 수 있는 자리로 되당긴다.
     ///
     /// **`crossing` 은 스스로 걸어갈 때 참이다.** 배회도 커서 피하기도 제 걸음이라
@@ -542,8 +565,8 @@ final class PetMotionController {
     /// 진단 통로(`ProbePerch`)도 직접 부른다. **화면 밖으로 나가는지는 눈으로 못
     /// 보므로** 거기서 이걸로 잰다.
     func clamped(_ origin: NSPoint, crossing: Bool = false) -> NSPoint? {
-        // 다른 화면에 온전히 들어가는 자리면 지금 화면 밖이어도 그대로 간다.
-        if crossing, crossesScreens, standable(origin) { return origin }
+        // 다른 화면에 온전히 들어가거나 이음매에 걸친 자리면 지금 화면 밖이어도 그대로 간다.
+        if crossing, crossesScreens, standable(origin) || straddles(origin) { return origin }
         guard let area = walkArea() else { return nil }
         return NSPoint(
             x: min(max(origin.x, area.minX), area.maxX),
