@@ -723,7 +723,11 @@ final class HUDController {
     /// 화면 없이 재현할 수 없는 것이라(어디에 놓았는지가 전부다) 눈으로 볼 기록이
     /// 있어야 고칠 수 있다. 놓을 때마다 한 덩이씩 덧붙이고, 붙었으면 그것도 적는다.
     private func logPerchAttempt(_ spot: PerchSpot?) {
-        guard settings.mode == .pet else { return }
+        // **정식 빌드에서는 안 적는다.** 이 기록 한 덩이에는 그때 열려 있던 창이
+        // **앱 이름과 화면상 자리까지** 줄줄이 들어간다. 쓸 사람은 이걸 고치는 우리뿐인데,
+        // 쌓이는 것은 사용자 쪽이다 — 로테이션이 없어서 실제로 213KB · 서로 다른 앱
+        // 17개가 적혀 있었다. 진단은 테스트판에서만 남긴다.
+        guard AppInfo.isTestBuild, settings.mode == .pet else { return }
         let mascot = mascotScreenRect()
         var lines = [
             "── \(Self.logStamp.string(from: Date())) "
@@ -754,16 +758,32 @@ final class HUDController {
     static let perchLogPath = NSString(string: "~/Library/Logs/dong-csu-perch.log")
         .expandingTildeInPath
 
+    /// 기록 파일이 커질 수 있는 한계. 넘으면 **앞쪽 절반을 버린다.**
+    /// 고칠 때 보는 것은 늘 마지막 몇 번이라, 오래된 쪽을 지키는 것은 뜻이 없다.
+    private static let perchLogLimit = 256 * 1024
+
     private static func appendPerchLog(_ text: String) {
         let url = URL(fileURLWithPath: perchLogPath)
         guard let data = text.data(using: .utf8) else { return }
-        if let handle = try? FileHandle(forWritingTo: url) {
+        let size = (try? FileManager.default
+            .attributesOfItem(atPath: perchLogPath)[.size] as? Int) ?? 0
+        if size + data.count <= perchLogLimit, let handle = try? FileHandle(forWritingTo: url) {
             defer { try? handle.close() }
             _ = try? handle.seekToEnd()
             try? handle.write(contentsOf: data)
-        } else {
-            try? data.write(to: url)
+            return
         }
+        // 넘쳤으면 **뒤쪽 절반만 남기고** 다시 적는다. 고칠 때 보는 것은 늘 마지막
+        // 몇 번이라 오래된 쪽을 지킬 이유가 없다.
+        //
+        // **읽기는 파일에서 따로 한다.** 쓰기용 핸들로 읽으려 했더니 `readToEnd` 가
+        // 빈 손으로 돌아와서, 넘칠 때마다 기록이 통째로 날아갔다(시험에서 25KB 로 잡혔다).
+        var kept = (try? Data(contentsOf: url))?.suffix(perchLogLimit / 2) ?? Data()
+        // 줄 가운데서 자르면 읽을 때 걸리적거린다. 첫 줄바꿈까지 더 버린다.
+        if let newline = kept.firstIndex(of: UInt8(ascii: "\n")) {
+            kept = kept[kept.index(after: newline)...]
+        }
+        try? (Data(kept) + data).write(to: url)
     }
 
     /// 그 변에 붙었을 때 붙잡는 부위가 창 안으로 넘어가는 깊이.
