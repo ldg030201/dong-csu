@@ -153,7 +153,15 @@ enum SheetPrep {
 
         // **배율은 하나만 쓴다.** 칸마다 제 크기에 맞춰 늘리면 작게 그린 칸이 부풀어서
         // 상태가 바뀔 때마다 캐릭터가 커졌다 작아졌다 한다.
-        let inks = cells.compactMap(\.ink)
+        // **배치에 있는 칸만 센다.** 안 쓰는 세 자리는 두 줄 뒤에 통째로 버려지는데,
+        // 배율만 거기까지 보고 있었다 — 그래서 버려질 칸에 찍힌 워터마크 하나가 **모든**
+        // 자세를 줄였다(240x240 짜리가 들어오면 37.5% 작아진다). 워터마크를 버리려고
+        // 둔 규칙이 바로 그 워터마크 때문에 무력해지는 자리였다.
+        let inks = cells.compactMap { cell -> Box? in
+            guard cell.row < MascotSheet.rows, cell.column < MascotSheet.columns,
+                  MascotSheet.layout[cell.row][cell.column] != nil else { return nil }
+            return cell.ink
+        }
         let tallest = inks.map(\.height).max() ?? 1
         let widest = inks.map(\.width).max() ?? 1
         let room = CGFloat(side - margin * 2)
