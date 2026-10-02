@@ -32,8 +32,22 @@ enum OAuthTokenRefresher {
     /// Claude Code의 공개 OAuth 클라이언트 ID. 비밀이 아니다.
     static let clientID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 
-    static func refresh(using refreshToken: String) async -> RefreshedToken? {
-        guard !refreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    /// 갱신해 본 결과.
+    ///
+    /// **전송 실패와 거절을 갈라야 한다.** 둘 다 nil 로 뭉개면 위에서 구별할 수가 없어서,
+    /// 노트북을 깨운 직후처럼 Wi-Fi 가 아직 안 붙은 순간의 실패가 "리프레시 토큰이
+    /// 죽었다" 로 취급된다 — 화면에는 재로그인 안내가 뜨고 조회가 30분 막힌다.
+    enum Outcome {
+        case renewed(RefreshedToken)
+        /// 서버가 거절했다(400 등). 리프레시 토큰까지 죽은 것이라 재로그인 말고 길이 없다.
+        case rejected
+        /// 요청이 아예 못 나갔거나 응답이 깨졌다. **다시 하면 된다.**
+        case offline
+    }
+
+    static func refresh(using refreshToken: String) async -> Outcome {
+        guard !refreshToken.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else { return .rejected }
 
         var request = URLRequest(url: endpoint, timeoutInterval: 15)
         request.httpMethod = "POST"
@@ -46,11 +60,15 @@ enum OAuthTokenRefresher {
 
         guard let (data, response) = try? await URLSession.shared.data(for: request),
               let http = response as? HTTPURLResponse
-        else { return nil }
+        else { return .offline }
 
         // 리프레시 토큰까지 죽었으면 400이 온다. 그때는 재로그인 말고 길이 없다.
-        guard http.statusCode == 200 else { return nil }
-        return parse(data)
+        // 5xx 는 서버 쪽 사정이라 거절이 아니다 — 다시 하면 된다.
+        guard http.statusCode == 200 else {
+            return (500...599).contains(http.statusCode) ? .offline : .rejected
+        }
+        guard let token = parse(data) else { return .rejected }
+        return .renewed(token)
     }
 
     static func parse(_ data: Data) -> RefreshedToken? {

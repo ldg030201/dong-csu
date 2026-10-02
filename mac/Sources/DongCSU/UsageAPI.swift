@@ -164,9 +164,16 @@ actor CredentialStore {
            let refreshToken = credentials.refreshToken,
            canRefreshNow {
             lastRefreshAt = Date()
-            if let renewed = await OAuthTokenRefresher.refresh(using: refreshToken) {
+            switch await OAuthTokenRefresher.refresh(using: refreshToken) {
+            case .renewed(let renewed):
                 Self.persist(renewed, replacing: refreshToken, origin: credentials.origin)
                 effective = credentials.applying(renewed)
+                lastRefreshWasOffline = false
+            case .offline:
+                // 못 보낸 것이지 거절당한 것이 아니다. 위에서 종단 오류로 올리면 안 된다.
+                lastRefreshWasOffline = true
+            case .rejected:
+                lastRefreshWasOffline = false
             }
         }
 
@@ -174,6 +181,12 @@ actor CredentialStore {
         cached = effective
         return effective
     }
+
+    /// 마지막 갱신이 **네트워크 때문에** 실패했는지.
+    ///
+    /// 만료된 토큰이 그대로 남는 것은 두 경우가 똑같지만, 사용자에게 할 말은 정반대다 —
+    /// 거절이면 재로그인, 전송 실패면 그냥 기다리면 된다.
+    private(set) var lastRefreshWasOffline = false
 
     /// 서버가 401/403을 주면 캐시된 토큰이 더 이상 유효하지 않다는 뜻이다.
     func invalidate() {
@@ -485,7 +498,14 @@ enum UsageAPI {
 
     static func fetch() async throws -> UsageSnapshot {
         guard let credentials = await CredentialStore.shared.current() else { throw UsageError.noCredentials }
-        if credentials.isExpired { throw UsageError.tokenExpired }
+        if credentials.isExpired {
+            // **갱신이 네트워크 때문에 못 나갔으면 재로그인 문제가 아니다.** 종단 오류로
+            // 올리면 30분 백오프에 재로그인 안내까지 뜨는데, 몇 초 뒤면 될 일이다.
+            if await CredentialStore.shared.lastRefreshWasOffline {
+                throw UsageError.network("갱신 요청이 나가지 못했다")
+            }
+            throw UsageError.tokenExpired
+        }
 
         var request = URLRequest(url: endpoint, timeoutInterval: 15)
         request.httpMethod = "GET"

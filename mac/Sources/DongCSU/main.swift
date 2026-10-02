@@ -102,7 +102,7 @@ if CommandLine.arguments.contains("--probe-refresh") {
             return
         }
 
-        guard let renewed = await OAuthTokenRefresher.refresh(using: refreshToken) else {
+        guard case .renewed(let renewed) = await OAuthTokenRefresher.refresh(using: refreshToken) else {
             print("갱신 실패 (리프레시 토큰까지 죽었으면 재로그인해야 한다)")
             done.signal()
             return
