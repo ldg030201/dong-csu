@@ -427,6 +427,87 @@ final class UsageMeter: ObservableObject {
     private func save() { store.save(state) }
 }
 
+// MARK: - 너그러운 복원
+
+/// **없는 키는 기본값으로 둔다.**
+///
+/// 자동 생성 `Decodable` 은 프로퍼티에 적어 둔 기본값을 **안 쓴다** — 키가 하나라도
+/// 없으면 `keyNotFound` 로 통째로 실패한다. 그래서 여기 필드를 하나 더하는 것만으로
+/// 옛 `meter.json` 이 못 읽는 파일이 되고, 바로 다음 저장이 그 자리를 덮어써서
+/// **측정 기록 50개가 조용히 사라진다.** 키마다 따로 읽어 그 길을 막는다.
+///
+/// 나중에 필드를 더하면서 여기 한 줄을 빠뜨려도 손해는 "그 값만 기본값으로 돌아간다"
+/// 까지다. 기록은 안 날아간다.
+extension UsageMeter.LimitTrack {
+    init(from decoder: any Decoder) throws {
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            title: (try? box.decode(String.self, forKey: .title)) ?? "",
+            accumulated: (try? box.decode(Double.self, forKey: .accumulated)) ?? 0,
+            lastPercent: (try? box.decode(Double.self, forKey: .lastPercent)) ?? 0,
+            lastResetsAt: try? box.decode(Date.self, forKey: .lastResetsAt),
+            resets: (try? box.decode(Int.self, forKey: .resets)) ?? 0
+        )
+    }
+}
+
+extension UsageMeter.Record {
+    /// **시작·끝 시각만 없으면 포기한다.** 그 둘은 기록의 신원이라 기본값이 없다.
+    init(from decoder: any Decoder) throws {
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            startedAt: try box.decode(Date.self, forKey: .startedAt),
+            stoppedAt: try box.decode(Date.self, forKey: .stoppedAt),
+            tracks: (try? box.decode([UsageMeter.LimitTrack].self, forKey: .tracks)) ?? [],
+            tokens: (try? box.decode(TokenTally.self, forKey: .tokens)) ?? TokenTally(),
+            tokensByModel: (try? box.decode([String: TokenTally].self, forKey: .tokensByModel)) ?? [:],
+            samples: (try? box.decode(Int.self, forKey: .samples)) ?? 0
+        )
+    }
+}
+
+extension UsageMeter.State {
+    init(from decoder: any Decoder) throws {
+        let box = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            startedAt: try? box.decode(Date.self, forKey: .startedAt),
+            stoppedAt: try? box.decode(Date.self, forKey: .stoppedAt),
+            tracks: (try? box.decode([String: UsageMeter.LimitTrack].self, forKey: .tracks)) ?? [:],
+            order: (try? box.decode([String].self, forKey: .order)) ?? [],
+            tokens: (try? box.decode(TokenTally.self, forKey: .tokens)) ?? TokenTally(),
+            tokensByModel: (try? box.decode([String: TokenTally].self, forKey: .tokensByModel)) ?? [:],
+            offsets: (try? box.decode([String: UInt64].self, forKey: .offsets)) ?? [:],
+            seenIDs: (try? box.decode(Set<String>.self, forKey: .seenIDs)) ?? [],
+            samples: (try? box.decode(Int.self, forKey: .samples)) ?? 0,
+            lastSampledAt: try? box.decode(Date.self, forKey: .lastSampledAt),
+            pausedAt: try? box.decode(Date.self, forKey: .pausedAt),
+            pausedTotal: (try? box.decode(TimeInterval.self, forKey: .pausedTotal)) ?? 0,
+            history: Self.records(in: box)
+        )
+    }
+
+    /// **한 줄이 깨져도 나머지 기록은 지킨다.** 배열째 읽으면 기록 하나가 상한 것과
+    /// 파일이 통째로 상한 것이 구별되지 않는다.
+    private static func records(
+        in box: KeyedDecodingContainer<UsageMeter.State.CodingKeys>
+    ) -> [UsageMeter.Record] {
+        guard var rows = try? box.nestedUnkeyedContainer(forKey: .history) else { return [] }
+        var kept: [UsageMeter.Record] = []
+        while !rows.isAtEnd {
+            if let row = try? rows.decode(UsageMeter.Record.self) {
+                kept.append(row)
+            } else if (try? rows.decode(SkippedRow.self)) == nil {
+                // 건너뛰지도 못하면 자리가 안 넘어가 제자리를 돈다. 거기서 멈춘다.
+                break
+            }
+        }
+        return kept
+    }
+}
+
+/// 못 읽은 기록 한 줄을 건너뛰려고 둔다. 무엇이든 받아들인다.
+private struct SkippedRow: Decodable {}
+
 /// 측정 기록을 파일에 둔다.
 ///
 /// **UserDefaults에 넣지 않는다.** 중복 제거용 id가 몇천 개까지 쌓이는 데이터라
@@ -444,7 +525,14 @@ struct MeterStore: Sendable {
 
     func load() -> UsageMeter.State? {
         guard let url, let data = try? Data(contentsOf: url) else { return nil }
-        return try? JSONDecoder().decode(UsageMeter.State.self, from: data)
+        if let state = try? JSONDecoder().decode(UsageMeter.State.self, from: data) { return state }
+        // **못 읽은 파일을 그 자리에 두지 않는다.** 다음 저장이 곧바로 덮어써서,
+        // 한 번 못 읽으면 되살릴 방법이 없어진다. 옆으로 치워 두고 빈 상태로 시작한다.
+        let spoiled = url.appendingPathExtension("bad")
+        try? FileManager.default.removeItem(at: spoiled)
+        try? FileManager.default.moveItem(at: url, to: spoiled)
+        print("측정 기록을 못 읽었다 — \(spoiled.lastPathComponent) 로 치워 두고 새로 시작한다")
+        return nil
     }
 
     func save(_ state: UsageMeter.State) {
