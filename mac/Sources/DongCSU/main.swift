@@ -151,7 +151,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--probe-tokens") {
     stamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     print("기준: \(stamp.string(from: since)) (\(minutes)분 전)")
 
-    let result = TokenScan(since: since, offsets: [:], seenIDs: []).run()
+    let result = TokenScan(since: since, offsets: [:], seenIDs: SeenIDs()).run()
     print("응답: \(result.added.responses)")
     print("input: \(result.added.input)")
     print("output: \(result.added.output)")

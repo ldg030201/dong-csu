@@ -55,7 +55,7 @@ final class UsageMeter: ObservableObject {
         var tokens = TokenTally()
         var tokensByModel: [String: TokenTally] = [:]
         var offsets: [String: UInt64] = [:]
-        var seenIDs: Set<String> = []
+        var seenIDs = SeenIDs()
         var samples = 0
         var lastSampledAt: Date?
         /// 일시정지한 시각. nil이면 돌고 있다.
@@ -477,7 +477,7 @@ extension UsageMeter.State {
             tokens: (try? box.decode(TokenTally.self, forKey: .tokens)) ?? TokenTally(),
             tokensByModel: (try? box.decode([String: TokenTally].self, forKey: .tokensByModel)) ?? [:],
             offsets: (try? box.decode([String: UInt64].self, forKey: .offsets)) ?? [:],
-            seenIDs: (try? box.decode(Set<String>.self, forKey: .seenIDs)) ?? [],
+            seenIDs: (try? box.decode(SeenIDs.self, forKey: .seenIDs)) ?? SeenIDs(),
             samples: (try? box.decode(Int.self, forKey: .samples)) ?? 0,
             lastSampledAt: try? box.decode(Date.self, forKey: .lastSampledAt),
             pausedAt: try? box.decode(Date.self, forKey: .pausedAt),

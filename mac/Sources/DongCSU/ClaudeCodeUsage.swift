@@ -110,6 +110,46 @@ enum ClaudeCodeUsage {
 /// 덧붙기만 하므로 파일마다 어디까지 읽었는지 기억해 두고 그 뒤만 읽는다.
 ///
 /// 화면 밖에서 도는 값이라 메인 액터를 타지 않는다.
+/// 이미 센 응답 id. **들어온 차례를 들고 있다가 넘치면 오래된 것부터 버린다.**
+///
+/// 예전에는 `Set` 하나였고 상한에 닿으면 **새 id 를 아예 안 받았다.** 그러면 그 순간부터
+/// 중복 제거가 통째로 멈추는데, 같은 응답이 두세 줄에 걸쳐 적히는 것이 이 기록의 전제라
+/// **그 뒤로 합계가 2배가 된다.** 실측으로 하루에 서로 다른 id 가 8,300개씩 생기므로
+/// 상한 5만은 측정을 켜 둔 채 6~14일이면 닿는다 — "몇 주씩 켜 두는 사람" 이 바로 거기다.
+///
+/// 버리는 쪽은 **제일 오래된 것**이다. 방금 본 id 가 바로 다음 줄에서 또 나오므로,
+/// 새 것을 버리는 것은 중복 제거를 끄는 것과 같다.
+struct SeenIDs: Codable, Sendable, Equatable {
+    private var ids: Set<String> = []
+    /// 들어온 차례. 넘칠 때 버릴 쪽을 고르는 데만 쓴다.
+    private var order: [String] = []
+
+    /// 들고 있을 수 있는 최대 개수.
+    static let limit = 50_000
+    /// 넘칠 때 한 번에 버리는 양. **한 개씩 버리면 안 된다** — 배열 앞을 지우는 값이
+    /// 매번 들어서, 상한에 닿은 뒤로는 줄마다 5만 칸을 당기게 된다.
+    static let evictChunk = 4_096
+
+    var count: Int { ids.count }
+    func contains(_ id: String) -> Bool { ids.contains(id) }
+
+    mutating func insert(_ id: String) {
+        guard ids.insert(id).inserted else { return }
+        order.append(id)
+        guard order.count > Self.limit + Self.evictChunk else { return }
+        for old in order.prefix(Self.evictChunk) { ids.remove(old) }
+        order.removeFirst(Self.evictChunk)
+    }
+
+    init() {}
+    init(_ ids: [String]) { for id in ids { insert(id) } }
+
+    /// **파일에는 차례만 적는다.** 집합은 읽을 때 되만든다 — 같은 것을 두 벌 적을 이유가
+    /// 없고, 옛 파일이 `Set` 을 배열로 적어 둔 것과도 그대로 맞는다.
+    init(from decoder: any Decoder) throws { self.init((try? [String](from: decoder)) ?? []) }
+    func encode(to encoder: any Encoder) throws { try order.encode(to: encoder) }
+}
+
 struct TokenScan: Sendable {
     /// 이 시각보다 앞선 기록은 세지 않는다.
     ///
@@ -117,21 +157,14 @@ struct TokenScan: Sendable {
     /// 그건 새로 쓴 토큰이 아니다. 복사본은 원래 시각을 그대로 달고 오므로 여기서 걸린다.
     var since: Date
     var offsets: [String: UInt64]
-    var seenIDs: Set<String>
+    var seenIDs: SeenIDs
 
     struct Result: Sendable {
         var added = TokenTally()
         var addedByModel: [String: TokenTally] = [:]
         var offsets: [String: UInt64] = [:]
-        var seenIDs: Set<String> = []
+        var seenIDs = SeenIDs()
     }
-
-    /// 중복 제거용 id를 이만큼까지만 들고 있는다.
-    ///
-    /// 측정 구간 안의 응답 수만큼만 쌓이므로 실제로는 몇천을 넘지 않는다. 그래도
-    /// 몇 주씩 켜 두는 사람이 있을 수 있어서 위를 막아 둔다 — 넘으면 중복 제거만
-    /// 느슨해지고 합계는 계속 쌓인다.
-    static let seenLimit = 50_000
 
     func run() -> Result {
         var result = Result(offsets: offsets, seenIDs: seenIDs)
@@ -155,7 +188,7 @@ struct TokenScan: Sendable {
                 guard let entry = Self.parse(Data(line), since: since) else { continue }
                 // **같은 응답이 두세 줄에 걸쳐 적힌다.** 값은 매번 같으므로 처음 것만 센다.
                 guard !result.seenIDs.contains(entry.id) else { continue }
-                if result.seenIDs.count < Self.seenLimit { result.seenIDs.insert(entry.id) }
+                result.seenIDs.insert(entry.id)
 
                 result.added += entry.tally
                 result.addedByModel[entry.model, default: TokenTally()] += entry.tally
