@@ -580,17 +580,19 @@ final class HUDController {
         //
         // 미리보기에서 찾아 둔 것을 그대로 쓰지 않고 다시 찾는다 — 끌던 사이에 창이
         // 움직였을 수 있다.
-        guard canPerch else { return logPerchAttempt(nil) }
+        // **못 붙으면 어느 길로 빠지든 미리 잡아 둔 자세를 되돌린다.** 안 되돌리면
+        // 아무 데도 안 붙은 채로 매달린 그림이 남는다 — 그 상태에서는 걷는 자세가
+        // 아니라 매달린 그림으로 미끄러지고(`advance()` 가 매달림을 먼저 본다),
+        // 커서 피하기가 `guard owlAnimator.perch == nil` 에서 죽고, 마우스를 받는
+        // 자리도 좁혀진 채로 남는다. 다시 집어 들기 전에는 아무도 안 풀어 준다.
+        func giveUp() { owlAnimator.setPerch(nil); logPerchAttempt(nil) }
+
+        guard canPerch else { return giveUp() }
         guard let spot = WindowSurvey.snap(
                   mascot: mascotScreenRect(), within: perchSnapDistance,
                   sink: perchSink, placeable: { self.perchOrigin($0) != nil }
-              ) else { return logPerchAttempt(nil) }
-        guard motion.perch(at: spot) else {
-            // **미리 잡아 둔 자세를 되돌린다.** 안 되돌리면 아무 데도 안 붙은 채로
-            // 매달린 그림이 남는다.
-            owlAnimator.setPerch(nil)
-            return logPerchAttempt(nil)
-        }
+              ) else { return giveUp() }
+        guard motion.perch(at: spot) else { return giveUp() }
         logPerchAttempt(spot)
     }
 
