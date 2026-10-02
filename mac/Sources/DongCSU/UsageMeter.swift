@@ -27,6 +27,15 @@ final class UsageMeter: ObservableObject {
         var lastResetsAt: Date?
         /// 재는 동안 창이 몇 번 새로 열렸는지.
         var resets: Int = 0
+        /// 다음 표본은 더하지 말고 기준만 옮긴다. **일시정지에서 돌아올 때 켠다.**
+        ///
+        /// 예전에는 측정 전체에 깃발 하나였고, 재개 뒤 **첫 표본에 들어 있던 한도만**
+        /// 기준을 옮긴 뒤 그 깃발을 꺼 버렸다. 모델별 주간 한도처럼 표본에 없을 수도
+        /// 있는 한도는 옛 기준을 그대로 들고 있다가, 다시 나타나는 순간 세워 둔 동안
+        /// 쓴 몫을 통째로 더했다. 한도마다 따로 들면 그 틈이 없어진다.
+        /// **파일에도 남는다** — 깃발만 메모리에 두면 재개하고 앱을 끄는 것만으로
+        /// 같은 일이 벌어졌다.
+        var needsRebaseline = false
     }
 
     /// 끝난 측정 하나. 목록과 팝업이 이걸 그린다.
@@ -124,7 +133,9 @@ final class UsageMeter: ObservableObject {
 
     func start() {
         acceptsFinalSample = false
-        needsRebaseline = false
+        finalSampleUntil = nil
+        acceptsFinalScan = false
+        // 새 `State` 라 한도 기록이 비어 있다 — 재기준 깃발도 같이 사라진다.
         var fresh = State()
         fresh.startedAt = Date()
         // **지난 기록은 그대로 가져간다.** 새로 재기 시작했다고 지난 것을 버리면,
@@ -158,15 +169,12 @@ final class UsageMeter: ObservableObject {
         state.pausedTotal += Date().timeIntervalSince(pausedAt)
         state.pausedAt = nil
         state.offsets = ClaudeCodeUsage.endOffsets()
-        needsRebaseline = true
+        for id in state.tracks.keys { state.tracks[id]?.needsRebaseline = true }
         save()
 
         startScanTimer()
         requestSample(force: true)
     }
-
-    /// 다음 표본은 더하지 말고 기준만 옮긴다. 일시정지에서 돌아올 때 쓴다.
-    private var needsRebaseline = false
 
     /// 조회를 부탁한다. **너무 잦으면 요청 제한(429)에 걸린다.**
     ///
@@ -309,17 +317,17 @@ final class UsageMeter: ObservableObject {
                 continue
             }
 
-            if needsRebaseline {
+            if track.needsRebaseline {
                 // 세워 둔 동안 늘어난 몫은 이번 측정이 쓴 것이 아니다. 기준만 옮긴다.
                 var moved = track
                 moved.lastPercent = limit.percent
                 moved.lastResetsAt = limit.resetsAt
+                moved.needsRebaseline = false
                 state.tracks[limit.id] = moved
             } else {
                 state.tracks[limit.id] = Self.advance(track, with: limit)
             }
         }
-        needsRebaseline = false
 
         state.samples += 1
         state.lastSampledAt = snapshot.fetchedAt
@@ -481,7 +489,8 @@ extension UsageMeter.LimitTrack {
             accumulated: (try? box.decode(Double.self, forKey: .accumulated)) ?? 0,
             lastPercent: (try? box.decode(Double.self, forKey: .lastPercent)) ?? 0,
             lastResetsAt: try? box.decode(Date.self, forKey: .lastResetsAt),
-            resets: (try? box.decode(Int.self, forKey: .resets)) ?? 0
+            resets: (try? box.decode(Int.self, forKey: .resets)) ?? 0,
+            needsRebaseline: (try? box.decode(Bool.self, forKey: .needsRebaseline)) ?? false
         )
     }
 }
