@@ -410,7 +410,41 @@ enum ClaudeKeychain {
         guard let text = String(data: data, encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty
         else { return nil }
-        return text
+        return decodedIfHexDump(text)
+    }
+
+    /// `security -w` 가 **16진수 덤프로 찍어 준 것**을 되돌린다.
+    ///
+    /// 항목에 출력 가능 ASCII(0x20~0x7E) 밖의 바이트가 **하나라도** 있으면 `-w` 는 값을
+    /// 글자가 아니라 16진수로 찍는다. Claude Code 쪽 자격증명 JSON 은 비ASCII 를
+    /// 이스케이프하지 않고 날 UTF-8 로 들고 있어서(MCP 서버 이름에 한글 한 글자면 충분하다)
+    /// 실제로 걸린다. 그대로 넘기면 JSON 파싱이 조용히 실패하고, 앱은 토큰이 멀쩡히
+    /// 키체인에 있는데도 **"재로그인 필요"만 영원히 띄운다** — 재로그인해도 같은 자리다.
+    ///
+    /// 16진수처럼 생긴 **진짜 값**을 망가뜨리지 않으려고 세 가지를 다 만족할 때만 되돌린다:
+    /// 짝수 길이 · 16진수 글자뿐 · 되돌린 것이 올바른 UTF-8. 자격증명은 JSON 이라
+    /// 이 셋을 우연히 만족할 수가 없다(`{` 로 시작한다).
+    static func decodedIfHexDump(_ text: String) -> String {
+        let digits = Array(text.utf8)
+        guard digits.count >= 2, digits.count % 2 == 0 else { return text }
+        var bytes = [UInt8]()
+        bytes.reserveCapacity(digits.count / 2)
+        for pair in stride(from: 0, to: digits.count, by: 2) {
+            guard let high = value(ofHexDigit: digits[pair]),
+                  let low = value(ofHexDigit: digits[pair + 1]) else { return text }
+            bytes.append(high << 4 | low)
+        }
+        guard let decoded = String(bytes: bytes, encoding: .utf8) else { return text }
+        return decoded
+    }
+
+    private static func value(ofHexDigit byte: UInt8) -> UInt8? {
+        switch byte {
+        case UInt8(ascii: "0")...UInt8(ascii: "9"): return byte - UInt8(ascii: "0")
+        case UInt8(ascii: "a")...UInt8(ascii: "f"): return byte - UInt8(ascii: "a") + 10
+        case UInt8(ascii: "A")...UInt8(ascii: "F"): return byte - UInt8(ascii: "A") + 10
+        default: return nil
+        }
     }
 
     private static func parse(_ raw: String, from item: Item) -> OAuthCredentials? {
