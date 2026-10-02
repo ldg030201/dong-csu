@@ -36,11 +36,23 @@ TAG="mac-v$VERSION"
 BUMPED=0
 COMMITTED=0
 TMP=""
+# **커밋 전에 손대는 파일을 여기 다 적는다.** 아래 `git add` 와 같은 목록이어야 한다 —
+# 빠뜨린 파일은 중단했을 때 그대로 남는다. 실제로 변경 내역 셋이 빠져 있어서, 중간에
+# 멈추면 날짜가 박힌 Changelog.swift 와 다시 뽑은 changelog.json 둘이 남았다.
+# 그걸 모르고 커밋하면 **태그도 릴리스도 없는 버전이 업데이트 피드에 나간다** —
+# 돌고 있는 앱들이 받을 수 없는 버전으로 올리라고 한다.
+TOUCHED=(
+  Resources/Info.plist
+  Sources/DongCSU/main.swift
+  Sources/DongCSU/Changelog.swift
+  docs/changelog.json
+  "$REPO_ROOT/docs/changelog.json"
+  "$REPO_ROOT/README.md"
+)
 cleanup() {
   if [[ "$BUMPED" == "1" && "$COMMITTED" == "0" ]]; then
-    git checkout -- Resources/Info.plist Sources/DongCSU/main.swift \
-      "$REPO_ROOT/README.md" 2>/dev/null || true
-    echo "→ 버전 변경을 되돌렸다." >&2
+    git checkout -- "${TOUCHED[@]}" 2>/dev/null || true
+    echo "→ 버전 변경과 변경 내역을 되돌렸다." >&2
   fi
   if [[ -n "$TMP" ]]; then rm -rf "$TMP"; fi
 }
@@ -115,8 +127,7 @@ fi
 echo "▸ 빌드 확인 ($BUILT)"
 
 # ── 3. 커밋 · 태그 · 푸시 ───────────────────────────────────────
-git add Resources/Info.plist Sources/DongCSU/main.swift "$CHANGELOG" docs/changelog.json \
-  "$REPO_ROOT/docs/changelog.json" "$REPO_ROOT/README.md"
+git add "${TOUCHED[@]}"
 git commit -q -m "🔖 $TAG"
 COMMITTED=1
 git tag -a "$TAG" -m "$TAG"
