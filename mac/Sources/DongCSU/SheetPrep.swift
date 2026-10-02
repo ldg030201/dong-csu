@@ -341,6 +341,12 @@ private struct Canvas {
     }
     private func opaque(_ x: Int, _ y: Int) -> Bool { data[offset(x, y) + 3] > 40 }
 
+    /// 칸 선이 양 끝에서 모자라도 봐주는 픽셀 수. 그어 준 선이 가장자리에서 흐려진다.
+    static let ruleEndSlack = 2
+
+    /// 한 줄이 "한 가지 색" 인지 볼 때 봐주는 폭. 칸 선도 가장자리가 조금 번져 온다.
+    static let ruleColorSlack = 24
+
     /// 배경을 지우고 지운 픽셀 수를 돌려준다.
     ///
     /// **가장자리에서 번져 들어간다.** 색만 보고 지우면 회색으로 그린 죽음 칸까지
@@ -623,9 +629,13 @@ private struct Canvas {
                 // 안 넓히면 거기 걸친 것이 그대로 없어진다 — 라쿤은 21칸 중 18칸이
                 // 걸쳐 있었고, 어지러움 칸은 **귀 끝이 평평하게 잘려 나갔다.**
                 //
-                // 선과 그림은 **줄이 꽉 찼는지**로 가른다. 칸 선은 칸을 가로지르므로
-                // 한 줄이 통째로 차고, 그림은 그렇게까지 안 찬다. 이 판정이면 선을
-                // 안 지운 그림에서도 선을 안 물고 들어온다.
+                // 선과 그림은 **꽉 찼는가 + 한 가지 색인가** 둘로 가른다.
+                //
+                // 꽉 찬 것만 보면 안 된다. 누워서 칸을 가로지르는 자세(탈진)는 한 줄이
+                // 칸 폭의 80~100%를 채우므로 선으로 잡혔고, 그래서 **그 자세만 아래가
+                // 평평하게 잘려 나가면서 경고까지 같이 묻혔다** — 되살리려고 넣은 코드가
+                // 하필 되살려야 할 자세에서만 안 돌았다. 칸 선은 한 가지 색으로 쭉
+                // 그은 것이고 그림은 윤곽선과 채움이 섞여 있어서, 색의 폭으로 갈린다.
                 var top = minY, bottom = maxY, left = minX, right = maxX
                 func inkRow(_ y: Int) -> Int {
                     (0..<cellWidth).count { opaque(originX + $0, originY + y) }
@@ -633,14 +643,38 @@ private struct Canvas {
                 func inkColumn(_ x: Int) -> Int {
                     (0..<cellHeight).count { opaque(originX + x, originY + $0) }
                 }
-                let rowIsLine = cellWidth * 4 / 5, columnIsLine = cellHeight * 4 / 5
+                /// 칠해진 픽셀의 색이 한 가지인지. 칸 선을 가려내는 두 번째 잣대다.
+                func oneColor(_ points: [(Int, Int)]) -> Bool {
+                    var low = [255, 255, 255], high = [0, 0, 0]
+                    for (x, y) in points where opaque(originX + x, originY + y) {
+                        let base = offset(originX + x, originY + y)
+                        for channel in 0..<3 {
+                            let value = Int(data[base + channel])
+                            if value < low[channel] { low[channel] = value }
+                            if value > high[channel] { high[channel] = value }
+                        }
+                    }
+                    return (0..<3).allSatisfy { high[$0] - low[$0] <= Self.ruleColorSlack }
+                }
+                // **끝에서 끝까지 가로지르고, 그러면서 한 가지 색일 때만** 선으로 본다.
+                // 둘 다 필요하다. 꽉 찬 것만 보면 누운 자세가 걸리고, 색만 보면 바닥이
+                // 통째로 윤곽선인 그림이 걸린다(실제로 합성 시험에서 걸렸다).
+                // 칸 선은 시트를 가로질러 그은 것이라 칸 폭을 통째로 쓴다.
+                let rowIsLine = cellWidth - Self.ruleEndSlack
+                let columnIsLine = cellHeight - Self.ruleEndSlack
+                func ruleRow(_ y: Int) -> Bool {
+                    inkRow(y) >= rowIsLine && oneColor((0..<cellWidth).map { ($0, y) })
+                }
+                func ruleColumn(_ x: Int) -> Bool {
+                    inkColumn(x) >= columnIsLine && oneColor((0..<cellHeight).map { (x, $0) })
+                }
                 if maxX >= minX {
-                    while top > 0, (1..<rowIsLine).contains(inkRow(top - 1)) { top -= 1 }
-                    while bottom < cellHeight - 1,
-                          (1..<rowIsLine).contains(inkRow(bottom + 1)) { bottom += 1 }
-                    while left > 0, (1..<columnIsLine).contains(inkColumn(left - 1)) { left -= 1 }
-                    while right < cellWidth - 1,
-                          (1..<columnIsLine).contains(inkColumn(right + 1)) { right += 1 }
+                    while top > 0, inkRow(top - 1) > 0, !ruleRow(top - 1) { top -= 1 }
+                    while bottom < cellHeight - 1, inkRow(bottom + 1) > 0,
+                          !ruleRow(bottom + 1) { bottom += 1 }
+                    while left > 0, inkColumn(left - 1) > 0, !ruleColumn(left - 1) { left -= 1 }
+                    while right < cellWidth - 1, inkColumn(right + 1) > 0,
+                          !ruleColumn(right + 1) { right += 1 }
                 }
                 let ink: SheetPrep.Box? = maxX < minX ? nil : SheetPrep.Box(
                     x: originX + left, y: originY + top,
@@ -656,8 +690,7 @@ private struct Canvas {
                     if right == cellWidth - 1 { found.edges.append("오른쪽") }
                     // 넓히고도 상자 밖에 남은 것. 선으로 본 줄은 빼고 센다.
                     for y in 0..<cellHeight where y < top || y > bottom {
-                        let count = inkRow(y)
-                        if count < rowIsLine { found.pixels += count }
+                        if !ruleRow(y) { found.pixels += inkRow(y) }
                     }
                     for y in top...bottom {
                         for x in 0..<cellWidth where x < left || x > right {
