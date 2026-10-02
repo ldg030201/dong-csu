@@ -200,7 +200,8 @@ final class UsageMeter: ObservableObject {
         stopScanTimer()
         archiveCurrent()
         save()
-        // 멈추기 직전에 쓴 것도 들어가야 한다.
+        // 멈추기 직전에 쓴 것도 들어가야 한다. 이 한 번만 통과한다.
+        acceptsFinalScan = true
         scanTokens()
     }
 
@@ -254,6 +255,9 @@ final class UsageMeter: ObservableObject {
     /// 멈춘 뒤 딱 한 번, 마지막 표본을 받아 준다. 조회가 돌아오는 데 시간이 걸려서
     /// 그때는 이미 `stoppedAt` 이 찍혀 있다.
     private var acceptsFinalSample = false
+
+    /// 멈춘 뒤 **딱 한 번** 더 훑는 것을 받아 준다. `stop()` 이 켜고 훑기가 끈다.
+    private var acceptsFinalScan = false
 
     // MARK: - 한도
 
@@ -351,7 +355,12 @@ final class UsageMeter: ObservableObject {
     func scanTokens() {
         guard let since = state.startedAt, !isScanning else { return }
         // 세워 둔 동안 쓴 것은 세지 않는다. 다만 중지 직후의 마지막 훑기는 통과시킨다.
-        guard isCounting || !isRunning else { return }
+        guard isCounting || acceptsFinalScan else { return }
+        // **딱 한 번만 통과시킨다.** 예전에는 `!isRunning` 이라 중지한 뒤로 **모든**
+        // 호출이 통과했다. 설정 창 측정 탭이 5초마다 이걸 부르므로, 멈춘 측정의
+        // 토큰이 탭을 열어 둔 내내 계속 올라가고 `syncArchived()` 가 그 값을 기록에
+        // 덮어썼다 — 끝난 측정인데 볼 때마다 숫자가 달랐다.
+        acceptsFinalScan = false
         guard ClaudeCodeUsage.isAvailable else { return }
 
         isScanning = true
