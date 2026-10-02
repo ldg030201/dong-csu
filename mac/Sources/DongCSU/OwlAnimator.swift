@@ -512,6 +512,12 @@ final class OwlAnimator: ObservableObject {
         isRunning = false
         timer?.invalidate()
         timer = nil
+        // **어지러움은 세울 때 같이 푼다.** 이건 시간이 지나야 풀리는 기분인데 푸는
+        // 자리가 `advance()` 안뿐이라, 타이머를 끄면 그 상태로 굳는다. 그러면
+        // `HUDPanel.syncMotion` 이 읽는 `mood` 가 `.dizzy` 로 멈춰서 **펫이 영영 안
+        // 걷는다** — 흔들어 놓고 2.4초 안에 정지 아이콘으로 바꾸면 실제로 그랬다.
+        dizzyUntil = .distantPast
+        applyMood()
     }
 
     /// 사용량·연결 상태·드래그에서 정해지는 기분. 어지러움은 여기 안 들어온다.
