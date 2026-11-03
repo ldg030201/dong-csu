@@ -85,6 +85,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
     }
 
+    /// 기다리던 로그인을 같이 끊는다. 자식 프로세스는 우리가 꺼져도 안 꺼져서, 그냥 두면
+    /// 로컬 콜백을 받는 `claude` 가 시간 제한도 없이 남는다(제한은 우리 타이머가 건다).
+    func applicationWillTerminate(_ notification: Notification) {
+        ClaudeLogin.shared.cancel()
+    }
+
     /// 설정 창의 종료 버튼은 실수로 누르기 쉬운 자리라 한 번 확인한다.
     /// 종료하면 메뉴바 아이콘까지 사라져서 다시 켤 방법을 찾아야 한다.
     private static func confirmQuit() {

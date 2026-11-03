@@ -1062,18 +1062,12 @@ final class HUDController {
     }
 
     @objc private func handleLogin() {
-        guard ClaudeCLI.openLogin() else {
-            NSApp.activate(ignoringOtherApps: true)
-            let alert = NSAlert()
-            alert.messageText = "Claude Code 실행 파일을 찾지 못했습니다"
-            alert.informativeText = "터미널에서 직접 claude auth login 을 실행해 주세요."
-            alert.runModal()
-            return
-        }
-        // 로그인이 끝나면 새 토큰이 키체인에 쓰인다. 잠시 뒤 한 번 더 시도한다.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 30) { [weak self] in
+        // 로그인이 끝나면 새 토큰이 키체인에 쓰여 있다. 끝난 그 자리에서 바로 다시 묻는다.
+        let started = ClaudeLogin.shared.start(configDir: nil) { [weak self] succeeded in
+            guard succeeded else { return }
             self?.store.refresh(force: true)
         }
+        if !started { ClaudeCLI.alertMissingExecutable() }
     }
     /// 패널 외형·배경색·팔레트를 현재 설정에 맞춘다.
     private func applyAppearance() {
