@@ -128,7 +128,7 @@ enum Changelog {
             ChangelogGroup(title: "계정", tab: "account", notes: [
                 .new("사용량을 볼 계정 선택 추가 (계정 추가·빼기, 데스크톱 앱에서 쓰는 계정도 가능)"),
                 .new("팀·기업 계정의 팀 이름 표시 추가 (플랜 옆)"),
-                .change("재로그인할 때 터미널 창 없이 브라우저만 열리도록 변경"),
+                .change("재로그인 버튼에 대상 계정을 표시하고 터미널 창 없이 브라우저만 열리도록 변경"),
             ]),
         ]),
         ChangelogEntry(version: "2.6.0", date: "2026-11-03", groups: [
