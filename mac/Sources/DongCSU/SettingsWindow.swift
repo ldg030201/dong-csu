@@ -110,23 +110,23 @@ struct SettingsView: View {
 
     // **지우는 것은 반드시 한 번 더 묻는다.** 되돌릴 수 없고, 목록에서 누르는 자리라
     // 스쳐도 눌린다. 지우는 버튼을 새로 만들면 여기에 상태를 하나 더 둔다.
-    @State private var isConfirmingReset = false
-    @State private var isConfirmingClearHistory = false
-    @State private var isConfirmingRecordDelete = false
+    @ViewState private var isConfirmingReset = false
+    @ViewState private var isConfirmingClearHistory = false
+    @ViewState private var isConfirmingRecordDelete = false
     /// 업데이트는 앱을 껐다 켠다. 지우는 건 아니지만 같은 이유로 먼저 묻는다.
-    @State private var isConfirmingForceQuit = false
+    @ViewState private var isConfirmingForceQuit = false
     /// 사람이 손으로 펼쳐 놓은 아이콘 묶음. 접힌 것만 여기 들어온다.
-    @State private var openedIconGroups: Set<IconStyleGroup> = []
+    @ViewState private var openedIconGroups: Set<IconStyleGroup> = []
 
     /// 앱 수명만큼 산다. 설정 창을 닫아도 받던 것이 끊기지 않는다.
     @ObservedObject private var upgrader = Upgrader.shared
 
     /// 팝업으로 펼쳐 볼 지난 측정. nil이면 팝업이 없다.
-    @State private var selectedRecord: UsageMeter.Record?
+    @ViewState private var selectedRecord: UsageMeter.Record?
 
     /// 상세 팝업에서만 쓰는 캐시 포함 여부. 열 때 측정 탭 설정을 물려받고,
     /// 거기서 바꿔도 탭 설정은 그대로다.
-    @State private var sheetIncludesCache = false
+    @ViewState private var sheetIncludesCache = false
 
     /// 어느 탭이 열려 있는지. 메뉴에서 "변경 내역…"을 누르면 창 밖에서 바꾸므로
     /// 뷰 안의 @State가 아니라 설정 객체가 들고 있다.

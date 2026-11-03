@@ -584,10 +584,10 @@ struct UsageHUDView: View {
         return CGRect(x: x, y: panel.height - inset - badge, width: badge, height: badge)
     }
 
-    @State private var isHoveringRefresh = false
-    @State private var isHoveringSettings = false
-    @State private var isHoveringMeasure = false
-    @State private var isHoveringCollapse = false
+    @ViewState private var isHoveringRefresh = false
+    @ViewState private var isHoveringSettings = false
+    @ViewState private var isHoveringMeasure = false
+    @ViewState private var isHoveringCollapse = false
 
     /// 지금 링을 그릴지. **버튼 줄도 이걸 따른다** — 둘은 같이 떴다 사라진다.
     private var showsPetRing: Bool {
@@ -1299,7 +1299,7 @@ private struct PetCircleButton: View {
     var tint: Color?
     let action: () -> Void
 
-    @State private var isHovering = false
+    @ViewState private var isHovering = false
 
     private func s(_ value: CGFloat) -> CGFloat { value * scale }
 

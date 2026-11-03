@@ -50,6 +50,16 @@ VARIANT=test ./build.sh     # DongCSU-Test.app
 pkill -f DongCSU-Test; open build/DongCSU-Test.app
 ```
 
+### `@State` 대신 `@ViewState`
+
+**SwiftUI 의 `@State` 를 직접 쓰지 않는다.** macOS 27 SDK 부터 `@State` 는 Xcode 에만
+들어 있는 매크로로 풀려서, Command Line Tools 만 있으면 `StateMacro could not be found`
+로 빌드가 막힌다. Homebrew 로 소스에서 까는 사용자가 바로 그 환경이다.
+
+`ViewState.swift` 의 별명을 쓰면 예전 프로퍼티 래퍼로 풀린다. Xcode 를 깔아서 넘기면
+이 컴퓨터만 낫고 사용자는 그대로 막히므로 그쪽으로 풀지 않는다. SwiftUI 가 다른
+래퍼도 매크로로 바꾸면 같은 식으로 피한다.
+
 ## 눈으로 확인하기
 
 앱을 띄우지 않고도 대부분을 PNG로 뽑아 볼 수 있다. 화면에 영향을 주는 변경은
