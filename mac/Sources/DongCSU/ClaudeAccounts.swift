@@ -154,6 +154,20 @@ enum ClaudeAccounts {
 
     static func configDir(for service: String) -> URL? { knownConfigDirs()[service] }
 
+    /// 재로그인 버튼 글. **어느 계정으로 로그인하는지 적는다.**
+    ///
+    /// 기본 계정을 고른 채로 누르면 CLI 로그인 자체를 다시 한다. 로그인 페이지는 브라우저에
+    /// 로그인된 계정으로 진행돼서, 이름이 안 보이면 회사 계정으로 쓰던 CLI가 브라우저의 개인
+    /// 계정으로 넘어가기 쉽다.
+    static func reloginTitle(
+        service: String?,
+        profiles: [String: AccountProfile] = AccountProfileStore.all()
+    ) -> String {
+        let service = service ?? ClaudeKeychain.baseService
+        if let email = profiles[service]?.email, !email.isEmpty { return "\(email) 재로그인…" }
+        return service == ClaudeKeychain.baseService ? "Claude Code 재로그인…" : "추가한 계정 재로그인…"
+    }
+
     /// 새 계정을 로그인시킬 빈 폴더.
     ///
     /// **로그인을 안 끝내고 닫은 폴더가 있으면 그걸 다시 쓴다.** 누를 때마다 새로 만들면

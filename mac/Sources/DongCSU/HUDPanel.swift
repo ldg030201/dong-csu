@@ -1024,7 +1024,7 @@ final class HUDController {
         // — 새로고침해 봐야 다시 실패한다.
         if store.needsReauth {
             let login = NSMenuItem(
-                title: "Claude Code 재로그인…",
+                title: ClaudeAccounts.reloginTitle(service: settings.accountService),
                 action: #selector(handleLogin),
                 keyEquivalent: ""
             )

@@ -1624,7 +1624,10 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                Button("Claude Code 재로그인…", action: actions.login)
+                Button(
+                    ClaudeAccounts.reloginTitle(service: settings.accountService, profiles: accounts.profiles),
+                    action: actions.login
+                )
             }
         }
         // 다른 곳에서 로그인했거나 지웠을 수 있다. 탭을 열 때마다 키체인에 맞춘다.
