@@ -124,7 +124,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "2.6.0", date: nil, groups: [
+        ChangelogEntry(version: "2.6.0", date: "2026-11-03", groups: [
             ChangelogGroup(title: "HUD", notes: [
                 .new("5시간 한도가 없는 Ultra 계정 지원 "
                      + "(세션 링·숫자를 빼고, 마스코트가 지치는 기준은 주간으로)"),
