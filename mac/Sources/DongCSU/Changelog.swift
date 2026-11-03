@@ -124,6 +124,33 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
+        ChangelogEntry(version: "2.6.0", date: nil, groups: [
+            ChangelogGroup(title: "HUD", notes: [
+                .new("5시간 한도가 없는 Ultra 계정 지원 "
+                     + "(세션 링·숫자를 빼고, 마스코트가 지치는 기준은 주간으로)"),
+            ]),
+            ChangelogGroup(title: "측정", tab: "measure", notes: [
+                .fix("측정이 길어지면 토큰이 두 배로 세지던 문제 수정"),
+                .fix("중지한 측정에 그 뒤의 사용량이 더해지던 문제 수정 "
+                     + "(설정 창을 열어 뒀거나 조회가 늦게 왔을 때)"),
+                .fix("일시정지에서 돌아올 때 멈춘 동안 쓴 몫까지 세던 문제 수정"),
+            ]),
+            ChangelogGroup(title: "펫 모드", tab: "pet", notes: [
+                .fix("다른 화면으로 넘어가기를 켜도 맞붙은 화면 사이를 걸어서 못 넘어가던 문제 수정"),
+                .fix("창에 붙지 못한 뒤 매달린 자세로 굳어 걷기·커서 피하기가 멈추던 문제 수정"),
+                .fix("창에 매달린 채 눈을 깜빡이면 손이 테두리에서 떨어지던 문제 수정"),
+                .fix("흔든 직후 움직이지 않는 아이콘으로 바꾸면 다시 걷지 않던 문제 수정"),
+                .fix("창에 붙을 때마다 열린 창 목록을 기록 파일에 쌓던 문제 수정 (이미 쌓인 파일도 지움)"),
+            ]),
+            ChangelogGroup(title: "계정", tab: "account", notes: [
+                .fix("로그인 정보에 한글이 섞여 있으면 재로그인해도 계속 재로그인 필요로 뜨던 문제 수정"),
+                .fix("네트워크가 끊긴 동안 재로그인 필요로 뜨던 문제 수정"),
+            ]),
+            ChangelogGroup(title: "설치", notes: [
+                .fix("macOS 27에서 소스로 설치하면 빌드가 실패하던 문제 수정 (Command Line Tools만 있을 때)"),
+                .improve("소스로 설치할 때 Swift 툴체인이 낡았으면 무엇을 업데이트할지 안내하도록 개선"),
+            ]),
+        ]),
         ChangelogEntry(version: "2.5.2.1", date: "2026-09-02", groups: [
             ChangelogGroup(title: "아이콘", tab: "icon", notes: [
                 .fix("라쿤이 어지러워할 때 머리 위에 노란 조각이 뜨던 문제 수정"),
