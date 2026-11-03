@@ -62,8 +62,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .sink { [weak store] interval in store?.setPollInterval(interval.seconds) }
             .store(in: &cancellables)
 
-        // 측정이 도는 동안 조회 결과를 기록에 붙인다.
-        store.onSnapshot = { [weak meter] snapshot in meter?.record(snapshot) }
+        // 볼 계정은 설정을 따른다. 시작 전에 맞춰 둬야 첫 조회부터 고른 계정으로 나간다.
+        store.setAccount(settings.accountService)
+        settings.$accountService
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak store] service in store?.setAccount(service) }
+            .store(in: &cancellables)
+
+        // 측정이 도는 동안 조회 결과를 기록에 붙인다. 조회가 팀 이름을 새로 받았을 수
+        // 있으므로 계정 목록도 저장된 이름에 맞춘다.
+        store.onSnapshot = { [weak meter] snapshot in
+            meter?.record(snapshot)
+            ClaudeAccountDirectory.shared.reloadProfiles()
+        }
         // 시작·계속·중지를 누르면 다음 폴링을 기다리지 않고 곧바로 기준점을 잡는다.
         // **force 로 쏘지 않는다** — 429 백오프를 무시하게 되어 요청 제한을 더 부른다.
         meter.onNeedsSample = { [weak store] in store?.refresh() }

@@ -1062,8 +1062,24 @@ final class HUDController {
     }
 
     @objc private func handleLogin() {
+        // **고른 계정으로 다시 로그인한다.** 기본 로그인으로 띄우면 추가한 계정은 끝내
+        // 안 살아나고, 기본 계정 쪽만 엉뚱하게 바뀐다.
+        var configDir: URL?
+        if let service = settings.accountService, service != ClaudeKeychain.baseService {
+            guard let known = ClaudeAccounts.configDir(for: service) else {
+                NSApp.activate(ignoringOtherApps: true)
+                let alert = NSAlert()
+                alert.messageText = "여기서 다시 로그인할 수 없는 계정입니다"
+                alert.informativeText = "다른 설정 폴더로 로그인한 계정이라 폴더 위치를 모릅니다. "
+                    + "그 폴더를 CLAUDE_CONFIG_DIR 로 주고 claude auth login 을 실행해 주세요."
+                alert.runModal()
+                return
+            }
+            configDir = known
+        }
+
         // 로그인이 끝나면 새 토큰이 키체인에 쓰여 있다. 끝난 그 자리에서 바로 다시 묻는다.
-        let started = ClaudeLogin.shared.start(configDir: nil) { [weak self] succeeded in
+        let started = ClaudeLogin.shared.start(configDir: configDir) { [weak self] succeeded in
             guard succeeded else { return }
             self?.store.refresh(force: true)
         }
@@ -1520,8 +1536,8 @@ final class HUDController {
         // **5시간 한도가 생기거나 없어지면 링 수가 바뀐다.** 모델별 링을 켜 둔 카드는
         // 그만큼 크기도 달라져서, 뷰만 다시 그리면 창이 옛 크기로 남는다.
         // 인증 전 Ultra 가 인증을 마치는 순간이 이 경우다.
-        store.$snapshot
-            .map { $0?.hasSessionLimit ?? true }
+        store.$current
+            .map { $0.snapshot?.hasSessionLimit ?? true }
             .removeDuplicates()
             .dropFirst()
             .receive(on: DispatchQueue.main)

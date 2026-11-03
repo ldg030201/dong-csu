@@ -51,6 +51,8 @@ final class UsageMeter: ObservableObject {
         let tokens: TokenTally
         let tokensByModel: [String: TokenTally]
         let samples: Int
+        /// 어느 계정의 한도를 쟀는지(키체인 자리). 계정 고르기 전의 기록은 nil.
+        var account: String? = nil
 
         var duration: TimeInterval { stoppedAt.timeIntervalSince(startedAt) }
     }
@@ -73,6 +75,8 @@ final class UsageMeter: ObservableObject {
         var pausedTotal: TimeInterval = 0
         /// 끝난 측정들. 최신이 앞이다.
         var history: [Record] = []
+        /// 이 측정이 따라가는 계정. 첫 표본이 정한다.
+        var account: String?
     }
 
     /// 남겨 두는 기록 수. 넘치면 오래된 것부터 버린다.
@@ -250,7 +254,8 @@ final class UsageMeter: ObservableObject {
             tracks: tracksInOrder,
             tokens: state.tokens,
             tokensByModel: state.tokensByModel,
-            samples: state.samples
+            samples: state.samples,
+            account: state.account
         )
     }
 
@@ -302,6 +307,13 @@ final class UsageMeter: ObservableObject {
     /// 쓴 몫을 그대로 더한다.
     func record(_ snapshot: UsageSnapshot) {
         guard isCounting || takesAsFinalSample(snapshot) else { return }
+
+        // **재기 시작한 계정 것만 센다.** 도중에 다른 계정으로 바꾸면 그 계정의 %가 들어와서
+        // 기준과의 차이가 통째로 소모량으로 잡힌다. 돌아오면 그 사이 쓴 몫까지 이어서
+        // 더한다 — 같은 계정의 한도라 실제로 쓴 것이다.
+        if let owner = state.account, let incoming = snapshot.accountService, owner != incoming { return }
+        if state.account == nil { state.account = snapshot.accountService }
+
         if !isCounting { acceptsFinalSample = false; finalSampleUntil = nil }
 
         for limit in Self.limits(of: snapshot) {
@@ -505,7 +517,8 @@ extension UsageMeter.Record {
             tracks: (try? box.decode([UsageMeter.LimitTrack].self, forKey: .tracks)) ?? [],
             tokens: (try? box.decode(TokenTally.self, forKey: .tokens)) ?? TokenTally(),
             tokensByModel: (try? box.decode([String: TokenTally].self, forKey: .tokensByModel)) ?? [:],
-            samples: (try? box.decode(Int.self, forKey: .samples)) ?? 0
+            samples: (try? box.decode(Int.self, forKey: .samples)) ?? 0,
+            account: try? box.decode(String.self, forKey: .account)
         )
     }
 }
@@ -526,7 +539,8 @@ extension UsageMeter.State {
             lastSampledAt: try? box.decode(Date.self, forKey: .lastSampledAt),
             pausedAt: try? box.decode(Date.self, forKey: .pausedAt),
             pausedTotal: (try? box.decode(TimeInterval.self, forKey: .pausedTotal)) ?? 0,
-            history: Self.records(in: box)
+            history: Self.records(in: box),
+            account: try? box.decode(String.self, forKey: .account)
         )
     }
 

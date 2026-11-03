@@ -121,6 +121,12 @@ struct SettingsView: View {
     /// 앱 수명만큼 산다. 설정 창을 닫아도 받던 것이 끊기지 않는다.
     @ObservedObject private var upgrader = Upgrader.shared
 
+    /// 계정 목록. 계정 추가 뒤 새 로그인을 기다리는 것도 창 밖에서 산다.
+    @ObservedObject private var accounts = ClaudeAccountDirectory.shared
+
+    /// 빼기를 확인받는 중인 계정. nil 이면 묻고 있지 않다.
+    @ViewState private var accountPendingRemoval: ClaudeAccount?
+
     /// 팝업으로 펼쳐 볼 지난 측정. nil이면 팝업이 없다.
     @ViewState private var selectedRecord: UsageMeter.Record?
 
@@ -337,7 +343,7 @@ struct SettingsView: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    Text(store.snapshot?.planName ?? "Claude")
+                    Text(store.snapshot?.planTitle ?? "Claude")
                         .font(.system(size: 15, weight: .semibold))
                     Spacer()
                     if store.needsReauth {
@@ -749,6 +755,15 @@ struct SettingsView: View {
         .contentShape(Rectangle())
     }
 
+    /// 기록이 어느 계정 것인지. 지금 목록에 없는 계정이면 받아 둔 이름으로라도 말한다.
+    private func recordAccountText(_ record: UsageMeter.Record) -> String? {
+        guard let service = record.account else { return nil }
+        if let account = accounts.accounts.first(where: { $0.service == service }) {
+            return account.title(profile: accounts.profile(for: account))
+        }
+        return accounts.profiles[service]?.email
+    }
+
     /// 목록에 한 줄로 요약할 값. 세션이 있으면 그것, 없으면 첫 한도.
     private func measureHeadline(_ record: UsageMeter.Record) -> String {
         guard let track = record.tracks.first else { return "—" }
@@ -763,6 +778,12 @@ struct SettingsView: View {
                 Text("\(RemainingTime.elapsedText(record.duration)) 동안 · 표본 \(record.samples)회")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+                // **계정이 둘 이상일 때만.** 하나뿐이면 모든 기록이 같은 계정이라 적을 말이 없다.
+                if accounts.accounts.count > 1, let label = recordAccountText(record) {
+                    Text(label)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Divider()
@@ -1572,10 +1593,17 @@ struct SettingsView: View {
         // 토큰 만료까지 남은 시간이 초 단위로 줄어든다.
         TimelineView(.periodic(from: .now, by: 1)) { context in
             VStack(alignment: .leading, spacing: 14) {
+                accountPicker
+
+                Divider()
+
                 if let snapshot = store.snapshot {
                     VStack(alignment: .leading, spacing: 5) {
                         measureLabel("로그인", note: "Claude Code에서 가져옴")
                         measureRow("플랜", snapshot.planName ?? "—")
+                        if let team = snapshot.teamName {
+                            measureRow("팀", team)
+                        }
                         if let tier = Self.tierText(snapshot.rateLimitTier) {
                             measureRow("한도 등급", tier)
                         }
@@ -1597,6 +1625,125 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
 
                 Button("Claude Code 재로그인…", action: actions.login)
+            }
+        }
+        // 다른 곳에서 로그인했거나 지웠을 수 있다. 탭을 열 때마다 키체인에 맞춘다.
+        .onAppear { if !isPreviewRender { accounts.rescan() } }
+        .confirmationDialog(
+            "이 계정을 뺄까요?",
+            isPresented: Binding(
+                get: { accountPendingRemoval != nil },
+                set: { if !$0 { accountPendingRemoval = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: accountPendingRemoval
+        ) { account in
+            Button("빼기", role: .destructive) {
+                // 보고 있던 계정을 빼면 기본 로그인으로 돌아간다. 없는 계정을 계속 물을 수는 없다.
+                if accounts.remove(account), settings.accountService == account.service {
+                    settings.accountService = nil
+                }
+            }
+            .keyboardShortcut(.defaultAction)
+            Button("취소", role: .cancel) {}
+        } message: { account in
+            Text("\(account.title(profile: accounts.profile(for: account))) 로그인이 이 기기에서 지워집니다. "
+                 + "다시 보려면 계정 추가로 로그인해야 합니다.")
+        }
+    }
+
+    /// 지금 보고 있는 계정의 키체인 자리. 고른 적이 없으면 기본 로그인이다.
+    private var selectedAccountService: String {
+        settings.accountService ?? ClaudeKeychain.baseService
+    }
+
+    /// 사용량을 볼 계정 고르기.
+    ///
+    /// **계정이 하나여도 그린다.** 계정 추가 버튼이 여기 붙어 있어서, 안 그리면 둘째 계정을
+    /// 더할 길이 안 보인다. 하나뿐일 때는 고를 것이 없으니 줄만 보이고 눌러도 그대로다.
+    private var accountPicker: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            measureLabel("사용량을 볼 계정", note: "키체인에 로그인된 계정")
+
+            if accounts.accounts.isEmpty {
+                Text(accounts.isScanning ? "계정을 찾는 중…" : "로그인한 계정을 찾지 못했습니다.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(accounts.accounts) { account in
+                        accountRow(account)
+                    }
+                }
+            }
+
+            HStack(spacing: 8) {
+                if accounts.isWaitingForLogin {
+                    // 브라우저 탭을 그냥 닫으면 앱은 알 길이 없다. 기다림을 사람이 끊을 수 있어야
+                    // 5분 동안 버튼이 잠기지 않는다.
+                    Button("취소", action: accounts.cancelAddAccount)
+                    ProgressView().controlSize(.small)
+                    Text("브라우저에서 로그인을 기다리는 중")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                } else {
+                    Button("계정 추가…", action: accounts.addAccount)
+                    if accounts.loginFailed {
+                        Text("로그인을 마치지 못했습니다")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
+            Text("다른 계정으로 로그인해 두면 여기서 고를 수 있다. "
+                 + "데스크톱 앱에서 쓰는 계정도 같은 계정으로 추가하면 앱에서 쓴 몫까지 보인다.")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func accountRow(_ account: ClaudeAccount) -> some View {
+        let isSelected = account.service == selectedAccountService
+        let profile = accounts.profile(for: account)
+        return HStack(spacing: 8) {
+            Button {
+                // 기본 로그인은 nil 로 둔다. 계정이 하나뿐인 사람과 같은 상태여야 한다.
+                settings.accountService = account.isDefault ? nil : account.service
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(account.title(profile: profile))
+                            .font(.system(size: 11.5, weight: isSelected ? .semibold : .regular))
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Text(account.detail(profile: profile))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 4)
+                // 글자 사이 빈 곳도 눌리게 한다.
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if account.isRemovable {
+                Button {
+                    accountPendingRemoval = account
+                } label: {
+                    Image(systemName: "minus.circle")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .help("이 계정 빼기")
             }
         }
     }

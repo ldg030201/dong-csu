@@ -15,11 +15,33 @@ final class UsageStore: ObservableObject {
         if timer != nil { startTimer() }
     }
 
-    @Published private(set) var snapshot: UsageSnapshot?
-    @Published private(set) var errorText: String?
+    /// 계정 하나의 조회 상태.
+    ///
+    /// **계정마다 따로 든다.** 하나로 두면 계정을 바꿀 때마다 비워야 해서, 빨리 오가면 빈 화면이
+    /// 남았다 — 10초 바닥에 걸린 조회가 그냥 버려졌기 때문이다. 429 대기도 같이 지워져서 오갈수록
+    /// 요청이 늘었다. 따로 들면 돌아왔을 때 마지막 값이 바로 뜨고, 대기는 계정마다 그대로 남는다.
+    struct AccountState {
+        var snapshot: UsageSnapshot?
+        var errorText: String?
+        /// 자격증명이 없거나 만료됐다. 재시도해도 소용없고 Claude Code 재로그인이 필요하다.
+        var needsReauth = false
+        var backoffUntil: Date?
+        var consecutiveRateLimits = 0
+        /// 마지막으로 조회를 **내보낸** 시각. 성공·실패를 가리지 않는다 — 실패한 요청도
+        /// 서버 쪽 계산에는 똑같이 들어간다. 요청 제한은 토큰에 걸리므로 계정마다 센다.
+        var lastFetchAt: Date?
+    }
+
+    /// 지금 보는 계정의 상태. 화면은 전부 이걸 본다.
+    @Published private(set) var current = AccountState()
     @Published private(set) var isRefreshing = false
-    /// 자격증명이 없거나 만료됐다. 재시도해도 소용없고 Claude Code 재로그인이 필요하다.
-    @Published private(set) var needsReauth = false
+
+    /// 안 보는 계정들의 상태. 돌아오면 그대로 꺼내 쓴다.
+    private var parked: [String: AccountState] = [:]
+
+    var snapshot: UsageSnapshot? { current.snapshot }
+    var errorText: String? { current.errorText }
+    var needsReauth: Bool { current.needsReauth }
 
     /// 화면에 떠 있는 숫자가 마지막 성공값(= 지금 값이 아닐 수 있음)인지.
     var isStale: Bool { snapshot != nil && errorText != nil }
@@ -76,9 +98,28 @@ final class UsageStore: ObservableObject {
     var onSnapshot: ((UsageSnapshot) -> Void)?
 
     private var timer: Timer?
-    private var backoffUntil: Date?
-    private var consecutiveRateLimits = 0
     private var inFlight = false
+
+    /// 사용량을 볼 계정의 키체인 자리. nil 이면 Claude Code 기본 로그인.
+    private(set) var account: String?
+
+    private var accountKey: String { Self.key(account) }
+    private static func key(_ service: String?) -> String { service ?? "" }
+
+    /// 볼 계정을 바꾼다. **그 계정의 마지막 값을 바로 띄우고, 조회는 그 뒤에 덮어쓴다.**
+    ///
+    /// `force` 로 묻지 않는다 — 그 계정이 429 대기 중이면 대기를 지킨다. 바닥(10초)에 걸리면
+    /// 조회는 버려지지 않고 풀리는 때로 미뤄진다(`scheduleRetry`). 그래서 마구 오가도 계정마다
+    /// 10초에 한 번을 안 넘고, 화면은 늘 무언가를 띄우고 있다.
+    func setAccount(_ service: String?) {
+        guard service != account else { return }
+        parked[accountKey] = current
+        account = service
+        current = parked.removeValue(forKey: accountKey) ?? AccountState()
+        // 미뤄 둔 조회는 옛 계정의 바닥에 맞춘 것이다. 새 계정은 제 바닥으로 다시 잰다.
+        cancelRetry()
+        refresh()
+    }
 
     init() {}
 
@@ -89,10 +130,8 @@ final class UsageStore: ObservableObject {
         error: String? = nil,
         needsReauth: Bool = false
     ) {
-        self.snapshot = snapshot
+        self.current = AccountState(snapshot: snapshot, errorText: error, needsReauth: needsReauth)
         self.previewNextPoll = nextPoll
-        self.errorText = error
-        self.needsReauth = needsReauth
     }
 
     /// 렌더 확인용 고정값. 실제 실행에서는 항상 nil이다.
@@ -149,27 +188,56 @@ final class UsageStore: ObservableObject {
     /// 사람이 상황을 바꾼 뒤엔 바로 봐야 한다)는 그대로 살아 있다.
     static let minFetchInterval: TimeInterval = 10
 
-    /// 마지막으로 조회를 **내보낸** 시각. 성공·실패를 가리지 않는다 — 실패한 요청도
-    /// 서버 쪽 계산에는 똑같이 들어간다.
-    private var lastFetchAt: Date?
-
     /// 다음 조회까지 남은 초. 0이면 지금 할 수 있다. 버튼에 숫자로 보여준다.
     ///
     /// **눌렀는데 아무 일도 안 일어나면 고장으로 보인다.** 몇 초 뒤면 되는지 알려 준다.
     func fetchCooldown(now: Date = Date()) -> TimeInterval {
-        guard let lastFetchAt else { return 0 }
-        return max(0, Self.minFetchInterval - now.timeIntervalSince(lastFetchAt))
+        guard let last = current.lastFetchAt else { return 0 }
+        return max(0, Self.minFetchInterval - now.timeIntervalSince(last))
     }
 
     /// 지금 조회를 내보낼 수 있는지. 버튼을 잠그는 데도 쓴다.
     var canFetchNow: Bool { fetchCooldown() <= 0 }
 
+    /// 바닥에 걸린 조회를 바닥이 풀리는 때로 미뤄 둔 것. **하나만 걸어 둔다.**
+    ///
+    /// 예전에는 바닥에 걸리면 그냥 버렸다. 계정을 바꿔 화면을 새로 채워야 할 때 그게
+    /// 버려지면 다음 폴링(기본 10분)까지 아무것도 안 뜬다.
+    private var pendingRetry: DispatchWorkItem?
+    /// 미뤄 둔 것들 중 하나라도 force 였는지. 미루는 사이 force 가 뭉개지면 안 된다.
+    private var pendingRetryForce = false
+
+    private func scheduleRetry(force: Bool) {
+        pendingRetryForce = pendingRetryForce || force
+        guard pendingRetry == nil else { return }
+        let item = DispatchWorkItem { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let force = self.pendingRetryForce
+                self.cancelRetry()
+                self.refresh(force: force)
+            }
+        }
+        pendingRetry = item
+        // 딱 맞춰 깨면 몇 ms 모자라 다시 미뤄질 수 있다. 조금 늦게 깬다.
+        DispatchQueue.main.asyncAfter(deadline: .now() + fetchCooldown() + 0.1, execute: item)
+    }
+
+    private func cancelRetry() {
+        pendingRetry?.cancel()
+        pendingRetry = nil
+        pendingRetryForce = false
+    }
+
     func refresh(force: Bool = false) {
         if inFlight { return }
-        guard canFetchNow else { return }
-        if !force, let backoffUntil, backoffUntil > Date() { return }
-        if force { backoffUntil = nil }
-        lastFetchAt = Date()
+        guard canFetchNow else {
+            scheduleRetry(force: force)
+            return
+        }
+        if !force, let backoffUntil = current.backoffUntil, backoffUntil > Date() { return }
+        if force { current.backoffUntil = nil }
+        current.lastFetchAt = Date()
 
         inFlight = true
         isRefreshing = true
@@ -180,21 +248,29 @@ final class UsageStore: ObservableObject {
         // 화면이 꺼져 폴링을 멈춘 상태(timer == nil)라면 여기서 다시 켜지 않는다.
         if timer != nil { startTimer() }
 
+        let requested = account
         // Task는 감싼 @MainActor 컨텍스트를 물려받으므로 본문은 메인 액터에서 돈다.
         Task { [weak self] in
+            let outcome: Result<UsageSnapshot, Error>
             do {
-                let result = try await UsageAPI.fetch()
-                guard let self else { return }
-                self.snapshot = result
-                self.errorText = nil
-                self.needsReauth = false
-                self.consecutiveRateLimits = 0
-                self.backoffUntil = nil
-                self.onSnapshot?(result)
+                outcome = .success(try await UsageAPI.fetch(service: requested))
             } catch {
-                self?.apply(error: error)
+                outcome = .failure(error)
             }
-            self?.finish()
+            guard let self else { return }
+            self.finish()
+
+            if self.account == requested {
+                Self.apply(outcome, to: &self.current)
+            } else {
+                // **도는 사이 계정을 바꿨다.** 이 결과는 다른 계정 것이라 지금 화면에 얹으면 안
+                // 되지만, 버리지도 않는다 — 그 계정 자리에 넣어 두면 돌아왔을 때 바로 뜬다.
+                // 지금 계정은 이게 도는 동안 묻지 못했으니 이제 묻는다.
+                Self.apply(outcome, to: &self.parked[Self.key(requested), default: AccountState()])
+                self.refresh()
+            }
+            // 측정은 계정을 보고 제 것만 고른다(`UsageMeter.record`). 다른 계정 값도 그대로 넘긴다.
+            if case .success(let result) = outcome { self.onSnapshot?(result) }
         }
     }
 
@@ -208,7 +284,7 @@ final class UsageStore: ObservableObject {
     var nextPollDate: Date? {
         if let previewNextPoll { return previewNextPoll }
         guard let timer, timer.isValid else { return nil }
-        if let backoffUntil, backoffUntil > timer.fireDate { return backoffUntil }
+        if let backoffUntil = current.backoffUntil, backoffUntil > timer.fireDate { return backoffUntil }
         return timer.fireDate
     }
 
@@ -217,7 +293,7 @@ final class UsageStore: ObservableObject {
         guard let snapshot else { return errorText ?? "사용량 불러오는 중…" }
 
         var parts: [String] = []
-        if let plan = snapshot.planName { parts.append(plan) }
+        if let plan = snapshot.planTitle { parts.append(plan) }
         if let fiveHour = snapshot.fiveHour {
             parts.append("세션 \(Int(fiveHour.utilization.rounded()))%\(Self.resetSuffix(fiveHour.resetsAt))")
         }
@@ -239,27 +315,42 @@ final class UsageStore: ObservableObject {
     /// 성공할 수 없는 조회를 폴링 주기마다 영원히 반복한다.
     private static let terminalRetryInterval: TimeInterval = 30 * 60
 
+    /// 조회 결과를 그 계정의 상태에 얹는다.
+    ///
     /// 실패해도 직전 성공값(snapshot)은 유지해서 링이 비어 보이지 않게 한다.
-    private func apply(error: Error) {
+    private static func apply(_ outcome: Result<UsageSnapshot, Error>, to state: inout AccountState) {
+        let error: Error
+        switch outcome {
+        case .success(let result):
+            state.snapshot = result
+            state.errorText = nil
+            state.needsReauth = false
+            state.consecutiveRateLimits = 0
+            state.backoffUntil = nil
+            return
+        case .failure(let failure):
+            error = failure
+        }
+
         let usageError = error as? UsageError
-        errorText = usageError?.description ?? error.localizedDescription
-        needsReauth = usageError?.isTerminal ?? false
+        state.errorText = usageError?.description ?? error.localizedDescription
+        state.needsReauth = usageError?.isTerminal ?? false
 
         // 재로그인은 사람이 해야 끝난다. 깨어남·수동 새로고침·로그인 직후에는
         // force로 들어오므로 여기서 길게 쉬어도 반응이 늦어지지 않는다.
-        if needsReauth {
-            consecutiveRateLimits = 0
-            backoffUntil = Date().addingTimeInterval(Self.terminalRetryInterval)
+        if state.needsReauth {
+            state.consecutiveRateLimits = 0
+            state.backoffUntil = Date().addingTimeInterval(terminalRetryInterval)
             return
         }
 
         guard let usageError, case .rateLimited(let retryAfter) = usageError else {
-            consecutiveRateLimits = 0
+            state.consecutiveRateLimits = 0
             return
         }
-        consecutiveRateLimits += 1
+        state.consecutiveRateLimits += 1
         // 60s, 120s, 240s … 최대 5분. Retry-After 헤더가 더 길면 그쪽을 따른다.
-        let backoff = min(60 * pow(2, Double(consecutiveRateLimits - 1)), 300)
-        backoffUntil = Date().addingTimeInterval(max(backoff, retryAfter ?? 0))
+        let backoff = min(60 * pow(2, Double(state.consecutiveRateLimits - 1)), 300)
+        state.backoffUntil = Date().addingTimeInterval(max(backoff, retryAfter ?? 0))
     }
 }

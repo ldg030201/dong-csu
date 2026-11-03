@@ -139,6 +139,19 @@ final class HUDSettings: ObservableObject {
         didSet { defaults.set(mode.rawValue, forKey: Keys.mode) }
     }
 
+    /// 사용량을 볼 계정의 키체인 자리(`ClaudeAccount.service`). nil 이면 Claude Code 기본 로그인.
+    ///
+    /// 계정이 하나뿐인 사람은 이 값을 한 번도 안 갖는다 — 고를 것이 없으니 예전과 똑같이 돈다.
+    @Published var accountService: String? = nil {
+        didSet {
+            if let accountService {
+                defaults.set(accountService, forKey: Keys.accountService)
+            } else {
+                defaults.removeObject(forKey: Keys.accountService)
+            }
+        }
+    }
+
     @Published var petRingDisplay: PetRingDisplay = .default {
         didSet { defaults.set(petRingDisplay.rawValue, forKey: Keys.petRingDisplay) }
     }
@@ -373,6 +386,7 @@ final class HUDSettings: ObservableObject {
         /// 오리지널로 되돌려 놓은 사람의 선택을 매번 덮는다.
         static let movedToSheetOwl = "hud.movedToSheetOwl"
         static let mode = "hud.mode"
+        static let accountService = "account.service"
         /// 모드가 생기기 전에 쓰던 접힘 여부. 새로 저장하지는 않고 읽기만 한다.
         static let collapsed = "hud.collapsed"
         static let hidden = "hud.hidden"
@@ -430,6 +444,7 @@ final class HUDSettings: ObservableObject {
             mode = defaults.bool(forKey: Keys.collapsed) ? .collapsed : .default
         }
         isHUDVisible = !defaults.bool(forKey: Keys.hidden)
+        accountService = defaults.string(forKey: Keys.accountService)
         expandSide = HUDExpandSide(rawValue: defaults.string(forKey: Keys.expandSide) ?? "") ?? .default
         scale = HUDScale(rawValue: defaults.string(forKey: Keys.scale) ?? "") ?? .default
         petRingDisplay = PetRingDisplay(rawValue: defaults.string(forKey: Keys.petRingDisplay) ?? "")

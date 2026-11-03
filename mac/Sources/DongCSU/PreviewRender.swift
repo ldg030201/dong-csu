@@ -576,6 +576,19 @@ enum HUDPreviewRenderer {
             rateLimitTier: "default_claude_max_5x",
             tokenExpiresAt: Date().addingTimeInterval(6 * 3600 + 41 * 60)
         )
+        // 계정 탭은 키체인을 훑어서 그린다. 그림에 이 기기의 이메일이 박히지 않게 지어낸 것을 넣는다.
+        let added = "\(ClaudeKeychain.baseService)-0a1b2c3d"
+        ClaudeAccountDirectory.shared.showPreview([
+            ClaudeAccount(service: ClaudeKeychain.baseService, keychainAccount: nil,
+                          subscriptionType: "max", configDir: nil),
+            ClaudeAccount(service: added, keychainAccount: nil,
+                          subscriptionType: "team", configDir: URL(fileURLWithPath: "/tmp/preview")),
+        ], profiles: [
+            ClaudeKeychain.baseService: AccountProfile(email: "me@example.com", organizationName: nil,
+                                                       organizationType: "claude_max", fetchedAt: Date()),
+            added: AccountProfile(email: "me@company.com", organizationName: "Acme",
+                                  organizationType: "claude_team", fetchedAt: Date()),
+        ])
         let view = SettingsView(
             settings: HUDSettings(defaults: UserDefaults(suiteName: "dong-csu.preview") ?? .standard),
             // 상태 탭이 조회 카운트다운을 그리므로 예정 시각까지 넣어야 실제와 같아진다.

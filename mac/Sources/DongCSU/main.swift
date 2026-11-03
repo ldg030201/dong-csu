@@ -7,15 +7,20 @@ if CommandLine.arguments.contains("--version") {
     exit(0)
 }
 
-// GUI 없이 사용량 조회만 확인하는 진단 모드: dong-csu --probe
-if CommandLine.arguments.contains("--probe") {
+// GUI 없이 사용량 조회만 확인하는 진단 모드: dong-csu --probe [키체인 자리]
+//
+// 자리를 주면 그 계정으로 묻는다(`--probe-accounts` 가 자리 이름을 찍어 준다).
+if let flagIndex = CommandLine.arguments.firstIndex(of: "--probe") {
+    let arguments = CommandLine.arguments
+    let service = arguments.indices.contains(flagIndex + 1) ? arguments[flagIndex + 1] : nil
     let done = DispatchSemaphore(value: 0)
     // main.swift 최상위 코드는 @MainActor라서 Task {}로 띄우면
     // done.wait()가 잡고 있는 메인 스레드를 기다리다 데드락 난다. 반드시 detached.
     Task.detached {
         do {
-            let snapshot = try await UsageAPI.fetch()
-            let plan = snapshot.planName ?? "(플랜 불명)"
+            let snapshot = try await UsageAPI.fetch(service: service)
+            let plan = snapshot.planTitle ?? "(플랜 불명)"
+            print("account: \(snapshot.accountService ?? "-")")
             print("plan: \(plan)")
             if let fiveHour = snapshot.fiveHour {
                 print("five_hour: \(fiveHour.utilization)% resets_at=\(fiveHour.resetsAt?.description ?? "-")")
@@ -41,6 +46,40 @@ if CommandLine.arguments.contains("--probe") {
             }
         } catch {
             print("error: \(error)")
+        }
+        done.signal()
+    }
+    done.wait()
+    exit(0)
+}
+
+// 키체인에 로그인해 둔 계정을 늘어놓는다: dong-csu --probe-accounts
+//
+// **토큰 값은 찍지 않는다.** 자리 이름 · 요금제 · 우리가 만든 폴더인지 · 이메일과 팀 이름만.
+// 이름은 토큰이 살아 있는 계정만 서버에 묻는다 — 설정 창 목록과 같은 규칙이다.
+if CommandLine.arguments.contains("--probe-accounts") {
+    let done = DispatchSemaphore(value: 0)
+    Task.detached {
+        let accounts = ClaudeAccounts.scan()
+        let skipped = ClaudeKeychain.credentialServices().map(\.service)
+            .filter { service in !accounts.contains { $0.service == service } }
+        print("계정 \(accounts.count)개")
+        for account in accounts {
+            var profile = AccountProfileStore.profile(for: account.service)
+            if profile == nil || profile?.isStale == true,
+               let credentials = CredentialStore.peek(service: account.service),
+               credentials.isUsableForAWhile {
+                profile = await UsageAPI.fetchProfile(accessToken: credentials.accessToken) ?? profile
+            }
+            print("- \(account.service)")
+            print("    제목: \(account.title(profile: profile))")
+            print("    설명: \(account.detail(profile: profile))")
+            print("    폴더: \(account.configDir?.path ?? "(모름)")")
+            print("    팀: \(profile?.teamName ?? "-")  조직 종류: \(profile?.organizationType ?? "-")")
+        }
+        // 이름만 맞고 로그인이 안 든 자리. 목록에서 빠진 이유를 눈으로 확인한다.
+        for service in skipped {
+            print("x \(service)  (로그인 없음 — 목록에서 뺐다)")
         }
         done.signal()
     }
@@ -197,7 +236,32 @@ if CommandLine.arguments.contains("--probe-meter") {
 
         let ok = track.accumulated == 104 && track.resets == 1
         print(ok ? "통과 (누적 104%p, 리셋 1회)" : "실패: 누적 \(track.accumulated)%p, 리셋 \(track.resets)회")
-        exit(ok ? 0 : 1)
+
+        // 재는 도중에 계정을 바꾸면 다른 계정의 표본은 안 들어가야 한다. 들어가면 두 계정의
+        // % 차이가 통째로 소모량이 된다(아래라면 50%p).
+        func sample(_ percent: Double, account: String) -> UsageSnapshot {
+            UsageSnapshot(planName: nil, fiveHour: nil, sevenDay: nil, fetchedAt: Date(),
+                          limits: [limit(percent, first)], accountService: account)
+        }
+        let accountSteps: [(Double, String, String)] = [
+            (20, "A", "기준"),
+            (70, "B", "다른 계정 — 거른다"),
+            (25, "A", "돌아왔다 — 이어서 센다"),
+        ]
+        let accountOK = MainActor.assumeIsolated { () -> Bool in
+            var running = UsageMeter.State()
+            running.startedAt = base
+            let meter = UsageMeter(preview: running)
+            for (percent, account, note) in accountSteps {
+                meter.record(sample(percent, account: account))
+                let accumulated = meter.state.tracks["session"]?.accumulated ?? -1
+                print(String(format: "  %@ %3.0f%% → 누적 %3.0f%%p   (%@)", account, percent, accumulated, note))
+            }
+            return meter.state.tracks["session"]?.accumulated == 5 && meter.state.account == "A"
+        }
+        print(accountOK ? "통과 (계정 A만 5%p)" : "실패: 다른 계정 표본이 섞였다")
+
+        exit(ok && accountOK ? 0 : 1)
     }
 
     // 한 번 훑어서 기록에 얹는다. 앱이 1분마다 하는 것과 같은 일이다.

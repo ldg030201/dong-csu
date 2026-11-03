@@ -61,6 +61,22 @@ struct UsageSnapshot: Sendable {
     var rateLimitTier: String?
     /// 지금 쓰는 액세스 토큰이 언제까지인지.
     var tokenExpiresAt: Date?
+
+    /// 어느 키체인 항목(= 어느 계정)으로 읽었는지. 측정이 계정이 바뀐 표본을 거른다.
+    var accountService: String?
+    /// 팀·기업 계정의 팀 이름. 서버 프로필에서 온다. 개인 계정이면 nil.
+    var teamName: String?
+
+    /// 플랜 이름 옆에 팀 이름까지. 화면에 플랜을 띄우는 곳은 이걸 쓴다.
+    ///
+    /// **"Team" 만으로는 어느 팀인지 모른다.** 회사 팀 계정과 개인 계정을 오가는
+    /// 사람에게는 그게 지금 어느 계정을 보고 있는지 알려 주는 유일한 글자다.
+    var planTitle: String? {
+        switch (planName, teamName) {
+        case let (plan?, team?): return "\(plan) · \(team)"
+        case let (plan, team): return plan ?? team
+        }
+    }
 }
 
 enum UsageError: Error, CustomStringConvertible {
@@ -137,6 +153,12 @@ actor CredentialStore {
 
     private var cached: OAuthCredentials?
 
+    /// 캐시가 어느 계정 것인지(키체인 서비스 이름, nil 은 기본 로그인).
+    ///
+    /// **한 칸만 둔다.** 조회는 고른 계정 하나로만 나가서, 계정을 바꿀 때 비우면 된다.
+    /// 칸을 계정마다 두면 안 보는 계정의 토큰까지 메모리에 쌓인다.
+    private var cachedService: String?
+
     /// 401을 받았다. 시계로는 멀쩡해 보여도 다음번에는 갱신부터 한다.
     private var needsRefresh = false
 
@@ -163,10 +185,17 @@ actor CredentialStore {
     ///
     /// 그래서 직접 갱신하되, **회전한 경우에만** 새 값을 키체인에 되돌려 쓴다. 그러면
     /// Claude Code 쪽도 같이 최신이 되어 갈라지지 않는다.
-    func current() async -> OAuthCredentials? {
+    func current(service: String? = nil) async -> OAuthCredentials? {
+        if service != cachedService {
+            cached = nil
+            needsRefresh = false
+            lastRefreshAt = nil
+            lastRefreshWasOffline = false
+            cachedService = service
+        }
         if !needsRefresh, let cached, cached.isUsableForAWhile { return cached }
 
-        var effective = Self.merge(ClaudeKeychain.readCredentials(), with: RefreshedTokenStore.load())
+        var effective = Self.peek(service: service)
 
         if needsRefresh || !(effective?.isUsableForAWhile ?? false),
            let credentials = effective,
@@ -175,7 +204,7 @@ actor CredentialStore {
             lastRefreshAt = Date()
             switch await OAuthTokenRefresher.refresh(using: refreshToken) {
             case .renewed(let renewed):
-                Self.persist(renewed, replacing: refreshToken, origin: credentials.origin)
+                Self.persist(renewed, service: service, replacing: refreshToken, origin: credentials.origin)
                 effective = credentials.applying(renewed)
                 lastRefreshWasOffline = false
             case .offline:
@@ -198,16 +227,28 @@ actor CredentialStore {
     private(set) var lastRefreshWasOffline = false
 
     /// 서버가 401/403을 주면 캐시된 토큰이 더 이상 유효하지 않다는 뜻이다.
-    func invalidate() {
+    ///
+    /// **그 사이 계정을 바꿨으면 아무것도 안 한다.** 옛 계정의 401로 새 계정 캐시를
+    /// 버리면 멀쩡한 토큰을 괜히 갱신한다.
+    func invalidate(service: String? = nil) {
+        guard service == cachedService else { return }
         cached = nil
         needsRefresh = true
+    }
+
+    /// 갱신하지 않고 지금 손에 있는 것만 본다. 안 고른 계정의 이름을 물을 때 쓴다.
+    ///
+    /// **여기서는 절대 갱신하지 않는다.** 리프레시 토큰은 쓰면 회전해서, 안 보는 계정까지
+    /// 건드리면 그 계정으로 Claude Code를 쓰는 쪽과 갱신이 엇갈릴 자리만 늘어난다.
+    nonisolated static func peek(service: String?) -> OAuthCredentials? {
+        merge(ClaudeKeychain.readCredentials(service: service), with: RefreshedTokenStore.load(service: service))
     }
 
     /// 키체인에서 읽은 것과 우리가 갱신해 둔 것 중 **더 새것**을 쓴다.
     ///
     /// 플랜 이름과 읽어 온 자리는 키체인에만 있으므로 그쪽이 없으면 아무것도 못 한다 —
     /// 그 상태는 로그인 자체가 없는 것이다.
-    private static func merge(
+    private nonisolated static func merge(
         _ base: OAuthCredentials?,
         with stash: RefreshedToken?
     ) -> OAuthCredentials? {
@@ -219,10 +260,11 @@ actor CredentialStore {
 
     private static func persist(
         _ token: RefreshedToken,
+        service: String?,
         replacing previous: String,
         origin: ClaudeKeychain.Item?
     ) {
-        RefreshedTokenStore.save(token)
+        RefreshedTokenStore.save(token, service: service)
 
         // **값이 실제로 바뀌었을 때만** 남의 자리를 건드린다. 같은 것을 돌려줬다면
         // 키체인 값은 아직 유효하고, 우리가 쓸 이유가 없다.
@@ -263,7 +305,8 @@ enum KeychainWriteBack {
 /// "항상 허용"을 한 번 눌러두면 dong-csu를 다시 빌드해도 접근 권한이 유지된다.
 /// (직접 SecItemCopyMatching을 쓰면 재빌드마다 코드 서명이 바뀌어 매번 다시 물어본다.)
 enum ClaudeKeychain {
-    private static let baseService = "Claude Code-credentials"
+    /// 기본 설정 폴더(`~/.claude`)로 로그인한 계정의 자리.
+    static let baseService = "Claude Code-credentials"
 
     /// 자격증명이 들어 있던 키체인 항목.
     struct Item: Sendable {
@@ -274,9 +317,13 @@ enum ClaudeKeychain {
         let raw: String
     }
 
-    static func readCredentials() -> OAuthCredentials? {
+    /// 키체인에서 자격증명을 읽는다.
+    ///
+    /// `service` 를 주면 그 자리만 본다(계정 고르기). nil 이면 예전처럼 이 앱의
+    /// `CLAUDE_CONFIG_DIR` 자리 → 기본 자리 순서로 찾는다.
+    static func readCredentials(service: String? = nil) -> OAuthCredentials? {
         let account = NSUserName()
-        for service in serviceNames() {
+        for service in service.map({ [$0] }) ?? serviceNames() {
             for accountName in [account, nil] {
                 guard let raw = runSecurity(service: service, account: accountName),
                       let parsed = parse(raw, from: Item(service: service, account: accountName, raw: raw))
@@ -401,13 +448,76 @@ enum ClaudeKeychain {
             .trimmingCharacters(in: .whitespacesAndNewlines), !configDir.isEmpty {
             let normalized = (configDir as NSString).standardizingPath
             if normalized != defaultDir {
-                let digest = SHA256.hash(data: Data(normalized.utf8))
-                let hex = digest.map { String(format: "%02x", $0) }.joined().prefix(8)
-                names.append("\(baseService)-\(hex)")
+                names.append(service(forConfigDir: normalized))
             }
         }
         names.append(baseService)
         return names
+    }
+
+    /// 설정 폴더 하나가 쓰는 자리. 폴더 경로의 SHA256 앞 8자리를 붙인다.
+    ///
+    /// **Claude Code가 받은 경로를 그대로 해시한다.** `security` 를 가로채서 실제로 재 봤다 —
+    /// 띄어쓰기가 든 경로도 손대지 않고 해시한다. 그래서 로그인을 띄울 때 넘기는 문자열과
+    /// 여기 넣는 문자열이 **글자 하나까지 같아야** 같은 자리가 나온다.
+    static func service(forConfigDir path: String) -> String {
+        let digest = SHA256.hash(data: Data(path.utf8))
+        let hex = digest.map { String(format: "%02x", $0) }.joined().prefix(8)
+        return "\(baseService)-\(hex)"
+    }
+
+    /// 로그인 자리로 보이는 키체인 항목 전부. **값은 안 읽는다.**
+    ///
+    /// 속성만 물어서 허락 창이 안 뜬다. 안에 로그인이 실제로 들어 있는지는 모른다 —
+    /// MCP 로그인만 남은 빈 자리(`mcpOAuth` 만 있는 것)도 여기 잡힌다. 값을 읽어 거르는
+    /// 일은 부르는 쪽(`ClaudeAccounts.scan`)이 한다.
+    static func credentialServices() -> [(service: String, account: String?)] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: true,
+        ]
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let items = result as? [[String: Any]]
+        else { return [] }
+
+        var seen = Set<String>()
+        return items.compactMap { item in
+            guard let service = item[kSecAttrService as String] as? String,
+                  isCredentialService(service), seen.insert(service).inserted
+            else { return nil }
+            return (service, item[kSecAttrAccount as String] as? String)
+        }
+    }
+
+    /// `Claude Code-credentials` 이거나 거기에 `-<16진수 8자리>` 가 붙은 것.
+    ///
+    /// 앞머리만 보면 `Claude Code-credentials-backup` 처럼 사람이 만든 항목까지 계정으로 잡힌다.
+    static func isCredentialService(_ service: String) -> Bool {
+        if service == baseService { return true }
+        let prefix = baseService + "-"
+        guard service.hasPrefix(prefix) else { return false }
+        let suffix = service.dropFirst(prefix.count)
+        return suffix.count == 8 && suffix.allSatisfy(\.isHexDigit)
+    }
+
+    /// 로그인 자리 하나를 지운다. **우리가 만든 계정을 뺄 때만 부른다.**
+    ///
+    /// 인자에는 이름만 실린다. 값을 다루지 않으므로 표준 입력으로 돌릴 이유가 없다.
+    @discardableResult
+    static func delete(service: String, account: String?) -> Bool {
+        var arguments = ["delete-generic-password", "-s", service]
+        if let account { arguments += ["-a", account] }
+
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/security")
+        process.arguments = arguments
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        do { try process.run() } catch { return false }
+        process.waitUntilExit()
+        return process.terminationStatus == 0
     }
 
     private static func runSecurity(service: String, account: String?) -> String? {
@@ -504,9 +614,13 @@ enum ClaudeKeychain {
 
 enum UsageAPI {
     private static let endpoint = URL(string: "https://api.anthropic.com/api/oauth/usage")!
+    private static let profileEndpoint = URL(string: "https://api.anthropic.com/api/oauth/profile")!
 
-    static func fetch() async throws -> UsageSnapshot {
-        guard let credentials = await CredentialStore.shared.current() else { throw UsageError.noCredentials }
+    /// `service` 는 볼 계정의 키체인 자리. nil 이면 Claude Code 기본 로그인.
+    static func fetch(service: String? = nil) async throws -> UsageSnapshot {
+        guard let credentials = await CredentialStore.shared.current(service: service) else {
+            throw UsageError.noCredentials
+        }
         if credentials.isExpired {
             // **갱신이 네트워크 때문에 못 나갔으면 재로그인 문제가 아니다.** 종단 오류로
             // 올리면 30분 백오프에 재로그인 안내까지 뜨는데, 몇 초 뒤면 될 일이다.
@@ -537,7 +651,7 @@ enum UsageAPI {
         case 200:
             break
         case 401, 403:
-            await CredentialStore.shared.invalidate()
+            await CredentialStore.shared.invalidate(service: service)
             throw UsageError.tokenExpired
         case 429:
             let retryAfter = http.value(forHTTPHeaderField: "Retry-After").flatMap(TimeInterval.init)
@@ -550,6 +664,8 @@ enum UsageAPI {
             throw UsageError.decode
         }
         let parsedLimits = limits(from: root["limits"])
+        let accountService = credentials.origin?.service
+        let profile = await accountProfile(service: accountService, accessToken: credentials.accessToken)
         return UsageSnapshot(
             planName: ClaudeKeychain.planName(for: credentials.subscriptionType),
             fiveHour: window(from: root["five_hour"]),
@@ -561,7 +677,50 @@ enum UsageAPI {
             hasSessionLimit: !isExplicitlyAbsent(root["five_hour"])
                 || parsedLimits.contains { $0.kind == "session" },
             rateLimitTier: credentials.rateLimitTier,
-            tokenExpiresAt: credentials.expiresAt
+            tokenExpiresAt: credentials.expiresAt,
+            accountService: accountService,
+            teamName: profile?.teamName
+        )
+    }
+
+    /// 계정 프로필. 하루 안에 받아 둔 것이 있으면 그걸 쓴다.
+    ///
+    /// **못 받아도 조회는 성공이다.** 팀 이름은 곁들이는 것이라, 프로필이 실패했다고
+    /// 사용량까지 못 보여주면 본말이 뒤집힌다. 예전 값이 있으면 낡았어도 그걸 쓴다.
+    static func accountProfile(service: String?, accessToken: String) async -> AccountProfile? {
+        guard let service else { return nil }
+        let stored = AccountProfileStore.profile(for: service)
+        if let stored, !stored.isStale { return stored }
+        guard let fresh = await fetchProfile(accessToken: accessToken) else { return stored }
+        AccountProfileStore.save(fresh, for: service)
+        return fresh
+    }
+
+    /// `/api/oauth/profile`. 이메일과 조직(팀) 이름이 여기 있다.
+    ///
+    /// **설정 폴더의 `.claude.json` 은 안 믿는다.** 거기 적힌 `oauthAccount` 는 로그인할
+    /// 때 한 번 쓰이고 안 고쳐져서, 실제로 팀 계정으로 로그인해 있는데 예전 개인 조직
+    /// 이름을 들고 있는 것을 봤다.
+    static func fetchProfile(accessToken: String) async -> AccountProfile? {
+        var request = URLRequest(url: profileEndpoint, timeoutInterval: 15)
+        request.httpMethod = "GET"
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
+        request.setValue("claude-code/2.1", forHTTPHeaderField: "User-Agent")
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200,
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else { return nil }
+
+        let account = root["account"] as? [String: Any]
+        let organization = root["organization"] as? [String: Any]
+        return AccountProfile(
+            email: account?["email"] as? String,
+            organizationName: organization?["name"] as? String,
+            organizationType: organization?["organization_type"] as? String,
+            fetchedAt: Date()
         )
     }
 

@@ -95,26 +95,38 @@ enum OAuthTokenRefresher {
 /// **키체인에 되돌려 쓰는 것과 별개로 항상 여기 둔다.** 되돌려 쓰기는 사용자가 키체인
 /// 접근을 막으면 실패할 수 있는데, 그때도 우리는 계속 돌아야 한다. 여기 있는 것이
 /// "우리가 마지막으로 받아 낸 값"이고, 키체인 쪽은 Claude Code와 나눠 쓰는 자리다.
+///
+/// **계정마다 따로 둔다.** 기본 로그인은 예전 이름(`token.json`) 그대로라 올려도 갱신해 둔
+/// 것을 잃지 않고, 나머지는 키체인 자리의 접미사를 붙인다(`token-36da4e71.json`).
+/// 한 파일에 섞으면 다른 계정의 토큰으로 조회해서, 남의 사용량이 내 것처럼 뜬다.
 enum RefreshedTokenStore {
-    static var fileURL: URL? { AppSupport.folder?.appendingPathComponent("token.json") }
+    static var fileURL: URL? { fileURL(service: nil) }
 
-    static func load() -> RefreshedToken? {
-        guard let fileURL, let data = try? Data(contentsOf: fileURL) else { return nil }
+    static func fileURL(service: String?) -> URL? {
+        let prefix = ClaudeKeychain.baseService + "-"
+        guard let service, service.hasPrefix(prefix) else {
+            return AppSupport.folder?.appendingPathComponent("token.json")
+        }
+        return AppSupport.folder?.appendingPathComponent("token-\(service.dropFirst(prefix.count)).json")
+    }
+
+    static func load(service: String? = nil) -> RefreshedToken? {
+        guard let fileURL = fileURL(service: service), let data = try? Data(contentsOf: fileURL) else { return nil }
         return try? JSONDecoder().decode(RefreshedToken.self, from: data)
     }
 
-    static func save(_ token: RefreshedToken) {
+    static func save(_ token: RefreshedToken, service: String? = nil) {
         // 폴더부터 조인다. 파일 권한은 쓰고 난 뒤에야 바꿀 수 있어서 그 사이가 잠깐 열리는데,
         // 폴더가 닫혀 있으면 그 틈에도 남이 들어오지 못한다.
-        guard AppSupport.prepared() != nil, let fileURL else { return }
+        guard AppSupport.prepared() != nil, let fileURL = fileURL(service: service) else { return }
         guard let data = try? JSONEncoder().encode(token) else { return }
         try? data.write(to: fileURL, options: .atomic)
         // 자격증명이다. 본인 외에는 못 읽게 한다.
         try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
     }
 
-    static func clear() {
-        guard let fileURL else { return }
+    static func clear(service: String? = nil) {
+        guard let fileURL = fileURL(service: service) else { return }
         try? FileManager.default.removeItem(at: fileURL)
     }
 }
