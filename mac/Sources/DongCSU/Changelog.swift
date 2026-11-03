@@ -124,7 +124,7 @@ enum Changelog {
     /// 맨 위는 아직 내보내지 않은 항목이다. 무언가를 만들거나 고칠 때마다 여기에
     /// 한 줄씩 쌓고, 릴리스할 때 버전과 날짜를 확정한다.
     static let entries: [ChangelogEntry] = [
-        ChangelogEntry(version: "2.7.0", date: nil, groups: [
+        ChangelogEntry(version: "2.7.0", date: "2026-11-03", groups: [
             ChangelogGroup(title: "계정", tab: "account", notes: [
                 .new("사용량을 볼 계정 선택 추가 (계정 추가·빼기, 데스크톱 앱에서 쓰는 계정도 가능)"),
                 .new("팀·기업 계정의 팀 이름 표시 추가 (플랜 옆)"),
