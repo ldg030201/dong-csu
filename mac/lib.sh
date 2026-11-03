@@ -80,10 +80,25 @@ require_swift() {
 # Homebrew처럼 이미 샌드박스 안에서 도는 환경에서는 SwiftPM의 자체 샌드박스가
 # 중첩되어 실패한다. 그럴 때 SWIFT_BUILD_FLAGS="--disable-sandbox" 로 넘긴다.
 # 단어 분리를 의도한 것이라 따옴표를 씌우지 않는다.
+#
+# **링크할 때 SDK 를 `-isysroot` 로 한 번 더 넘긴다.** Swift 6.4 의 SwiftPM 은 링크하는
+# clang 에 SDK 를 `--sysroot` 로만 주는데, clang 은 거기서 SDK 판을 읽지 않고 배포
+# 대상(14.0)을 SDK 판으로 적는다. 그러면 macOS 는 이 앱을 14 SDK 로 만든 것으로 보고
+# 옛 동작(호환 모드)으로 띄운다. SDKROOT 환경 변수로는 안 된다 — 새 빌드 엔진이 링크
+# 단계에 넘기지 않는다. 26 툴체인으로 만든 bottle 은 26.5 로 제대로 찍혀 있었다.
+#
+# xcrun 은 SDKROOT 가 있으면 그걸 돌려준다(Homebrew 가 고른 SDK 와 어긋나지 않는다).
 swift_build() {
   require_swift
+  local sdk link_sdk=()
+  sdk="$(xcrun --show-sdk-path 2>/dev/null || true)"
+  if [[ -n "$sdk" ]]; then
+    link_sdk=(-Xswiftc -Xclang-linker -Xswiftc -isysroot -Xswiftc -Xclang-linker -Xswiftc "$sdk")
+  fi
+  # 빈 배열을 그냥 펼치면 macOS 기본 bash(3.2)가 set -u 에서 죽는다.
   # shellcheck disable=SC2086
-  swift build -c "$CONFIG" --package-path "$ROOT" ${SWIFT_BUILD_FLAGS:-} "$@"
+  swift build -c "$CONFIG" --package-path "$ROOT" ${link_sdk[@]+"${link_sdk[@]}"} \
+    ${SWIFT_BUILD_FLAGS:-} "$@"
 }
 
 # 방금 빌드한 산출물이 놓인 디렉터리.
