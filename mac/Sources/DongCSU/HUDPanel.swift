@@ -755,8 +755,24 @@ final class HUDController {
     }()
 
     /// 붙기 기록이 쌓이는 파일. `tail -f` 로 보면 놓는 대로 흐른다.
-    static let perchLogPath = NSString(string: "~/Library/Logs/dong-csu-perch.log")
+    ///
+    /// **옛 이름(`dong-csu-perch.log`)을 쓰지 않는다.** 정식판이 뜰 때 그 이름을 지우므로
+    /// (`removeLegacyPerchLog`) 같은 이름이면 옆에 띄워 둔 테스트판의 기록까지 날아간다.
+    static let perchLogPath = NSString(string: "~/Library/Logs/dong-csu-test-perch.log")
         .expandingTildeInPath
+
+    /// 2.5.2.1 까지 **정식판도** 붙기 기록을 남기던 자리.
+    private static let legacyPerchLogPath = NSString(string: "~/Library/Logs/dong-csu-perch.log")
+        .expandingTildeInPath
+
+    /// 정식판이 예전에 남긴 붙기 기록을 지운다.
+    ///
+    /// 이제 정식판은 안 적지만, 이미 쌓인 파일은 그대로 남는다. 그때 열려 있던 **앱 이름과
+    /// 창 자리**가 줄줄이 들어 있어서 사용자 쪽에 둘 이유가 없다. 없으면 아무 일도 안 한다.
+    static func removeLegacyPerchLog() {
+        guard !AppInfo.isTestBuild else { return }
+        try? FileManager.default.removeItem(atPath: legacyPerchLogPath)
+    }
 
     /// 기록 파일이 커질 수 있는 한계. 넘으면 **앞쪽 절반을 버린다.**
     /// 고칠 때 보는 것은 늘 마지막 몇 번이라, 오래된 쪽을 지키는 것은 뜻이 없다.
