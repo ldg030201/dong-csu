@@ -1,16 +1,11 @@
 class DongCsu < Formula
   desc "Claude 사용량을 화면 위에 항상 띄워두는 macOS HUD"
   homepage "https://github.com/ldg030201/dong-csu"
-  url "https://github.com/ldg030201/dong-csu/archive/refs/tags/mac-v2.5.2.1.tar.gz"
-  sha256 "c765f089a2ee98df33d8783f4630ff9402904396dfb8d081dd234819a19cfc85"
+  url "https://github.com/ldg030201/dong-csu/archive/refs/tags/mac-v2.6.0.tar.gz"
+  sha256 "302253c98f4a4f1e6763b956ecee10c01bef474439d66dfb2865f88e3ce83c27"
   license "MIT"
   head "https://github.com/ldg030201/dong-csu.git", branch: "main"
 
-  bottle do
-    root_url "https://github.com/ldg030201/dong-csu/releases/download/mac-v2.5.2.1"
-    sha256 arm64_tahoe:   "8dd99f136a2424e6230fd0eb27357ca23d3c937de203b8e47302abb8cffb09d4"
-    sha256 arm64_sequoia: "77791cab2326ca2bb9667c4b7437dabd2c6f88e7f60ff4b3d09e665d18a23633"
-  end
 
 
 
