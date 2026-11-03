@@ -237,7 +237,7 @@ final class HUDController {
     /// 지금 설정으로 만든 카드. **치수를 재는 곳은 전부 이걸 쓴다** — 설정 넷을
     /// 자리마다 다시 읽으면 카드에 붙는 것이 하나 늘 때 일곱 곳을 같이 고쳐야 한다.
     private func card(_ mode: HUDMode? = nil) -> UsageHUDView.Card {
-        UsageHUDView.Card(settings, mode: mode)
+        UsageHUDView.Card(settings, mode: mode, hasSessionLimit: store.hasSessionLimit)
     }
 
     init(store: UsageStore, settings: HUDSettings, updates: UpdateChecker, meter: UsageMeter) {
@@ -1506,6 +1506,24 @@ final class HUDController {
                 self?.syncMotion()
             }
             .store(in: &cancellables)
+
+        // **5시간 한도가 생기거나 없어지면 링 수가 바뀐다.** 모델별 링을 켜 둔 카드는
+        // 그만큼 크기도 달라져서, 뷰만 다시 그리면 창이 옛 크기로 남는다.
+        // 인증 전 Ultra 가 인증을 마치는 순간이 이 경우다.
+        store.$snapshot
+            .map { $0?.hasSessionLimit ?? true }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.applySessionLimit() }
+            .store(in: &cancellables)
+    }
+
+    /// 크기가 실제로 달라질 때만 보기를 다시 잡는다. 펫이나 모델별을 끈 카드는
+    /// 그대로라, 그때 `applyMode` 를 타면 호버가 풀리는 것 같은 부작용만 남는다.
+    private func applySessionLimit() {
+        guard UsageHUDView.size(card()) != panel.frame.size else { return }
+        applyMode()
     }
 }
 
@@ -1515,12 +1533,13 @@ final class HUDController {
 /// 같은 인자로 같은 답을 낸다 — 기하 계산이 UserDefaults 를 물면 기계마다 달라진다.
 @MainActor
 private extension UsageHUDView.Card {
-    init(_ settings: HUDSettings, mode: HUDMode? = nil) {
+    init(_ settings: HUDSettings, mode: HUDMode? = nil, hasSessionLimit: Bool = true) {
         self.init(
             mode ?? settings.mode,
             side: settings.expandSide,
             showsStats: settings.showsProcessStats,
             showsScopedLimit: settings.showsScopedLimit,
+            hasSessionLimit: hasSessionLimit,
             scale: settings.scale.factor
         )
     }

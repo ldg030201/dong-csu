@@ -30,7 +30,7 @@ enum ProbeHUD {
                         let ring = mode == .pet
                             ? UsageHUDView.basePetRingDiameter * scale.factor
                             : UsageHUDView.ringDiameter(
-                                showsScopedLimit: scoped, scale: scale.factor
+                                hasThirdRing: scoped, scale: scale.factor
                             )
                         // 링 안쪽에 남는 자리. 카드에서는 마스코트가 여기에 맞춰 줄고,
                         // 펫에서는 마스코트가 그 위로 올라온다.
@@ -40,7 +40,7 @@ enum ProbeHUD {
                                 outer: ring,
                                 outerWidth: UsageHUDView.ringLineWidth(scale: scale.factor),
                                 innerWidth: UsageHUDView.ringInnerLineWidth(scale: scale.factor),
-                                hasScoped: scoped, scale: scale.factor
+                                rings: scoped ? 3 : 2, scale: scale.factor
                             ).free
                         print(String(format: "  %-6@ %-3@ %-10@ %4dx%-4d  %5.1f %5.1f   %@",
                                      scoped ? "켬" : "끔", stats ? "켬" : "끔", scale.rawValue,
@@ -97,7 +97,7 @@ enum ProbeHUD {
     ) -> [String] {
         let f = scale.factor
         let panel = UsageHUDView.size(.init(mode, showsStats: stats, showsScopedLimit: scoped, scale: f))
-        let ring = UsageHUDView.ringDiameter(showsScopedLimit: scoped, scale: f)
+        let ring = UsageHUDView.ringDiameter(hasThirdRing: scoped, scale: f)
         let line = UsageHUDView.ringLineWidth(scale: f)
         var notes: [String] = []
         func over(_ what: String, _ used: CGFloat, _ have: CGFloat) {
@@ -113,7 +113,7 @@ enum ProbeHUD {
             over("세로", ring + line, panel.height)
         case .expanded:
             // 링은 위쪽 줄 안에 놓인다. 아래 자원 사용량 줄은 그 밖이다.
-            over("세로", ring + line, UsageHUDView.expandedRowHeight(showsScopedLimit: scoped, scale: f))
+            over("세로", ring + line, UsageHUDView.expandedRowHeight(hasThirdRing: scoped, scale: f))
             let chrome = UsageHUDView.expandedLeading(scale: f)
                 + UsageHUDView.expandedGap(scale: f) + UsageHUDView.expandedTrailing(scale: f)
             over("가로", ring + chrome, panel.width)

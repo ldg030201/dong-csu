@@ -41,6 +41,12 @@ final class UsageStore: ObservableObject {
         return weekly >= 100
     }
 
+    /// 5시간 한도가 있는 계정인지. 없으면 세션 링·줄을 통째로 뺀다.
+    ///
+    /// **아직 한 번도 못 읽었으면 있다고 본다.** 거의 모든 계정에 있어서, 첫 조회 전에
+    /// 빼 두면 대부분의 사람에게 링 하나가 뒤늦게 생겨나는 것으로 보인다.
+    var hasSessionLimit: Bool { snapshot?.hasSessionLimit ?? true }
+
     /// 세션(5시간) 한도를 다 썼다.
     var isSessionSpent: Bool {
         guard let session = snapshot?.fiveHour?.utilization else { return false }

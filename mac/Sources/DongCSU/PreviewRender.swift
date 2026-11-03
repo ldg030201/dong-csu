@@ -421,17 +421,21 @@ enum HUDPreviewRenderer {
         opacity: Double = 0.92,
         showsStats: Bool = false,
         showsScopedLimit: Bool = false,
+        hasSessionLimit: Bool = true,
         scale: HUDScale = .normal,
         showsUpdateBadge: Bool = false,
         versionBadge: String? = nil,
         versionBadgeIsTest: Bool = false
     ) -> Bool {
         let snapshot = UsageSnapshot(
-            planName: "Max",
-            fiveHour: UsageWindow(
-                utilization: utilization.session,
-                resetsAt: Date().addingTimeInterval(3 * 3600 + 12 * 60)
-            ),
+            planName: hasSessionLimit ? "Max" : "Ultra",
+            // 5시간 한도가 없는 계정은 서버가 `five_hour: null` 을 준다. 그 응답을 흉내낸다.
+            fiveHour: hasSessionLimit
+                ? UsageWindow(
+                    utilization: utilization.session,
+                    resetsAt: Date().addingTimeInterval(3 * 3600 + 12 * 60)
+                )
+                : nil,
             sevenDay: UsageWindow(
                 utilization: utilization.weekly,
                 resetsAt: Date().addingTimeInterval(26 * 3600)
@@ -441,7 +445,8 @@ enum HUDPreviewRenderer {
             limits: showsScopedLimit
                 ? [UsageLimit(kind: "weekly_scoped", modelName: "Fable",
                               percent: 18, resetsAt: Date().addingTimeInterval(26 * 3600))]
-                : []
+                : [],
+            hasSessionLimit: hasSessionLimit
         )
 
         // 실제 창과 같은 배경(반투명 단색)을 쓰고, 그 뒤에 회색 바탕을 깔아

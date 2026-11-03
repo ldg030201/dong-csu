@@ -19,6 +19,9 @@ if CommandLine.arguments.contains("--probe") {
             print("plan: \(plan)")
             if let fiveHour = snapshot.fiveHour {
                 print("five_hour: \(fiveHour.utilization)% resets_at=\(fiveHour.resetsAt?.description ?? "-")")
+            } else if !snapshot.hasSessionLimit {
+                // 못 읽은 것과 갈라 둔다. 화면에서 세션 줄이 빠지는 건 이쪽뿐이다.
+                print("five_hour: 없음 (이 계정에는 5시간 한도가 없다)")
             } else {
                 print("five_hour: -")
             }
@@ -602,6 +605,8 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
     let showsStats = extras.contains("stats")
     // fable 을 끼워 넣으면 모델별 한도를 켠 모습으로 그린다.
     let showsScopedLimit = extras.contains("fable")
+    // nosession 을 끼워 넣으면 5시간 한도가 없는 계정(인증된 Ultra)으로 그린다.
+    let hasSessionLimit = !extras.contains("nosession")
     // small|normal|large|extraLarge 중 하나를 끼워 넣으면 그 배율로 그린다.
     let scale = extras.compactMap(HUDScale.init(rawValue:)).first ?? .normal
     // update 를 끼워 넣으면 새 버전이 나온 상태로 그린다.
@@ -625,6 +630,7 @@ if let flagIndex = CommandLine.arguments.firstIndex(of: "--render"),
             opacity: opacity,
             showsStats: showsStats,
             showsScopedLimit: showsScopedLimit,
+            hasSessionLimit: hasSessionLimit,
             scale: scale,
             showsUpdateBadge: showsUpdateBadge,
             versionBadge: versionBadge,

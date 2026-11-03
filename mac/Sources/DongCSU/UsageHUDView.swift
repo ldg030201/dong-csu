@@ -113,28 +113,39 @@ struct UsageHUDView: View {
         var side: HUDExpandSide = .right
         var showsStats = false
         var showsScopedLimit = false
+        /// 5시간 한도가 있는 계정인지. 설정이 아니라 **조회 응답**에서 온다.
+        var hasSessionLimit = true
         var scale: CGFloat = 1
 
         init(
             _ mode: HUDMode, side: HUDExpandSide = .right,
-            showsStats: Bool = false, showsScopedLimit: Bool = false, scale: CGFloat = 1
+            showsStats: Bool = false, showsScopedLimit: Bool = false,
+            hasSessionLimit: Bool = true, scale: CGFloat = 1
         ) {
             self.mode = mode
             self.side = side
             self.showsStats = showsStats
             self.showsScopedLimit = showsScopedLimit
+            self.hasSessionLimit = hasSessionLimit
             self.scale = scale
         }
+
+        /// 링이 셋이라 카드를 키워야 하는지.
+        ///
+        /// **모델별을 켰다고 셋이 되는 게 아니다.** 5시간 한도가 없는 계정은 세션 링이
+        /// 빠져서 모델별을 켜도 둘이고, 둘이면 원래 크기에 다 들어간다. 키운 채로 두면
+        /// 링 둘이 큰 카드 안에서 헐렁하게 논다.
+        var hasThirdRing: Bool { showsScopedLimit && hasSessionLimit }
     }
 
     static func size(_ card: Card) -> CGSize {
-        let (mode, showsStats, showsScopedLimit, scale) =
-            (card.mode, card.showsStats, card.showsScopedLimit, card.scale)
+        let (mode, showsStats, hasThirdRing, scale) =
+            (card.mode, card.showsStats, card.hasThirdRing, card.scale)
         func scaled(_ size: CGSize) -> CGSize {
             CGSize(width: size.width * scale, height: size.height * scale)
         }
         // 모델별 링이 붙어 링이 커진 만큼 카드도 넓어진다.
-        let grown = showsScopedLimit ? baseScopedGrowth : 0
+        let grown = hasThirdRing ? baseScopedGrowth : 0
         switch mode {
         case .pet: return scaled(basePetSize)
         // 접은 카드에는 숫자가 없어서 자원 사용량 줄은 안 붙는다. 링은 그리므로
@@ -146,7 +157,7 @@ struct UsageHUDView: View {
             ))
         case .expanded:
             // 윗줄(링·숫자) + 아래 자원 사용량 줄.
-            var height = expandedRowHeight(showsScopedLimit: showsScopedLimit, scale: scale)
+            var height = expandedRowHeight(hasThirdRing: hasThirdRing, scale: scale)
             if showsStats { height += baseStatsRowHeight * scale }
             return CGSize(width: (baseExpandedSize.width + grown) * scale, height: height)
         }
@@ -166,8 +177,8 @@ struct UsageHUDView: View {
     /// 것처럼 보인다.
     static var baseScopedGrowth: CGFloat { baseScopedRingDiameter - baseRingDiameter }
 
-    static func ringDiameter(showsScopedLimit: Bool, scale: CGFloat) -> CGFloat {
-        (showsScopedLimit ? baseScopedRingDiameter : baseRingDiameter) * scale
+    static func ringDiameter(hasThirdRing: Bool, scale: CGFloat) -> CGFloat {
+        (hasThirdRing ? baseScopedRingDiameter : baseRingDiameter) * scale
     }
 
     /// 링 바깥을 두르는 선의 굵기. 지름 밖으로 이만큼 더 나간다.
@@ -199,8 +210,8 @@ struct UsageHUDView: View {
     ///
     /// **`size()` 도 마스코트 판정 자리도 다 여기서 가져간다.** 따로 유도하면
     /// 그림과 판정이 어긋나서, 링 가장자리를 더블클릭해도 펫으로 안 들어간다.
-    static func expandedRowHeight(showsScopedLimit: Bool, scale: CGFloat) -> CGFloat {
-        (baseExpandedSize.height + (showsScopedLimit ? baseScopedRowHeight : 0)) * scale
+    static func expandedRowHeight(hasThirdRing: Bool, scale: CGFloat) -> CGFloat {
+        (baseExpandedSize.height + (hasThirdRing ? baseScopedRowHeight : 0)) * scale
     }
 
     /// 링을 겹쳐 놓았을 때 안쪽 링들의 지름과, 가운데에 남는 자리.
@@ -209,14 +220,20 @@ struct UsageHUDView: View {
     /// 쪽이 따로 세면, 틈을 한 번 고쳤을 때 마스코트가 제일 안쪽 링을 파고든다.
     static func ringLayout(
         outer: CGFloat, outerWidth: CGFloat, innerWidth: CGFloat,
-        hasScoped: Bool, scale: CGFloat
+        rings: Int, scale: CGFloat
     ) -> (inner: CGFloat, third: CGFloat, free: CGFloat) {
         let gap = ringGap(scale: scale)
         let inner = innerDiameter(outer: outer, outerWidth: outerWidth, gap: gap)
         let third = innerDiameter(outer: inner, outerWidth: innerWidth, gap: gap)
         // 가운데 그림이 들어갈 자리. 제일 안쪽 링의 선 안쪽에서 조금 더 물러선다.
-        let innermost = hasScoped ? third : inner
-        return (inner, third, innermost - innerWidth * 2 - 4 * scale)
+        // 링이 하나뿐이면(5시간 한도가 없고 모델별도 끈 계정) 바깥 링이 곧 제일 안쪽이다.
+        let innermost: (diameter: CGFloat, width: CGFloat)
+        switch rings {
+        case ...1: innermost = (outer, outerWidth)
+        case 2: innermost = (inner, innerWidth)
+        default: innermost = (third, innerWidth)
+        }
+        return (inner, third, innermost.diameter - innermost.width * 2 - 4 * scale)
     }
 
     /// 이 보기가 실제로 그리는가.
@@ -538,19 +555,19 @@ struct UsageHUDView: View {
     /// 여기를 더블클릭하면 펫 모드로 들어간다. 링과 마스코트가 겹쳐 있으므로 링 전체를
     /// 잡는다. 펫에서는 이미 마스코트뿐이라 창 전체가 그 자리다.
     static func characterRectInPanel(_ card: Card) -> CGRect {
-        let (mode, side, showsScopedLimit, scale) =
-            (card.mode, card.side, card.showsScopedLimit, card.scale)
+        let (mode, side, hasThirdRing, scale) =
+            (card.mode, card.side, card.hasThirdRing, card.scale)
         let panel = size(card)
         guard mode != .pet else { return CGRect(origin: .zero, size: panel) }
 
         // **링이 커지면 이 자리도 같이 커져야 한다.** 62 로 못 박아 두면 모델별 링을
         // 켰을 때 링 가장자리를 더블클릭해도 펫으로 안 들어간다.
-        let ring = ringDiameter(showsScopedLimit: showsScopedLimit, scale: scale)
+        let ring = ringDiameter(hasThirdRing: hasThirdRing, scale: scale)
         // 펼친 상태의 링은 위쪽 줄 안에서 세로 가운데에 놓인다. 자원 사용량 줄이
         // 붙어 창이 커져도 링은 그대로 위에 남는다.
         let rowHeight = mode == .collapsed
             ? panel.height
-            : expandedRowHeight(showsScopedLimit: showsScopedLimit, scale: scale)
+            : expandedRowHeight(hasThirdRing: hasThirdRing, scale: scale)
         let y = panel.height - rowHeight + (rowHeight - ring) / 2
 
         // 접힌 상태에서 왼쪽으로 펼치는 설정이면 버튼 열이 링 앞에 온다.
@@ -604,7 +621,18 @@ struct UsageHUDView: View {
 
     private var isDisconnected: Bool { store.isDisconnected }
 
-    private var ringDiameter: CGFloat { Self.ringDiameter(showsScopedLimit: showsScopedLimit, scale: scale) }
+    /// 5시간 한도가 있는 계정인지. 없으면 세션 링·줄을 빼고 안쪽 것을 밖으로 당긴다.
+    private var hasSessionLimit: Bool { store.hasSessionLimit }
+
+    /// 이 카드의 치수. 창 크기를 재는 `HUDController.card()` 와 같은 값이 나와야 한다.
+    private func card(_ mode: HUDMode, showsStats: Bool = false) -> Card {
+        Card(mode, showsStats: showsStats, showsScopedLimit: showsScopedLimit,
+             hasSessionLimit: hasSessionLimit, scale: scale)
+    }
+
+    private var ringDiameter: CGFloat {
+        Self.ringDiameter(hasThirdRing: card(mode).hasThirdRing, scale: scale)
+    }
     private var outerLineWidth: CGFloat { Self.ringLineWidth(scale: scale) }
     private var innerLineWidth: CGFloat { Self.ringInnerLineWidth(scale: scale) }
 
@@ -731,7 +759,7 @@ struct UsageHUDView: View {
     /// 접은 카드 크기. **모델별 링이 붙으면 커진다** — 링이 커진 만큼 카드도 커져야
     /// 링이 카드를 뚫고 나가지 않는다.
     private var collapsedSize: CGSize {
-        Self.size(.init(.collapsed, showsScopedLimit: showsScopedLimit, scale: scale))
+        Self.size(card(.collapsed))
     }
 
     private var buttonColumn: some View {
@@ -758,17 +786,17 @@ struct UsageHUDView: View {
         }
         .frame(
             width: expandedSize.width,
-            height: Self.size(.init(.expanded, showsStats: usageMonitor != nil, showsScopedLimit: showsScopedLimit, scale: scale)).height
+            height: Self.size(card(.expanded, showsStats: usageMonitor != nil)).height
         )
     }
 
     /// 펼친 카드 크기. 모델별 링이 붙으면 가로도 그만큼 넓어진다.
     private var expandedSize: CGSize {
-        Self.size(.init(.expanded, showsScopedLimit: showsScopedLimit, scale: scale))
+        Self.size(card(.expanded))
     }
 
     private var expandedRowHeight: CGFloat {
-        Self.expandedRowHeight(showsScopedLimit: showsScopedLimit, scale: scale)
+        Self.expandedRowHeight(hasThirdRing: card(.expanded).hasThirdRing, scale: scale)
     }
 
     private var mainRow: some View {
@@ -818,12 +846,16 @@ struct UsageHUDView: View {
     private var metricsView: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             VStack(alignment: .leading, spacing: s(8)) {
-                metric(
-                    title: "세션",
-                    window: store.snapshot?.fiveHour,
-                    now: context.date,
-                    isSpent: store.isSpent
-                )
+                // 5시간 한도가 없는 계정(인증된 Ultra)이면 줄째 뺀다. "—" 로 남겨 두면
+                // 아직 못 읽은 것처럼 보인다.
+                if hasSessionLimit {
+                    metric(
+                        title: "세션",
+                        window: store.snapshot?.fiveHour,
+                        now: context.date,
+                        isSpent: store.isSpent
+                    )
+                }
                 metric(
                     title: "주간",
                     window: store.snapshot?.sevenDay,
@@ -1147,7 +1179,7 @@ struct UsageHUDView: View {
             // 링이 하나 더 생기면 아이콘도 그만큼 안으로 들어간다.
             let iconSize = Self.ringLayout(
                 outer: ringDiameter, outerWidth: outerLineWidth, innerWidth: innerLineWidth,
-                hasScoped: scopedRingWindow != nil, scale: scale
+                rings: ringEntries.count, scale: scale
             ).free
             ClaudeIconView(
                 style: iconStyle,
@@ -1179,43 +1211,50 @@ struct UsageHUDView: View {
         outerWidth: CGFloat,
         innerWidth: CGFloat
     ) -> some View {
+        let entries = ringEntries
         let layout = Self.ringLayout(
             outer: diameter, outerWidth: outerWidth, innerWidth: innerWidth,
-            hasScoped: scopedRingWindow != nil, scale: scale
+            rings: entries.count, scale: scale
         )
-        let inner = layout.inner
-        let third = layout.third
+        // 바깥 링만 굵다. 빠진 링이 있으면 안쪽 것이 이 자리를 한 칸씩 물려받는다.
+        let slots = [(diameter, outerWidth), (layout.inner, innerWidth), (layout.third, innerWidth)]
         return ZStack {
-            // 주간을 다 썼으면 **둘 다** 색을 뺀다. 세션은 쓸 수 없어서고, 주간은
-            // 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는 죽었는데
-            // 링은 살아 있어서, 아직 뭔가 되는 것처럼 읽힌다.
-            //
-            // **세션만 다 썼을 때는 세션 링만 뺀다.** 주간은 다음 창이 열리면 실제로
-            // 쓸 수 있는 양이라, 그것까지 회색으로 만들면 있는 여유를 숨기는 셈이다.
-            ring(
-                window: store.snapshot?.fiveHour,
-                diameter: diameter,
-                lineWidth: outerWidth,
-                isSpent: store.isSpent
-            )
-            ring(
-                window: store.snapshot?.sevenDay,
-                diameter: inner,
-                lineWidth: innerWidth,
-                isSpent: store.isWeeklySpent
-            )
-            // **제일 안쪽이 모델별이다.** 세션 · 주간은 누구에게나 있고 이건 없을 수도
-            // 있어서, 없을 때 자리가 비지 않는 쪽이 안쪽이다.
-            if let scoped = scopedRingWindow {
+            ForEach(Array(entries.prefix(slots.count).enumerated()), id: \.offset) { index, entry in
                 ring(
-                    window: scoped,
-                    diameter: third,
-                    lineWidth: innerWidth,
-                    isSpent: store.isWeeklySpent
+                    window: entry.window,
+                    diameter: slots[index].0,
+                    lineWidth: slots[index].1,
+                    isSpent: entry.isSpent
                 )
             }
         }
         .frame(width: diameter, height: diameter)
+    }
+
+    /// 그릴 링을 바깥부터.
+    ///
+    /// **빠진 것은 자리를 비우지 않고 안쪽 것을 밖으로 당긴다.** 5시간 한도가 없는
+    /// 계정에서 바깥 자리를 비워 두면, 주간 링이 카드 안에서 쪼그라든 채 빈 고리에
+    /// 둘러싸인다. 바깥 링이 굵은 것도 "제일 먼저 막히는 한도"라서인데, 세션이 없으면
+    /// 그게 주간이다.
+    private var ringEntries: [(window: UsageWindow?, isSpent: Bool)] {
+        var entries: [(window: UsageWindow?, isSpent: Bool)] = []
+        // 주간을 다 썼으면 **둘 다** 색을 뺀다. 세션은 쓸 수 없어서고, 주간은
+        // 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는 죽었는데
+        // 링은 살아 있어서, 아직 뭔가 되는 것처럼 읽힌다.
+        //
+        // **세션만 다 썼을 때는 세션 링만 뺀다.** 주간은 다음 창이 열리면 실제로
+        // 쓸 수 있는 양이라, 그것까지 회색으로 만들면 있는 여유를 숨기는 셈이다.
+        if hasSessionLimit {
+            entries.append((store.snapshot?.fiveHour, store.isSpent))
+        }
+        entries.append((store.snapshot?.sevenDay, store.isWeeklySpent))
+        // **제일 안쪽이 모델별이다.** 세션 · 주간은 거의 누구에게나 있고 이건 없을 수도
+        // 있어서, 없을 때 자리가 비지 않는 쪽이 안쪽이다.
+        if let scoped = scopedRingWindow {
+            entries.append((scoped, store.isWeeklySpent))
+        }
+        return entries
     }
 
     /// 모델별 링에 그릴 값. 꺼져 있거나 서버가 안 주면 nil.

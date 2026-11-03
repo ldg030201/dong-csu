@@ -230,6 +230,10 @@ extension OwlMood {
     /// 지쳐 가는 정도는 세션(5시간)으로 본다 — 주간은 며칠에 걸쳐 천천히 차서,
     /// 그걸로 지치면 한 주 내내 지친 얼굴로 있게 된다.
     ///
+    /// **5시간 한도가 없는 계정(인증된 Ultra)만 주간으로 본다.** 거기서는 주간이 곧
+    /// 제일 먼저 막히는 한도다. 세션만 보고 있으면 주간을 다 쓰는 순간까지 멀쩡하다가
+    /// 갑자기 쓰러진다 — 다가오는 것을 미리 보여주는 단계가 통째로 없어진다.
+    ///
     /// **다만 한도를 다 쓴 것은 다르다.** 주간이 찼으면 세션이 얼마 남았든 쓸 수 없고,
     /// 세션이 찼으면 주간이 얼마 남았든 지금은 못 쓴다. 어느 쪽이든 곧바로 탈진이다 —
     /// 이건 "천천히 지쳐 간다"가 아니라 "끝났다"라서 백분율로 재는 갈래가 아니다.
@@ -239,7 +243,8 @@ extension OwlMood {
         // **다 쓴 것이 끌림보다 먼저다.** 죽은 부엉이는 집어 들어도 버둥거리지 않는다.
         if store.isSpent { return .exhausted }
         if isDragging { return .dragged }
-        guard let utilization = store.snapshot?.fiveHour?.utilization else { return .idle }
+        let window = store.hasSessionLimit ? store.snapshot?.fiveHour : store.snapshot?.sevenDay
+        guard let utilization = window?.utilization else { return .idle }
         if utilization >= exhaustedThreshold { return .exhausted }
         if utilization >= tiredThreshold { return .tired }
         return .idle

@@ -351,7 +351,11 @@ struct SettingsView: View {
                     }
                 }
 
-                usageColumn(title: "세션 (5시간)", window: store.snapshot?.fiveHour, now: context.date)
+                // 5시간 한도가 없는 계정(인증된 Ultra)은 줄째 뺀다. Claude 사용량 화면도
+                // 그때 "현재 세션" 막대를 안 그린다.
+                if store.hasSessionLimit {
+                    usageColumn(title: "세션 (5시간)", window: store.snapshot?.fiveHour, now: context.date)
+                }
                 usageColumn(title: "주간 (7일)", window: store.snapshot?.sevenDay, now: context.date)
                 // 모델별은 서버가 줄 때만 있다. 여기는 상태를 보는 자리라 표시 설정과
                 // 상관없이 늘 보여준다 — HUD 에 안 띄워 뒀어도 값은 알 수 있어야 한다.

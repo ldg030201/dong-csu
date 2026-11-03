@@ -44,6 +44,15 @@ struct UsageSnapshot: Sendable {
     let fetchedAt: Date
     /// 서버가 준 한도 전부. 옛 응답에는 없을 수 있어서 비어 있을 수 있다.
     var limits: [UsageLimit] = []
+    /// 이 계정에 5시간 창이 있는지.
+    ///
+    /// **Ultra 는 인증이 끝나면 5시간 한도가 없어진다.** 그때 서버는 `five_hour` 를
+    /// 빼지 않고 `null` 로 준다. 키가 아예 없는 것(옛 응답)과는 다르게 다룬다 —
+    /// 그쪽은 값을 모르는 것이라 화면에 "—" 로 남긴다.
+    ///
+    /// **요금제 이름으로 가르지 않는다.** 인증 전인 Ultra 는 임시 5시간 한도가 걸려
+    /// 있어서, 이름만 보고 숨기면 있는 한도를 가린다. 조회할 때마다 응답을 본다.
+    var hasSessionLimit = true
 
     // 아래 둘은 서버가 아니라 **키체인 자격증명에서 온다.** 계정 탭이 보여준다.
     // 조회할 때 자격증명을 이미 읽으므로 같이 실어 보내면 따로 읽을 일이 없다.
@@ -540,15 +549,30 @@ enum UsageAPI {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw UsageError.decode
         }
+        let parsedLimits = limits(from: root["limits"])
         return UsageSnapshot(
             planName: ClaudeKeychain.planName(for: credentials.subscriptionType),
             fiveHour: window(from: root["five_hour"]),
             sevenDay: window(from: root["seven_day"]),
             fetchedAt: Date(),
-            limits: limits(from: root["limits"]),
+            limits: parsedLimits,
+            // `limits` 에 세션이 들어 있으면 그쪽을 믿는다. 한쪽만 null 인 응답에
+            // 있는 한도를 숨기느니 "—" 를 띄우는 편이 낫다.
+            hasSessionLimit: !isExplicitlyAbsent(root["five_hour"])
+                || parsedLimits.contains { $0.kind == "session" },
             rateLimitTier: credentials.rateLimitTier,
             tokenExpiresAt: credentials.expiresAt
         )
+    }
+
+    /// 서버가 창이 **없다고** 말했는지. 키가 없는 것은 여기에 안 든다.
+    ///
+    /// 창 자리에 `null` 이 오는 것이 기본이고, 창은 있는데 `utilization` 만 `null` 인
+    /// 꼴도 같은 뜻으로 읽는다 — Claude Code 의 `/usage` 가 둘을 똑같이 다룬다.
+    private static func isExplicitlyAbsent(_ value: Any?) -> Bool {
+        if value is NSNull { return true }
+        if let dict = value as? [String: Any], dict["utilization"] is NSNull { return true }
+        return false
     }
 
     private static func limits(from value: Any?) -> [UsageLimit] {
