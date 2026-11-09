@@ -634,6 +634,11 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
     /// 가운데 한 점이 아니라 **네 귀퉁이**로 재는 이유는 빈 자리를 막기 위해서다.
     /// 화면을 계단처럼 배치하면 어디에도 안 닿는 자리가 생기는데, 거기 서면 마스코트가
     /// 통째로 안 보인다. 부풀려서 재므로 바깥 테두리에서는 지금처럼 8 을 띄우고 멈춘다.
+    ///
+    /// **한가운데도 같이 본다.** 귀퉁이만 보면 **떨어져 있는 두 화면 사이**에 걸친 자리가
+    /// 통과한다 — 왼쪽 귀퉁이 둘은 왼쪽 화면, 오른쪽 둘은 오른쪽 화면 안인데 가운데는
+    /// 빈 공간인 꼴이다. 거기 서면 몸통이 아무것도 없는 자리에 놓인다(맥 2.6.0 의
+    /// <c>straddles</c> 도 같은 다섯 점을 본다).
     /// </summary>
     private bool Standable(IPetStage stage, PetPoint origin)
     {
@@ -648,7 +653,8 @@ public sealed class PetMotion(TimeProvider? time = null, Random? random = null)
         return Covered(new PetPoint(box.X, box.Y))
             && Covered(new PetPoint(box.Right, box.Y))
             && Covered(new PetPoint(box.X, box.Bottom))
-            && Covered(new PetPoint(box.Right, box.Bottom));
+            && Covered(new PetPoint(box.Right, box.Bottom))
+            && Covered(new PetPoint((box.X + box.Right) / 2, (box.Y + box.Bottom) / 2));
     }
 
     private bool Covered(PetPoint point)

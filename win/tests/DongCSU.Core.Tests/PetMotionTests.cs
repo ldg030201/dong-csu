@@ -559,6 +559,35 @@ public class PetMotionTests
     }
 
     /// <summary>
+    /// **창 폭보다 좁게 떨어진 화면 사이에 몸통을 걸치지 않는다.**
+    ///
+    /// 귀퉁이 넷만 보면 왼쪽 귀퉁이 둘은 왼쪽 화면, 오른쪽 둘은 오른쪽 화면 안인데 가운데는
+    /// 빈 틈인 자리가 통과한다. 그래서 한가운데도 같이 본다(맥 2.6.0 의 <c>straddles</c>
+    /// 와 같은 다섯 점). 배회든 비키기든 한 걸음도 거기 서면 안 된다.
+    /// </summary>
+    [Fact]
+    public void 좁게_떨어진_화면_사이에_몸통을_걸치지_않는다()
+    {
+        var clock = new FakeTime(Start);
+        var pet = new PetMotion(clock, new Random(3)) { Wanders = true, CrossesScreens = true };
+        var stage = TwoScreens();
+        // 틈이 60 — 펫 창(128)보다 좁다.
+        stage.WorkAreas = [new PetRect(0, 0, 1920, 1040), new PetRect(1980, 0, 1920, 1040)];
+
+        for (var i = 0; i < 40000; i++)
+        {
+            var tick = pet.Tick(stage);
+            if (tick.MoveTo is { } to)
+            {
+                var center = to.X + stage.Window.Width / 2;
+                Assert.False(center > 1920.5 && center < 1979.5, $"몸통이 빈 틈에 섰다: x {to.X}");
+                stage.Window = new PetRect(to.X, to.Y, stage.Window.Width, stage.Window.Height);
+            }
+            clock.Advance(tick.NextWakeup ?? PetMotion.TickInterval);
+        }
+    }
+
+    /// <summary>
     /// **넘어갈 때만 크게 걷는다.** 같은 씨앗으로 뽑으면 켜짐 쪽이 더 멀리 간다 —
     /// 화면 경계까지 한 걸음이 닿아야 넘어갈 수 있다.
     /// </summary>
