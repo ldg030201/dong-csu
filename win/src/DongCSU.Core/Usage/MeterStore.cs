@@ -51,12 +51,41 @@ public sealed class MeterStore
             var state = JsonSerializer.Deserialize<MeterState>(File.ReadAllText(path), Options);
             // **읽은 직후에 반드시 다시 싼다.** 직렬화를 건너온 사전은 비교자가 기본값이라,
             // 대소문자만 다른 경로가 새 항목이 되어 같은 파일을 처음부터 다시 센다.
-            return state?.Copy();
+            if (state is not null) return state.Copy();
+
+            // 본문이 `null` 한 글자였다. 아래와 같이 치워 둔다.
+            SetAside();
+            return null;
         }
         catch (Exception error) when (error is IOException or JsonException
             or UnauthorizedAccessException or NotSupportedException or ArgumentException)
         {
+            SetAside();
             return null;
+        }
+    }
+
+    /// <summary>
+    /// 못 읽은 파일을 <c>.bad</c> 로 치워 둔다.
+    ///
+    /// **그 자리에 두면 다음 저장이 곧바로 덮어써서** 되살릴 방법이 없어진다. 측정 기록은
+    /// 50개까지 쌓이는 사용자의 데이터라, 못 읽은 까닭(손으로 고쳤거나 반쯤 쓰였거나 판이
+    /// 바뀌었거나)을 나중에 들여다볼 수 있어야 한다.
+    ///
+    /// 치우기가 실패해도 조용히 넘어간다 — 그때는 예전처럼 덮어쓰는 것이지, 더 나빠지지
+    /// 않는다.
+    /// </summary>
+    private void SetAside()
+    {
+        try
+        {
+            var spoiled = path + ".bad";
+            File.Move(path, spoiled, overwrite: true);
+            AppLog.Write($"측정 기록을 못 읽었다 — {Path.GetFileName(spoiled)} 로 치워 두고 새로 시작한다");
+        }
+        catch (Exception error) when (error is IOException
+            or UnauthorizedAccessException or NotSupportedException or ArgumentException)
+        {
         }
     }
 

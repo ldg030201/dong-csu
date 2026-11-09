@@ -210,7 +210,7 @@ public class MeterStateTests
                 ["Opus 5"] = new(1, 2, 3, 4, 5),
             },
             Offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [@"C:\a.jsonl"] = 7 },
-            SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_1" },
+            SeenIds = new SeenIds(["msg_1"]),
             Samples = 9,
             LastSampledAt = Meters.Origin.AddMinutes(-2),
             PausedAt = Meters.Origin.AddMinutes(-1),
@@ -255,10 +255,10 @@ public class MeterStateTests
                 ["session"] = new() { Accumulated = 5 },
             },
             Offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [@"C:\a.jsonl"] = 7 },
-            SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_0" },
+            SeenIds = new SeenIds(["msg_0"]),
         };
         var offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [@"C:\a.jsonl"] = 90 };
-        var seen = new HashSet<string>(StringComparer.Ordinal) { "msg_1" };
+        var seen = new SeenIds(["msg_1"]);
 
         var copy = state.CopyAdopting(offsets, seen);
 
@@ -515,8 +515,15 @@ public class UsageMeterSampleTests
         Assert.Equal(at, meter.State.LastSampledAt);
     }
 
+    /// <summary>
+    /// **시작·중지·계속은 바닥(30초)을 무시한다.** 그 셋은 기준점을 잡는 조회라 건너뛰면
+    /// 측정 자체가 틀어진다 — 시작 30초 안에 멈추면 중지 조회가 통째로 안 나가서, 한참
+    /// 뒤의 평범한 폴링이 마지막 표본이 되곤 했다(맥 2.6.0 에서 고쳤다).
+    ///
+    /// 요청 제한은 저장소 쪽(10초 바닥 · 429 백오프)이 어차피 다시 막는다.
+    /// </summary>
     [Fact]
-    public void 시작하면_조회를_한_번_부탁하고_삼십초_안에는_또_안_부탁한다()
+    public void 사람이_누른_것은_삼십초_안이라도_조회를_부탁한다()
     {
         var time = new Meters.FakeTime(Meters.Origin);
         var meter = Meters.Meter(time);
@@ -526,24 +533,67 @@ public class UsageMeterSampleTests
         meter.Start();
         Assert.Equal(1, asked);
 
-        time.Advance(TimeSpan.FromSeconds(29));
+        time.Advance(TimeSpan.FromSeconds(1));
+        meter.Pause();
+        meter.Resume();
+        Assert.Equal(2, asked);
+
+        time.Advance(TimeSpan.FromSeconds(1));
         meter.Stop();
-        Assert.Equal(1, asked);
+        Assert.Equal(3, asked);
     }
 
+    /// <summary>
+    /// 중지 뒤 **시한 안에 떠 온** 조회는 마지막 표본으로 받는다.
+    ///
+    /// 중지는 그 자리에서 한 번 더 조회를 부탁하는데, 돌아오기까지 한 박자 걸린다 —
+    /// 그걸 안 받으면 짧게 재고 멈춘 측정의 소모량이 늘 0%p 가 된다.
+    /// </summary>
     [Fact]
-    public void 삼십초가_지났으면_다시_부탁한다()
+    public void 중지_직후에_떠_온_조회는_마지막_표본이_된다()
     {
         var time = new Meters.FakeTime(Meters.Origin);
         var meter = Meters.Meter(time);
-        var asked = 0;
-        meter.SampleWanted += () => asked++;
+        var window = Meters.Origin.AddHours(2);
 
         meter.Start();
-        time.Advance(TimeSpan.FromSeconds(31));
+        meter.Record(Meters.Sample(Meters.Origin, Meters.Limit("session", 40, window)));
+        time.Advance(TimeSpan.FromSeconds(20));
         meter.Stop();
 
-        Assert.Equal(2, asked);
+        time.Advance(TimeSpan.FromSeconds(2));
+        meter.Record(Meters.Sample(time.GetUtcNow(), Meters.Limit("session", 43, window)));
+
+        Assert.Equal(3d, meter.State.Tracks["session"].Accumulated, 6);
+        // 기록에도 같은 값이 얹혀야 한다 — 목록에 남긴 것은 중지하던 순간의 사본이다.
+        Assert.Equal(3d, meter.State.History[0].Tracks[0].Accumulated, 6);
+    }
+
+    /// <summary>
+    /// 중지 뒤 **한참 지나 떠 온** 조회는 안 받는다.
+    ///
+    /// "딱 한 번 더 받는다" 로는 모자랐다. 중지가 부탁한 조회는 조용히 버려질 수 있는데
+    /// (이미 날아간 요청 · 저장소의 10초 바닥 · 429 백오프 최대 5분), 그러면 티켓만 켜진
+    /// 채 남아서 한참 뒤의 평범한 폴링이 마지막 표본이 된다 — 20초 재고 멈춘 측정에
+    /// 10분치 소모가 붙었다.
+    /// </summary>
+    [Fact]
+    public void 중지_뒤_시한을_넘겨_떠_온_조회는_안_받는다()
+    {
+        var time = new Meters.FakeTime(Meters.Origin);
+        var meter = Meters.Meter(time);
+        var window = Meters.Origin.AddHours(2);
+
+        meter.Start();
+        meter.Record(Meters.Sample(Meters.Origin, Meters.Limit("session", 40, window)));
+        time.Advance(TimeSpan.FromSeconds(20));
+        meter.Stop();
+
+        time.Advance(UsageMeter.FinalSampleWindow + TimeSpan.FromMinutes(1));
+        meter.Record(Meters.Sample(time.GetUtcNow(), Meters.Limit("session", 95, window)));
+
+        Assert.Equal(0d, meter.State.Tracks["session"].Accumulated, 6);
+        Assert.Equal(1, meter.State.Samples);
     }
 
     [Fact]
@@ -622,6 +672,71 @@ public class UsageMeterPauseTests
 
         Assert.All(meter.State.TracksInOrder, track => Assert.Equal(0d, track.Accumulated, 6));
         Assert.Equal(new[] { 60d, 70d, 80d }, meter.State.TracksInOrder.Select(track => track.LastPercent));
+    }
+
+    /// <summary>
+    /// **계속 뒤 첫 표본에 없던 한도도 나중에 재기준된다.**
+    ///
+    /// 예전에는 측정 전체에 깃발 하나였고 첫 표본을 받으면 꺼 버렸다. 모델별 주간 한도처럼
+    /// 표본에 없을 수도 있는 한도는 옛 기준을 그대로 들고 있다가, 다시 나타나는 순간
+    /// 세워 둔 동안 쓴 몫을 통째로 더했다(맥 2.6.0 에서 고쳤다).
+    /// </summary>
+    [Fact]
+    public void 계속_뒤_늦게_나타난_한도도_세워_둔_몫을_안_더한다()
+    {
+        var time = new Meters.FakeTime(Meters.Origin);
+        var meter = Meters.Meter(time);
+
+        meter.Start();
+        meter.Record(Meters.Sample(time.GetUtcNow(),
+            Meters.Limit("session", 10, Window),
+            Meters.Limit("weekly_scoped", 30, Window, model: "Opus 5")));
+        meter.Pause();
+        time.Advance(TimeSpan.FromMinutes(30));
+        meter.Resume();
+
+        // 계속 뒤 첫 표본에는 모델별이 빠져 있다.
+        meter.Record(Meters.Sample(time.GetUtcNow(), Meters.Limit("session", 40, Window)));
+        // 그다음에야 나타난다. 세워 둔 동안 30 → 70 으로 올랐다.
+        meter.Record(Meters.Sample(time.GetUtcNow(),
+            Meters.Limit("session", 41, Window),
+            Meters.Limit("weekly_scoped", 70, Window, model: "Opus 5")));
+
+        Assert.Equal(1d, meter.State.Tracks["session"].Accumulated, 6);
+        Assert.Equal(0d, meter.State.Tracks["weekly_scoped/Opus 5"].Accumulated, 6);
+        Assert.Equal(70d, meter.State.Tracks["weekly_scoped/Opus 5"].LastPercent, 6);
+    }
+
+    /// <summary>
+    /// **깃발은 파일에도 남는다.** 메모리에만 두면 계속을 누르고 앱을 끄는 것만으로
+    /// 세워 둔 동안 쓴 몫이 다음 표본에 통째로 더해진다.
+    /// </summary>
+    [Fact]
+    public void 계속_뒤_껐다_켜도_재기준을_잊지_않는다()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"dongcsu-meter-{Guid.NewGuid():N}.json");
+        try
+        {
+            var time = new Meters.FakeTime(Meters.Origin);
+            var first = Meters.Meter(time, new MeterStore(path));
+
+            first.Start();
+            first.Record(Meters.Sample(time.GetUtcNow(), Meters.Limit("session", 10, Window)));
+            first.Pause();
+            time.Advance(TimeSpan.FromMinutes(30));
+            first.Resume();
+
+            // 계속을 누르고 곧바로 껐다 켰다.
+            var second = Meters.Meter(time, new MeterStore(path));
+            second.Record(Meters.Sample(time.GetUtcNow(), Meters.Limit("session", 50, Window)));
+
+            Assert.Equal(0d, second.State.Tracks["session"].Accumulated, 6);
+            Assert.Equal(50d, second.State.Tracks["session"].LastPercent, 6);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]
@@ -891,7 +1006,7 @@ public class UsageMeterScanTests
                 ["Opus 5"] = new(1, 10, output, 0, 0),
             },
             Offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [path] = offset },
-            SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_1" },
+            SeenIds = new SeenIds(["msg_1"]),
             Moved = true,
         };
 
@@ -1042,6 +1157,42 @@ public class UsageMeterScanTests
         Assert.Equal(2, runs);
     }
 
+    /// <summary>
+    /// **멈춘 뒤에는 딱 한 번만 훑는다.**
+    ///
+    /// 예전에는 "멈췄으면 전부 통과" 였다. 설정 창 측정 탭이 5초마다 훑기를 부르므로,
+    /// 끝난 측정의 토큰이 탭을 열어 둔 내내 올라가고 목록의 기록까지 덮어써졌다 —
+    /// 끝난 측정인데 볼 때마다 숫자가 달랐다(맥 2.6.0 에서 고쳤다).
+    /// </summary>
+    [Fact]
+    public async Task 멈춘_뒤에는_한_번만_훑는다()
+    {
+        using var root = new Meters.TempRoot();
+        var time = new Meters.FakeTime(Meters.Origin);
+        var runs = 0;
+        var meter = Meters.Meter(time, root: root.Path,
+            scan: (_, _) => { runs++; return Task.FromResult(Result(output: 100)); });
+
+        meter.Start();
+        meter.Stop();                        // 멈추기 직전 몫을 담는 한 번
+        await WaitForScan(meter);
+        Assert.Equal(1, runs);
+        Assert.Equal(100, meter.State.History[0].Tokens.Output);
+
+        // 탭을 열어 둔 채로 5초마다 부르는 꼴.
+        for (var i = 0; i < 3; i++) await meter.ScanTokensAsync();
+
+        Assert.Equal(1, runs);
+        Assert.Equal(100, meter.State.Tokens.Output);
+        Assert.Equal(100, meter.State.History[0].Tokens.Output);
+    }
+
+    /// <summary><see cref="UsageMeter.Stop"/> 은 훑기를 던져 두고 돌아온다. 끝나기를 기다린다.</summary>
+    private static async Task WaitForScan(UsageMeter meter)
+    {
+        for (var i = 0; i < 100 && meter.IsScanning; i++) await Task.Delay(10);
+    }
+
     [Fact]
     public async Task 훑기가_던져도_표시가_내려간다()
     {
@@ -1084,7 +1235,7 @@ public class UsageMeterScanTests
                 ["Opus 5"] = new(2, 20, 30, 0, 0),
             },
             Offsets = new Dictionary<string, long>(ClaudeCodeUsage.PathComparer) { [@"C:\a.jsonl"] = 10 },
-            SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_0" },
+            SeenIds = new SeenIds(["msg_0"]),
         };
 
         var next = UsageMeter.Applying(Result(), state);
@@ -1138,7 +1289,7 @@ public class MeterStoreTests
             {
                 [@"C:\Users\me\a.jsonl"] = 4096,
             },
-            SeenIds = new HashSet<string>(StringComparer.Ordinal) { "msg_1", "msg_2" },
+            SeenIds = new SeenIds(["msg_1", "msg_2"]),
             Samples = 34,
             LastSampledAt = Meters.Origin.AddMinutes(-3),
             PausedTotal = TimeSpan.FromMinutes(12.5),
@@ -1224,6 +1375,26 @@ public class MeterStoreTests
         File.WriteAllText(path, "{ 이건 JSON 이 아니다");
 
         Assert.Null(new MeterStore(path).Read());
+    }
+
+    /// <summary>
+    /// **못 읽은 파일은 옆으로 치워 둔다.** 그 자리에 두면 다음 저장이 곧바로 덮어써서
+    /// 측정 기록 50개가 되살릴 길 없이 사라진다(맥 2.6.0 에서 고쳤다).
+    /// </summary>
+    [Fact]
+    public void 못_읽은_파일은_bad_로_치워_둔다()
+    {
+        using var folder = new Meters.TempRoot();
+        var path = FileIn(folder);
+        const string broken = "{ 이건 JSON 이 아니다";
+        File.WriteAllText(path, broken);
+
+        var store = new MeterStore(path);
+        Assert.Null(store.Read());
+        store.Write(new MeterState { Samples = 1 });
+
+        Assert.Equal(broken, File.ReadAllText(path + ".bad"));
+        Assert.Equal(1, store.Read()?.Samples);
     }
 
     /// <summary>쓰는 도중에 죽으면 <c>.tmp</c> 가 남는데, 본 파일은 멀쩡해야 한다.</summary>

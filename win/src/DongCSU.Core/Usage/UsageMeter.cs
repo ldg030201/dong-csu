@@ -73,12 +73,33 @@ public sealed class UsageMeter
     private MeterState state;
     private bool isScanning;
 
-    /// <summary>다음 표본은 더하지 말고 기준만 옮긴다. 일시정지에서 돌아올 때 선다.</summary>
-    /// <remarks>**저장하지 않는다** — 계속을 누른 그 순간에만 유효하다.</remarks>
-    private bool needsRebaseline;
-
     /// <summary>멈춘 뒤 딱 한 번, 늦게 도착하는 마지막 표본을 받아 주는 일회용 티켓.</summary>
     private bool acceptsFinalSample;
+
+    /// <summary>
+    /// 중지 뒤 **이 시각까지 떠 온 조회만** 마지막 표본으로 받는다.
+    ///
+    /// "딱 한 번 더 받는다" 로는 모자랐다. 중지가 부탁한 조회는 조용히 버려질 수 있는데
+    /// (이미 날아간 요청 · 저장소의 10초 바닥 · 429 백오프 최대 5분), 그러면 티켓만 켜진
+    /// 채 남아서 **한참 뒤의 평범한 폴링**이 마지막 표본이 된다 — 20초 재고 멈춘 측정에
+    /// 10분치 소모가 붙었다. 시각으로 막으면 늦게 온 것은 그냥 안 받는다.
+    /// </summary>
+    private DateTimeOffset? finalSampleUntil;
+
+    /// <summary>
+    /// 중지 뒤 마지막 표본을 기다려 주는 시간.
+    /// 조회 한 번은 보통 1초 안쪽이고, 백오프에 걸렸으면 어차피 기다릴 값어치가 없다.
+    /// </summary>
+    public static readonly TimeSpan FinalSampleWindow = TimeSpan.FromSeconds(90);
+
+    /// <summary>
+    /// 멈춘 뒤 **딱 한 번** 더 훑는 것을 받아 준다. <see cref="Stop"/> 이 켜고 훑기가 끈다.
+    ///
+    /// 예전에는 "멈췄으면 전부 통과" 였다. 설정 창 측정 탭이 5초마다 훑기를 부르므로,
+    /// 멈춘 측정의 토큰이 탭을 열어 둔 내내 계속 올라가고 <c>SyncArchived</c> 가 그 값을
+    /// 기록에 덮어썼다 — 끝난 측정인데 볼 때마다 숫자가 달랐다.
+    /// </summary>
+    private bool acceptsFinalScan;
 
     private DateTimeOffset? lastSampleRequestAt;
 
@@ -205,7 +226,10 @@ public sealed class UsageMeter
         {
             // 앞 측정에서 남은 티켓이 새 측정의 첫 표본을 삼키면 안 된다.
             acceptsFinalSample = false;
-            needsRebaseline = false;
+            finalSampleUntil = null;
+            acceptsFinalScan = false;
+            // **재기준 깃발은 한도 기록마다 달려 있다.** 새 `MeterState` 라 기록이 비어
+            // 있으니 그 깃발도 같이 사라진다 — 여기서 따로 내릴 것이 없다.
 
             next = new MeterState
             {
@@ -227,7 +251,8 @@ public sealed class UsageMeter
 
         // **기준점은 지금 값이어야 한다.** 마지막 조회는 몇 분 전 것일 수 있고, 그걸
         // 기준으로 삼으면 시작을 누르기 전에 쓴 몫이 이번 측정에 들어간다.
-        RequestSample();
+        // 사람이 누른 것이라 바닥을 무시한다 — 건너뛰면 기준점 자체가 안 잡힌다.
+        RequestSample(force: true);
     }
 
     /// <summary>잠깐 세운다. 세워 둔 동안 쓴 것은 이번 측정에 안 들어간다.</summary>
@@ -275,13 +300,17 @@ public sealed class UsageMeter
             // 토큰 오프셋과 한도 기준을 **함께** 옮겨야 세워 둔 동안 다른 데서 쓴 것이
             // 이번 측정에 안 들어간다.
             next.Offsets = offsets;
-            needsRebaseline = true;
+            // **한도마다 따로 세운다.** 예전에는 측정 전체에 깃발 하나였고, 재개 뒤 첫
+            // 표본에 들어 있던 한도만 기준을 옮긴 뒤 그 깃발을 꺼 버렸다. 모델별 주간
+            // 한도처럼 표본에 없을 수도 있는 한도는 옛 기준을 그대로 들고 있다가, 다시
+            // 나타나는 순간 세워 둔 동안 쓴 몫을 통째로 더했다.
+            foreach (var track in next.Tracks.Values) track.NeedsRebaseline = true;
             state = next;
         }
 
         Save(next);
         Changed?.Invoke();
-        RequestSample();
+        RequestSample(force: true);
     }
 
     public void Stop()
@@ -292,10 +321,14 @@ public sealed class UsageMeter
             // **멈출 때도 한 번 더 잰다.** 조회 주기가 몇 분인데 그보다 짧게 재고 멈추면
             // 표본이 시작 때 하나뿐이라 소모량이 늘 0%p 가 된다. 시작과 중지에서 각각
             // 한 번씩 재면 아무리 짧게 재도 두 점 사이의 차이가 남는다.
+            //
+            // **기다려 주는 데 시한을 둔다.** 티켓만 켜 두면 중지가 부탁한 조회가 버려졌을
+            // 때 한참 뒤의 폴링이 마지막 표본이 된다(<see cref="finalSampleUntil"/>).
             acceptsFinalSample = true;
+            finalSampleUntil = time.GetUtcNow() + FinalSampleWindow;
         }
 
-        RequestSample();
+        RequestSample(force: true);
 
         MeterState next;
         lock (gate)
@@ -318,7 +351,8 @@ public sealed class UsageMeter
 
         Save(next);
         Changed?.Invoke();
-        // 멈추기 직전에 쓴 것도 들어가야 한다.
+        // 멈추기 직전에 쓴 것도 들어가야 한다. **이 한 번만 통과한다.**
+        lock (gate) acceptsFinalScan = true;
         _ = ScanTokensAsync();
     }
 
@@ -418,9 +452,13 @@ public sealed class UsageMeter
         lock (gate)
         {
             // 일시정지 중에는 안 받는다. 중지 뒤 늦게 오는 마지막 표본만 티켓으로 통과한다.
-            if (!state.IsCounting && !acceptsFinalSample) return;
+            if (!state.IsCounting && !TakesAsFinalSample(snapshot)) return;
             // 티켓은 한 장뿐이라 쓰는 자리에서 곧바로 내린다.
-            if (!state.IsCounting) acceptsFinalSample = false;
+            if (!state.IsCounting)
+            {
+                acceptsFinalSample = false;
+                finalSampleUntil = null;
+            }
 
             next = state.Copy();
             foreach (var limit in LimitsOf(snapshot))
@@ -435,13 +473,13 @@ public sealed class UsageMeter
 
                 // 계속을 누른 뒤 첫 표본도 **처음 보는 한도와 똑같은 일**이다 — 세워 둔
                 // 동안 늘어난 몫은 이번 측정이 쓴 것이 아니라 누적하지 않는다.
-                next.Tracks[limit.Id] = needsRebaseline
+                // **깃발은 한도마다 달려 있고 그 한도를 옮길 때 내린다.** 측정 전체에
+                // 깃발 하나를 두면, 표본에 없던 한도가 뒤늦게 나타날 때 세워 둔 동안
+                // 쓴 몫이 통째로 더해진다.
+                next.Tracks[limit.Id] = track.NeedsRebaseline
                     ? Baseline(track, limit)
                     : Advance(track, limit);
             }
-
-            // **루프 밖에서 내린다.** 한도가 여럿인데 안에서 내리면 첫 한도만 재기준된다.
-            needsRebaseline = false;
 
             next.Samples++;
             next.LastSampledAt = snapshot.FetchedAt;
@@ -452,6 +490,18 @@ public sealed class UsageMeter
         Save(next);
         Changed?.Invoke();
     }
+
+    /// <summary>
+    /// 멈춘 뒤 도착한 이 조회를 마지막 표본으로 칠지.
+    ///
+    /// **떠 온 시각으로 가른다** — 도착 시각이 아니라 서버에서 읽어 온 시각이라야,
+    /// 느리게 돌아온 조회와 한참 뒤의 새 조회가 구별된다.
+    ///
+    /// <b>락 안에서 부른다.</b> 티켓 두 칸을 함께 보는 판정이라 밖에서 부르면 그 사이에
+    /// 한쪽만 바뀐 것을 볼 수 있다.
+    /// </summary>
+    private bool TakesAsFinalSample(UsageSnapshot snapshot)
+        => acceptsFinalSample && finalSampleUntil is { } until && snapshot.FetchedAt <= until;
 
     /// <summary>
     /// 표본 하나를 트랙에 반영한다. 갈래가 셋이다.
@@ -508,6 +558,9 @@ public sealed class UsageMeter
         // 이름도 함께 옮긴다 — 서버가 이름을 바꾸면 따라가야 하고, 여기만 빼놓으면
         // 계속을 누른 측정에서 이름 하나가 옛것으로 남는다.
         next.Title = limit.Title;
+        // **기준을 옮겼으니 깃발을 내린다.** 이 한도에 한해서다 — 아직 표본에 안 나타난
+        // 다른 한도는 저마다 제 깃발을 들고 기다린다.
+        next.NeedsRebaseline = false;
         return next;
     }
 
@@ -571,7 +624,12 @@ public sealed class UsageMeter
             if (state.StartedAt is not { } since) return;
             if (isScanning) return;
             // 세워 둔 동안 쓴 것은 세지 않는다. 다만 중지 직후의 마지막 훑기는 통과시킨다.
-            if (!state.IsCounting && state.IsRunning) return;
+            //
+            // **그 마지막 한 번만 통과한다.** 예전에는 `!state.IsRunning` 이라 중지한 뒤로
+            // 모든 호출이 통과했는데, 설정 창 측정 탭이 5초마다 이걸 부르므로 끝난 측정의
+            // 토큰이 탭을 열어 둔 내내 올라갔다(<see cref="acceptsFinalScan"/>).
+            if (!state.IsCounting && !acceptsFinalScan) return;
+            if (!state.IsCounting) acceptsFinalScan = false;
             if (!RecordsAvailable) return;
 
             isScanning = true;
@@ -676,13 +734,24 @@ public sealed class UsageMeter
 
     // MARK: - 표본 부탁 · 저장
 
-    private void RequestSample()
+    /// <param name="force">
+    /// 바닥(<see cref="MinSampleInterval"/>)을 무시하고 반드시 부탁한다.
+    ///
+    /// **사람이 누른 것에만 쓴다**(시작 · 계속 · 중지). 그 셋은 기준점을 잡는 조회라
+    /// 건너뛰면 측정 자체가 틀어진다 — 시작 30초 안에 멈추면 중지 조회가 통째로 안
+    /// 나가서, 한참 뒤의 평범한 폴링이 마지막 표본이 되곤 했다.
+    ///
+    /// 요청 제한은 저장소 쪽(10초 바닥 · 429 백오프)이 어차피 다시 막는다. 이 바닥은
+    /// "측정이 조르지 않게" 두는 것이라 사람이 누른 세 번까지 막을 이유가 없다.
+    /// </param>
+    private void RequestSample(bool force = false)
     {
         bool wanted;
         lock (gate)
         {
             var now = time.GetUtcNow();
-            wanted = lastSampleRequestAt is not { } last || now - last >= MinSampleInterval;
+            wanted = force
+                || lastSampleRequestAt is not { } last || now - last >= MinSampleInterval;
             if (wanted) lastSampleRequestAt = now;
         }
 

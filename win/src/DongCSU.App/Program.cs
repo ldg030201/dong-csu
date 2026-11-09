@@ -184,7 +184,8 @@ public sealed class AppController : IDisposable
         // 그 사이에 쓴 것은 기준이 없어서 못 센다.
         //
         // **force 를 주지 않는다** — force 는 429 백오프를 무시해서 요청 제한을 더 부른다.
-        // 30초 바닥은 `UsageMeter` 쪽이 이미 지킨다.
+        // 시작·계속·중지는 측정 쪽 30초 바닥을 건너뛰고 부탁하지만(기준점이라 빠지면 측정이
+        // 틀어진다), 저장소의 10초 바닥과 429 백오프는 여기서 그대로 지켜진다.
         meter.SampleWanted += () => _ = store.RefreshAsync();
         meter.Changed += OnMeterChanged;
 

@@ -26,7 +26,7 @@ public sealed record TokenScanResult
     /// </summary>
     public Dictionary<string, long> Offsets { get; init; } = new(ClaudeCodeUsage.PathComparer);
 
-    public HashSet<string> SeenIds { get; init; } = new(StringComparer.Ordinal);
+    public SeenIds SeenIds { get; init; } = new();
 
     /// <summary>
     /// 이번 훑기가 **무언가를 움직였는지.** 오프셋이 옮겨졌거나 합계에 더한 것이 있으면 참이다.
@@ -53,18 +53,9 @@ public sealed record TokenScanResult
 /// </summary>
 public sealed class TokenScan
 {
-    /// <summary>
-    /// 중복 제거용 id 를 이만큼까지만 들고 있는다.
-    ///
-    /// 측정 구간 안의 응답 수만큼만 쌓이므로 실제로는 몇천을 넘지 않는다. 그래도 몇 주씩
-    /// 켜 두는 사람이 있을 수 있어서 위를 막아 둔다 — 넘으면 중복 제거만 느슨해지고
-    /// 합계는 계속 쌓인다.
-    /// </summary>
-    public const int SeenLimit = 50_000;
-
     private readonly DateTimeOffset since;
     private readonly IReadOnlyDictionary<string, long>? offsets;
-    private readonly IReadOnlySet<string>? seenIds;
+    private readonly SeenIds? seenIds;
     private readonly string? root;
 
     /// <param name="since">
@@ -88,7 +79,7 @@ public sealed class TokenScan
     public TokenScan(
         DateTimeOffset since,
         IReadOnlyDictionary<string, long>? offsets,
-        IReadOnlySet<string>? seenIds,
+        SeenIds? seenIds,
         string? root = null)
     {
         this.since = since;
@@ -107,9 +98,7 @@ public sealed class TokenScan
         // 훑기가 첫 번째와 다른 답을 내고, 부르는 쪽의 살아 있는 상태까지 함께 움직인다.
         // 경로는 대소문자를 안 가리지만 id 는 가린다 — 비교자가 서로 다르다.
         var offsets = MeterState.CopiedOffsets(this.offsets);
-        var seen = this.seenIds is null
-            ? new HashSet<string>(StringComparer.Ordinal)
-            : new HashSet<string>(this.seenIds, StringComparer.Ordinal);
+        var seen = this.seenIds?.Copy() ?? new SeenIds();
         var added = default(TokenTally);
         var byModel = new Dictionary<string, TokenTally>(StringComparer.Ordinal);
         // 오프셋이 옮겨졌거나 더한 것이 있을 때만 선다. 놀고 있으면 끝까지 false 라
@@ -159,8 +148,11 @@ public sealed class TokenScan
                 if (Parse(line, since) is not { } entry) continue;
 
                 // **같은 응답이 두세 줄에 걸쳐 적힌다.** 값은 매번 같으므로 처음 것만 센다.
-                if (seen.Contains(entry.Id)) continue;
-                if (seen.Count < SeenLimit) seen.Add(entry.Id);
+                //
+                // **상한에 닿아도 계속 들인다.** 예전에는 `Count < SeenLimit` 일 때만
+                // 들였는데, 그러면 5만을 넘긴 뒤로 중복 제거가 통째로 멈춰 합계가 2배가
+                // 됐다. 넘치면 오래된 쪽을 버린다(<see cref="SeenIds.Add"/>).
+                if (!seen.Add(entry.Id)) continue;
 
                 added += entry.Tally;
                 byModel[entry.Model] = byModel.GetValueOrDefault(entry.Model) + entry.Tally;

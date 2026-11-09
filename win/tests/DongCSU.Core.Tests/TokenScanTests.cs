@@ -655,7 +655,7 @@ public class TokenScanTests
         temp.Write("a.jsonl", Jsonl.Line("a1", Since.AddMinutes(1), output: 1));
 
         var offsets = new Dictionary<string, long>();
-        var seen = new HashSet<string>();
+        var seen = new SeenIds();
 
         var result = new TokenScan(Since, offsets, seen, temp.Root).Run();
 
@@ -699,7 +699,107 @@ public class TokenScanTests
     [Fact]
     public void 상한은_5만이다()
     {
-        Assert.Equal(50_000, TokenScan.SeenLimit);
+        Assert.Equal(50_000, SeenIds.Limit);
+    }
+}
+
+/// <summary>
+/// 이미 센 id 를 들고 있는 그릇.
+///
+/// **상한에 닿은 뒤가 핵심이다.** 예전에는 상한에 닿으면 새 id 를 아예 안 받았고, 그러면
+/// 그 순간부터 중복 제거가 통째로 멈춰서 **합계가 2배가 됐다** — 같은 응답이 두세 줄에
+/// 걸쳐 적히는 것이 이 기록의 전제다.
+/// </summary>
+public class SeenIdsTests
+{
+    [Fact]
+    public void 처음_보는_것만_들인다()
+    {
+        var seen = new SeenIds();
+
+        Assert.True(seen.Add("msg_1"));
+        Assert.False(seen.Add("msg_1"));
+        Assert.Equal(1, seen.Count);
+        Assert.True(seen.Contains("msg_1"));
+        // 대소문자는 가린다(경로와 다르다).
+        Assert.False(seen.Contains("MSG_1"));
+    }
+
+    /// <summary>넘치면 **오래된 쪽부터** 버린다. 방금 본 것은 다음 줄에서 또 나온다.</summary>
+    [Fact]
+    public void 넘치면_오래된_것부터_버린다()
+    {
+        var seen = new SeenIds();
+        var total = SeenIds.Limit + SeenIds.EvictChunk + 1;
+        for (var index = 0; index < total; index++) seen.Add($"msg_{index}");
+
+        // 한 덩이가 버려졌다 — 들고 있는 수가 상한 아래로 내려온다.
+        Assert.Equal(total - SeenIds.EvictChunk, seen.Count);
+        // 제일 오래된 것은 없고,
+        Assert.False(seen.Contains("msg_0"));
+        Assert.False(seen.Contains($"msg_{SeenIds.EvictChunk - 1}"));
+        // 그 뒤부터 방금 넣은 것까지는 그대로 있다.
+        Assert.True(seen.Contains($"msg_{SeenIds.EvictChunk}"));
+        Assert.True(seen.Contains($"msg_{total - 1}"));
+    }
+
+    /// <summary>
+    /// **상한을 넘어서도 중복 제거가 돈다.** 이것이 토큰 두 배 버그의 본체다.
+    /// </summary>
+    [Fact]
+    public void 상한을_넘겨도_중복을_계속_걸러낸다()
+    {
+        var seen = new SeenIds();
+        for (var index = 0; index < SeenIds.Limit + SeenIds.EvictChunk + 10; index++)
+        {
+            seen.Add($"msg_{index}");
+        }
+
+        var again = $"msg_{SeenIds.Limit}";
+        Assert.True(seen.Contains(again));
+        Assert.False(seen.Add(again));
+    }
+
+    [Fact]
+    public void 복사본은_원본과_따로_움직인다()
+    {
+        var seen = new SeenIds(["msg_1"]);
+        var copy = seen.Copy();
+
+        copy.Add("msg_2");
+
+        Assert.Equal(1, seen.Count);
+        Assert.Equal(2, copy.Count);
+    }
+
+    /// <summary>
+    /// **파일에는 차례만 배열로 적는다.** 옛 <c>meter.json</c> 이 집합을 배열로 적어 둔
+    /// 것과 같은 꼴이라, 판을 올려도 내려도 기록이 그대로 읽힌다.
+    /// </summary>
+    [Fact]
+    public void 배열_그대로_싣고_되읽는다()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new SeenIds(["msg_1", "msg_2"]));
+
+        Assert.Equal("""["msg_1","msg_2"]""", json);
+
+        var read = System.Text.Json.JsonSerializer.Deserialize<SeenIds>(json)!;
+        Assert.Equal(new[] { "msg_1", "msg_2" }, read);
+    }
+
+    /// <summary>
+    /// 손으로 고친 파일 하나 때문에 측정 기록이 통째로 안 읽히면 안 된다 —
+    /// 중복 제거만 느슨해지고 합계는 계속 쌓인다.
+    /// </summary>
+    [Theory]
+    [InlineData("null")]
+    [InlineData("""{"a":1}""")]
+    [InlineData("""["msg_1",null,"msg_1","msg_2"]""")]
+    public void 이상한_것이_와도_던지지_않는다(string json)
+    {
+        var read = System.Text.Json.JsonSerializer.Deserialize<SeenIds>(json)!;
+
+        Assert.DoesNotContain("", read);
     }
 }
 

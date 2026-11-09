@@ -28,6 +28,19 @@ public sealed class LimitTrack
     /// <summary>재는 동안 창이 몇 번 새로 열렸는지.</summary>
     public int Resets { get; set; }
 
+    /// <summary>
+    /// 다음 표본은 더하지 말고 기준만 옮긴다. **일시정지에서 돌아올 때 선다.**
+    ///
+    /// 예전에는 측정 전체에 깃발 하나였고, 재개 뒤 **첫 표본에 들어 있던 한도만** 기준을
+    /// 옮긴 뒤 그 깃발을 꺼 버렸다. 모델별 주간 한도처럼 표본에 없을 수도 있는 한도는 옛
+    /// 기준을 그대로 들고 있다가, 다시 나타나는 순간 세워 둔 동안 쓴 몫을 통째로 더했다.
+    /// 한도마다 따로 들면 그 틈이 없어진다.
+    ///
+    /// **파일에도 남는다** — 깃발만 메모리에 두면 재개하고 앱을 끄는 것만으로 같은 일이
+    /// 벌어진다.
+    /// </summary>
+    public bool NeedsRebaseline { get; set; }
+
     public LimitTrack Clone() => new()
     {
         Title = Title,
@@ -35,6 +48,7 @@ public sealed class LimitTrack
         LastPercent = LastPercent,
         LastResetsAt = LastResetsAt,
         Resets = Resets,
+        NeedsRebaseline = NeedsRebaseline,
     };
 }
 
@@ -124,8 +138,12 @@ public sealed record MeterState
     /// </summary>
     public Dictionary<string, long> Offsets { get; set; } = new(ClaudeCodeUsage.PathComparer);
 
-    /// <summary>이미 센 <c>message.id</c>. 경로와 달리 **대소문자를 가린다.**</summary>
-    public HashSet<string> SeenIds { get; set; } = new(StringComparer.Ordinal);
+    /// <summary>
+    /// 이미 센 <c>message.id</c>. 경로와 달리 **대소문자를 가린다.**
+    ///
+    /// 상한에 닿으면 오래된 것부터 버린다 — 까닭은 <see cref="Usage.SeenIds"/> 에 있다.
+    /// </summary>
+    public SeenIds SeenIds { get; set; } = new();
 
     public int Samples { get; set; }
 
@@ -196,8 +214,7 @@ public sealed record MeterState
     ///
     /// **사전 비교자도 여기서 되살린다** — 직렬화를 건너온 사전은 기본 비교자를 달고 온다.
     /// </summary>
-    public MeterState Copy()
-        => CopyAdopting(CopiedOffsets(Offsets), new HashSet<string>(SeenIds, StringComparer.Ordinal));
+    public MeterState Copy() => CopyAdopting(CopiedOffsets(Offsets), SeenIds.Copy());
 
     /// <summary>
     /// 훑기 결과를 얹을 때 쓰는 복사. 오프셋과 본 id 는 베끼지 않고 **넘겨받은 것을 그대로
@@ -211,7 +228,7 @@ public sealed record MeterState
     /// 살아 있는 상태를 직접 고치는 셈이 된다. 오프셋 사전의 비교자는
     /// <see cref="ClaudeCodeUsage.PathComparer"/> 여야 한다.
     /// </summary>
-    public MeterState CopyAdopting(Dictionary<string, long> offsets, HashSet<string> seenIds)
+    public MeterState CopyAdopting(Dictionary<string, long> offsets, SeenIds seenIds)
     {
         var tracks = new Dictionary<string, LimitTrack>(Tracks.Count, StringComparer.Ordinal);
         foreach (var (id, track) in Tracks) tracks[id] = track.Clone();
