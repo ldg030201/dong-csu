@@ -134,6 +134,67 @@ public static class Changelog
     [
         new ChangelogEntry
         {
+            Version = "2.6.0",
+            Date = null,
+            Groups =
+            [
+                new ChangelogGroup
+                {
+                    Title = "HUD",
+                    Notes =
+                    [
+                        ChangelogNote.New("5시간 한도가 없는 Ultra 계정 지원 "
+                            + "(세션 링·숫자를 빼고, 마스코트가 지치는 기준은 주간으로)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "측정",
+                    Tab = "measure",
+                    Notes =
+                    [
+                        ChangelogNote.Fix("측정이 길어지면 토큰이 두 배로 세지던 문제 수정"),
+                        ChangelogNote.Fix("중지한 측정에 그 뒤의 사용량이 더해지던 문제 수정 "
+                            + "(설정 창을 열어 뒀거나 조회가 늦게 왔을 때)"),
+                        ChangelogNote.Fix("일시정지에서 돌아올 때 멈춘 동안 쓴 몫까지 세던 문제 수정"),
+                        ChangelogNote.Fix("측정 기록 파일이 깨지면 지난 기록까지 덮어써지던 문제 수정 "
+                            + "(meter.json.bad 로 남김)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "펫 모드",
+                    Tab = "pet",
+                    Notes =
+                    [
+                        ChangelogNote.Fix("창에 붙지 못한 뒤 매달린 자세로 굳어 걷기·커서 피하기가 멈추던 문제 수정"),
+                        ChangelogNote.Fix("창에 안 붙을 때마다 열린 창 목록을 기록 파일에 쌓던 문제 수정"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "계정",
+                    Tab = "account",
+                    Notes =
+                    [
+                        ChangelogNote.Improve("Claude 앱으로만 쓸 때 로그인이 안 잡히는 이유를 계정 탭에 안내하도록 개선"),
+                        ChangelogNote.Fix("Claude 앱만 쓰는 PC에서 재로그인을 눌러도 실행 파일을 못 찾던 문제 수정 "
+                            + "(앱에 들어 있는 Claude Code를 씀)"),
+                    ],
+                },
+                new ChangelogGroup
+                {
+                    Title = "실행",
+                    Notes =
+                    [
+                        ChangelogNote.Fix("이미 떠 있는데 또 띄우면 여러 개가 겹쳐 뜨던 문제 수정 "
+                            + "(떠 있던 것이 앞으로 나옴)"),
+                    ],
+                },
+            ],
+        },
+        new ChangelogEntry
+        {
             Version = "2.5.0",
             Date = "2026-09-08",
             Groups =
