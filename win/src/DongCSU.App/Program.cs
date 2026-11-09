@@ -46,12 +46,28 @@ public static class Program
         TaskScheduler.UnobservedTaskException += (_, e) => AppLog.Write(
             $"돌보지 않은 작업 예외: {Describe(e.Exception)}");
 
+        // **한 판에 하나만 뜬다.** 트레이에만 떠서 켜져 있는 줄 모르고 또 띄우면 HUD 가
+        // 겹치고 조회가 두 배로 나가며, 두 프로세스가 같은 설정·토큰 파일을 번갈아 덮는다.
+        // 두 번째 것은 먼저 뜬 쪽을 앞으로 불러내고 여기서 끝난다.
+        //
+        // **진단 통로와 Velopack 뒤에 둔다.** 앱이 떠 있는 동안에도 `--probe-*` 는 돌아야
+        // 하고, 설치·업데이트 훅은 떠 있는 것과 상관없이 제 일을 해야 한다.
+        //
+        // `using` 이 `Main` 끝까지 쥐고 있게 한다 — 놓치면 GC 가 거두면서 자리가 빈다.
+        using var instance = SingleInstance.Acquire(AppInfo.Name);
+        if (instance is null) return 0;
+
         var application = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
         application.DispatcherUnhandledException += (_, e) => AppLog.Write(
             $"화면 쪽에서 처리 못 한 예외: {Describe(e.Exception)}");
 
         var controller = new AppController();
-        application.Startup += (_, _) => controller.Start();
+        application.Startup += (_, _) =>
+        {
+            controller.Start();
+            // **시작이 끝난 뒤에 듣는다.** 그 전에 불리면 앞으로 낼 창이 아직 없다.
+            instance.Listen(() => application.Dispatcher.BeginInvoke(controller.Reveal));
+        };
         application.Exit += (_, _) => controller.Dispose();
         return application.Run();
     }
@@ -1219,6 +1235,28 @@ public sealed class AppController : IDisposable
         settings.IsHudVisible = !settings.IsHudVisible;
         settings.Save();
         ApplySettings();
+    }
+
+    /// <summary>
+    /// 이미 떠 있는데 또 띄웠다(<see cref="SingleInstance"/>). <b>앞으로 나와서 여기
+    /// 있다고 보여준다.</b>
+    ///
+    /// 또 띄운 사람은 앱이 안 켜진 줄 안 것이다 — 트레이에만 떠서 그렇게 보인다. 그러니
+    /// 눌렀는데 아무 일도 없으면 또 누른다. <b>숨겨 둔 HUD 면 다시 보이고</b>(찾던 것이
+    /// 그것이다), 이미 보이면 설정 창을 앞으로 띄운다 — 화면 구석에 있어 못 찾았을 수도
+    /// 있고, 거기서 무엇이든 할 수 있다.
+    /// </summary>
+    public void Reveal()
+    {
+        AppLog.Write("또 띄운 것이 불렀다 — 앞으로 나온다");
+        if (!settings.IsHudVisible)
+        {
+            settings.IsHudVisible = true;
+            settings.Save();
+            ApplySettings();
+            return;
+        }
+        OpenSettings();
     }
 
     private void OpenSettings(string? tab = null)
