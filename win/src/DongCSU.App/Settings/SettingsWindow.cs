@@ -545,13 +545,18 @@ public sealed partial class SettingsWindow : Window
         else if (store.IsStale) header.Children.Add(Ui.Pill(palette, "오래된 값", palette.Warning));
         panel.Children.Add(header);
 
-        var limits = new List<UIElement>
+        var limits = new List<UIElement>();
+
+        // **5시간 한도가 없는 계정(인증된 Ultra)이면 그 줄을 뺀다.** "—" 로 남겨 두면
+        // 조회가 실패한 것처럼 보인다 — 서버가 "없다" 고 말해 준 것과 못 읽은 것은 다르다.
+        //
+        // HUD 는 좁아서 "세션·주간"만 쓰지만, 여기서는 몇 시간짜리인지까지 밝힌다.
+        if (store.HasSessionLimit)
         {
-            // HUD 는 좁아서 "세션·주간"만 쓰지만, 여기서는 몇 시간짜리인지까지 밝힌다.
-            UsageRow(palette, "세션 (5시간)", store.Snapshot?.FiveHour, now),
-            Ui.Divider(palette),
-            UsageRow(palette, "주간 (7일)", store.Snapshot?.SevenDay, now),
-        };
+            limits.Add(UsageRow(palette, "세션 (5시간)", store.Snapshot?.FiveHour, now));
+            limits.Add(Ui.Divider(palette));
+        }
+        limits.Add(UsageRow(palette, "주간 (7일)", store.Snapshot?.SevenDay, now));
 
         // 모델별은 서버가 줄 때만 있다. **여기는 상태를 보는 자리라 표시 설정과
         // 상관없이 늘 보여준다** — HUD 에 안 띄워 뒀어도 값은 알 수 있어야 한다.

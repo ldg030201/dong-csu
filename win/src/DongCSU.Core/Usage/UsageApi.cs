@@ -212,6 +212,7 @@ public sealed class UsageApi(
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object) return UsageResult.Fail(UsageError.Decode());
 
+            var limits = ParseLimits(root);
             return UsageResult.Ok(new UsageSnapshot
             {
                 PlanName = ClaudeCredentials.PlanName(credential.SubscriptionType),
@@ -219,7 +220,11 @@ public sealed class UsageApi(
                 TokenExpiresAt = credential.ExpiresAt,
                 FiveHour = Window(root, "five_hour"),
                 SevenDay = Window(root, "seven_day"),
-                Limits = ParseLimits(root),
+                Limits = limits,
+                // <c>limits</c> 에 세션이 들어 있으면 그쪽을 믿는다. 한쪽만 null 인 응답에
+                // 있는 한도를 숨기느니 "—" 를 띄우는 편이 낫다.
+                HasSessionLimit = !IsExplicitlyAbsent(root, "five_hour")
+                    || limits.Any(limit => limit.Kind == "session"),
                 FetchedAt = now,
             });
         }
@@ -227,6 +232,26 @@ public sealed class UsageApi(
         {
             return UsageResult.Fail(UsageError.Decode());
         }
+    }
+
+    /// <summary>
+    /// 서버가 그 창이 **없다고** 말했는지. 키가 아예 없는 것은 여기에 안 든다.
+    ///
+    /// 창 자리에 <c>null</c> 이 오는 것이 기본이고, 창은 있는데 <c>utilization</c> 만
+    /// <c>null</c> 인 꼴도 같은 뜻으로 읽는다 — Claude Code 의 <c>/usage</c> 가 둘을
+    /// 똑같이 다룬다.
+    ///
+    /// **키가 없는 것과 가르는 것이 핵심이다.** 옛 응답에는 <c>five_hour</c> 가 아예
+    /// 없을 수 있는데, 그건 "한도가 없다" 가 아니라 "값을 모른다" 라서 세션 줄을
+    /// 지우면 안 된다(예전처럼 "—" 로 남긴다).
+    /// </summary>
+    private static bool IsExplicitlyAbsent(JsonElement root, string key)
+    {
+        if (!root.TryGetProperty(key, out var element)) return false;
+        if (element.ValueKind == JsonValueKind.Null) return true;
+        return element.ValueKind == JsonValueKind.Object
+            && element.TryGetProperty("utilization", out var utilization)
+            && utilization.ValueKind == JsonValueKind.Null;
     }
 
     private static UsageWindow? Window(JsonElement root, string key)

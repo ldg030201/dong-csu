@@ -294,6 +294,18 @@ public sealed class HudView : FrameworkElement
     public bool IsDisconnected { get; set; }
 
     /// <summary>
+    /// 이 계정에 5시간 한도가 있는지. **설정이 아니라 조회 응답에서 온다**
+    /// (<see cref="UsageStore.HasSessionLimit"/> 가 넘겨 준다).
+    ///
+    /// 없으면(인증된 Ultra) 세션 링과 세션 줄을 **통째로 뺀다.** "—" 로 남겨 두면
+    /// 아직 못 읽은 것처럼 보인다.
+    ///
+    /// **아직 한 번도 못 읽었으면 있다고 본다** — 저쪽 기본값과 같아야 첫 조회에 링이
+    /// 하나 뒤늦게 생겨나는 일이 없다.
+    /// </summary>
+    public bool HasSessionLimit { get; set; } = true;
+
+    /// <summary>
     /// 주간을 다 썼다. **두 링과 두 줄이 다** 색을 뺀다 — 세션은 쓸 수 없어서고,
     /// 주간은 그 자신이 죽은 이유라서다.
     /// </summary>
@@ -359,8 +371,54 @@ public sealed class HudView : FrameworkElement
     ///
     /// 값이 없을 때 커진 자리는 비어 있다. 그림은 <see cref="ScopedLimit"/> 이 있을
     /// 때만 그리므로(맥과 같다) 링은 여전히 둘이고, 가운데 그림이 그만큼 커진다.
+    ///
+    /// **모델별을 켰다고 셋이 되는 것은 아니다.** 5시간 한도가 없는 계정은 세션 링이
+    /// 빠져서 모델별을 켜도 둘이고, 둘이면 원래 크기에 다 들어간다 — 키운 채로 두면
+    /// 링 둘이 큰 카드 안에서 헐렁하게 논다(맥 <c>Card.hasThirdRing</c>).
     /// </summary>
-    private bool GrowsFor(HudMode mode) => mode != HudMode.Pet && ShowsScopedLimit;
+    private bool GrowsFor(HudMode mode) =>
+        mode != HudMode.Pet && ShowsScopedLimit && HasSessionLimit;
+
+    /// <summary>
+    /// 그릴 링을 **바깥부터** 늘어놓는다.
+    ///
+    /// **빠진 것은 자리를 비우지 않고 안쪽 것을 밖으로 당긴다.** 5시간 한도가 없는
+    /// 계정에서 바깥 자리를 비워 두면 주간 링이 빈 고리에 둘러싸인 채 쪼그라든다.
+    /// 바깥 링이 굵은 것도 "제일 먼저 막히는 한도" 라서인데, 세션이 없으면 그게 주간이다.
+    ///
+    /// **가운데 그림 자리(<see cref="IconRoom"/>)도 이 수를 센다** — 따로 세면 링이
+    /// 둘인데 그림만 셋일 때처럼 작게 그려진다.
+    /// </summary>
+    private RingEntry[] RingEntries()
+    {
+        var entries = new List<RingEntry>(3);
+        // 주간을 다 썼으면 **둘 다** 색을 뺀다. 세션은 쓸 수 없어서고, 주간은 그 자신이
+        // 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는 죽었는데 링은 살아 있어서
+        // 아직 뭔가 되는 것처럼 읽힌다.
+        //
+        // **세션만 다 썼을 때는 세션 링만 뺀다.** 주간은 다음 창이 열리면 실제로 쓸 수
+        // 있는 양이라, 그것까지 회색으로 만들면 있는 여유를 숨긴다.
+        if (HasSessionLimit)
+        {
+            entries.Add(new RingEntry(
+                Snapshot?.FiveHour?.Utilization,
+                ShowsSessionSpent ? Palette.RingSpent : null));
+        }
+        entries.Add(new RingEntry(
+            Snapshot?.SevenDay?.Utilization,
+            ShowsWeeklySpent ? Palette.RingSpent : null));
+        // **제일 안쪽이 모델별이다.** 세션 · 주간은 거의 누구에게나 있고 이건 없을 수도
+        // 있어서, 없을 때 자리가 비지 않는 쪽이 안쪽이다.
+        //
+        // 회색은 주간과 짝이다 — 모델별도 주간 창이라 주간이 차면 같이 죽는다.
+        if (ScopedLimit is { } scoped)
+        {
+            entries.Add(new RingEntry(
+                scoped.Percent,
+                ShowsWeeklySpent ? Palette.RingSpent : null));
+        }
+        return [.. entries];
+    }
 
     public ProcessUsage? Stats { get; set; }
 
@@ -551,13 +609,20 @@ public sealed class HudView : FrameworkElement
 
         var innerThickness = BaseInnerThickness * Scale;
         var gap = BaseRingGap * Scale;
+
+        // 링이 하나 더 생기면 그림도 그만큼 안으로 들어가고, 하나 빠지면 그만큼 커진다.
+        // **몇 겹인지는 `RingEntries` 가 센다** — 여기서 다시 세면 5시간 한도가 없는
+        // 계정에서 링은 둘인데 그림만 셋 기준으로 작게 그려진다.
+        //
         // **셈은 그리는 쪽 것을 쓴다**(<see cref="RingRenderer.Nested"/>).
-        var inner = RingRenderer.Nested(outerDiameter, BaseOuterThickness * Scale, gap);
-        // 링이 하나 더 생기면 그림도 그만큼 안으로 들어간다.
-        var innermost = ScopedLimit is null
-            ? inner
-            : RingRenderer.Nested(inner, innerThickness, gap);
-        return innermost - innerThickness * 2 - 4 * Scale;
+        var diameter = outerDiameter;
+        var thickness = BaseOuterThickness * Scale;
+        for (var depth = RingEntries().Length; depth > 1; depth--)
+        {
+            diameter = RingRenderer.Nested(diameter, thickness, gap);
+            thickness = innerThickness;
+        }
+        return diameter - thickness * 2 - 4 * Scale;
     }
 
     /// <summary>모델별 링이 없을 때의 링 지름. 글자 자리가 안 줄었는지 재는 기준이다.</summary>
@@ -1047,26 +1112,14 @@ public sealed class HudView : FrameworkElement
                 outer,
                 innerThickness,
                 BaseRingGap * s,
-                Snapshot?.FiveHour?.Utilization,
-                Snapshot?.SevenDay?.Utilization,
                 palette.RingTrack,
                 grayscale: IsDisconnected,
-                // 주간을 다 썼으면 **두 링 다** 색을 뺀다. 세션은 쓸 수 없어서고,
-                // 주간은 그 자신이 죽은 이유라서다. 하나만 빨갛게 남으면 마스코트는
-                // 죽었는데 링은 살아 있어서 아직 뭔가 되는 것처럼 읽힌다.
-                //
-                // **세션만 다 썼을 때는 세션 링만 뺀다.** 주간은 다음 창이 열리면 실제로
-                // 쓸 수 있는 양이라, 그것까지 회색으로 만들면 있는 여유를 숨긴다.
-                sessionSpentColor: ShowsSessionSpent ? palette.RingSpent : null,
-                weeklySpentColor: ShowsWeeklySpent ? palette.RingSpent : null,
+                // **무엇을 몇 겹 그릴지는 `RingEntries` 한 곳에서 나온다.** 세션이 없는
+                // 계정에서 바깥 자리를 비우지 않고 안쪽을 당겨 오는 것도 거기 적혀 있다.
+                entries: RingEntries(),
                 // **배율을 넘겨야 후광이 따라 커진다.** 안 넘기면 기본값 1 로 떨어져서
                 // 크게 볼수록 후광이 상대적으로 얇아진다 — 맥은 반경이 1.5×배율이다.
-                scale: s,
-                // **제일 안쪽이 모델별이다.** 세션 · 주간은 누구에게나 있고 이건 없을
-                // 수도 있어서, 없을 때 자리가 비지 않는 쪽이 안쪽이다.
-                //
-                // 회색은 주간과 짝이다 — 모델별도 주간 창이라 주간이 차면 같이 죽는다.
-                scopedPercent: ScopedLimit?.Percent);
+                scale: s);
             if (ringOpacity < 1) context.Pop();
         }
 
@@ -1201,11 +1254,15 @@ public sealed class HudView : FrameworkElement
         // 링과 같은 규칙이다 — 링만 회색이고 점은 초록이면 앞뒤가 안 맞는다. 그래서
         // 링이 보는 것과 **똑같은 판단**을 줄마다 넘긴다. 세션 줄은 세션 링과, 주간
         // 줄은 주간 링과 짝이다. 끊겼을 때 다 씀 표시가 지는 까닭도 거기 적어 뒀다.
-        var blocks = new List<Block>(3)
+        var blocks = new List<Block>(3);
+
+        // **5시간 한도가 없는 계정(인증된 Ultra)이면 줄째 뺀다.** "—" 로 남겨 두면 아직
+        // 못 읽은 것처럼 보인다. 링도 같은 판단으로 빠진다(<see cref="RingEntries"/>).
+        if (HasSessionLimit)
         {
-            MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s, ShowsSessionSpent),
-            MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s, ShowsWeeklySpent),
-        };
+            blocks.Add(MeasureBlock("세션", Snapshot?.FiveHour, now, palette, s, ShowsSessionSpent));
+        }
+        blocks.Add(MeasureBlock("주간", Snapshot?.SevenDay, now, palette, s, ShowsWeeklySpent));
 
         // 링과 같은 순서로 맨 아래. 켜져 있고 서버가 줄 때만 나온다.
         //

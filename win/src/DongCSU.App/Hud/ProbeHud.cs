@@ -15,7 +15,8 @@ namespace DongCSU.App.Hud;
 /// 그래서 화면이 아니라 <b>치수</b>를 잰다. 창 크기와 그 안에 놓이는 것들을 뷰가 쓰는
 /// 셈 그대로 물어봐서(<c>HudView.Probe*</c>), 하나라도 창 밖으로 나가면 실패시킨다.
 ///
-/// 보기 3가지 × 모델별 한도 × 자원 사용량 × 배율 4단계 = 48가지를 전부 돈다.
+/// 보기 3가지 × 5시간 한도 유무 × 모델별 한도 × 자원 사용량 × 배율 4단계 = 96가지를
+/// 전부 돈다.
 /// <b>바깥 것에 안 기댄다</b> — 자격 증명도 네트워크도 안 본다. CI 에 걸어도 된다.
 /// </summary>
 internal static class ProbeHud
@@ -29,8 +30,13 @@ internal static class ProbeHud
         {
             Console.WriteLine();
             Console.WriteLine(Label(mode));
-            Console.WriteLine("  모델별 CPU 배율        창          링  가운데  검사");
+            Console.WriteLine("  5시간 모델별 CPU 배율        창          링  가운데  검사");
 
+            // **5시간 한도가 없는 계정(인증된 Ultra)도 돈다.** 거기서는 세션 링이 빠지고
+            // 안쪽 것이 바깥 자리를 물려받는데, 그 자리 옮김이 치수와 맞는지는 눈으로 볼
+            // 수 없다 — 링 둘이 큰 카드에서 헐렁해진 것도, 그림이 제일 안쪽 링을 파고든
+            // 것도 창 안이라 안 잘린다.
+            foreach (var session in new[] { true, false })
             foreach (var scoped in new[] { false, true })
             {
                 foreach (var stats in new[] { false, true })
@@ -40,20 +46,22 @@ internal static class ProbeHud
                         rows++;
                         // **한 벌만 만든다.** 재는 쪽과 찍는 쪽이 다른 뷰면, 값이 갈렸을 때
                         // 표에는 통과가 뜨는데 실패로 세는 꼴이 날 수 있다.
-                        var view = View(mode, scoped, stats, scale, toRight: true);
-                        var notes = Check(view, mode, scoped, stats, scale);
+                        var view = View(mode, scoped, stats, scale, toRight: true, session);
+                        var notes = Check(view, mode, scoped, stats, scale, session);
                         var panel = view.SizeFor(mode);
                         var ring = view.ProbeRingRect().Width;
                         var room = view.ProbeIconRoom();
 
                         Console.WriteLine(
-                            $"  {(scoped ? "켬" : "끔"),-5} {(stats ? "켬" : "끔"),-3} {scale.Title(),-9}"
+                            $"  {(session ? "있음" : "없음"),-5} {(scoped ? "켬" : "끔"),-5}"
+                            + $" {(stats ? "켬" : "끔"),-3} {scale.Title(),-9}"
                             + $" {panel.Width,4:0}x{panel.Height,-4:0}  {ring,5:0.0} {room,5:0.0}   "
                             + (notes.Count == 0 ? "통과" : string.Join(" · ", notes)));
 
                         if (notes.Count > 0)
                         {
-                            failed.Add($"{Label(mode)} 모델별{(scoped ? "켬" : "끔")}"
+                            failed.Add($"{Label(mode)} 5시간{(session ? "있음" : "없음")}"
+                                + $"/모델별{(scoped ? "켬" : "끔")}"
                                 + $"/CPU{(stats ? "켬" : "끔")}/{scale.Title()}");
                         }
                     }
@@ -108,7 +116,12 @@ internal static class ProbeHud
     };
 
     /// <summary>재는 데 쓸 뷰 하나. 값은 실제 앱이 넣는 것과 같은 꼴로 채운다.</summary>
-    private static HudView View(HudMode mode, bool scoped, bool stats, HudScale scale, bool toRight)
+    /// <param name="session">
+    /// 이 계정에 5시간 한도가 있는지. <b>설정이 아니라 조회 응답에서 오는 값이다</b> —
+    /// 인증된 Ultra 는 서버가 <c>five_hour: null</c> 을 준다.
+    /// </param>
+    private static HudView View(
+        HudMode mode, bool scoped, bool stats, HudScale scale, bool toRight, bool session)
         => new()
         {
             Mode = mode,
@@ -116,12 +129,16 @@ internal static class ProbeHud
             ExpandSide = toRight ? HudExpandSide.Right : HudExpandSide.Left,
             ShowsProcessStats = stats,
             ShowsScopedLimit = scoped,
+            HasSessionLimit = session,
             VersionBadge = AppInfo.Version,
             HasUpdate = true,
             Snapshot = new UsageSnapshot
             {
-                FiveHour = new UsageWindow { Utilization = 34 },
+                // 없는 계정은 서버가 창을 아예 안 준다. 뷰가 `HasSessionLimit` 만 보고
+                // 빼더라도, 값까지 비워 둬야 실제 응답과 같은 꼴이 된다.
+                FiveHour = session ? new UsageWindow { Utilization = 34 } : null,
                 SevenDay = new UsageWindow { Utilization = 61 },
+                HasSessionLimit = session,
                 FetchedAt = DateTimeOffset.UtcNow,
                 // **켠 모습을 재려면 값이 있어야 한다.** 서버가 안 주면 링이 안 늘고,
                 // 그러면 켠 조합을 잰다면서 끈 것과 같은 것을 재게 된다.
@@ -141,7 +158,7 @@ internal static class ProbeHud
 
     /// <summary>어긋난 것만 골라 돌려준다. 빈 목록이면 통과다.</summary>
     private static List<string> Check(
-        HudView view, HudMode mode, bool scoped, bool stats, HudScale scale)
+        HudView view, HudMode mode, bool scoped, bool stats, HudScale scale, bool session)
     {
         var notes = new List<string>();
         var panel = view.SizeFor(mode);
@@ -199,7 +216,7 @@ internal static class ProbeHud
         // 누를 자리들이 창 안에 있어야 한다. 밖으로 나가면 버튼이 안 눌린다.
         foreach (var toRight in new[] { true, false })
         {
-            var sided = View(mode, scoped, stats, scale, toRight);
+            var sided = View(mode, scoped, stats, scale, toRight, session);
             var bounds = new Rect(0, 0, panel.Width, panel.Height);
             bounds.Inflate(0.5, 0.5);
             var side = toRight ? "오른쪽" : "왼쪽";

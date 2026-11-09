@@ -78,6 +78,30 @@ public sealed class UsageStore(UsageApi api, TimeProvider? time = null)
     public bool IsWeeklySpent => Snapshot?.SevenDay?.Utilization >= 100;
 
     /// <summary>
+    /// 5시간 한도가 있는 계정인지. 없으면 세션 링·줄을 통째로 뺀다.
+    ///
+    /// **아직 한 번도 못 읽었으면 있다고 본다.** 거의 모든 계정에 있어서, 첫 조회 전에
+    /// 빼 두면 대부분의 사람에게 링 하나가 뒤늦게 생겨나는 것으로 보인다.
+    /// </summary>
+    public bool HasSessionLimit => Snapshot?.HasSessionLimit ?? true;
+
+    /// <summary>
+    /// 마스코트가 지쳐 가는 정도를 재는 사용률.
+    ///
+    /// **보통은 세션(5시간)이다** — 주간은 며칠에 걸쳐 천천히 차서, 그걸로 지치면 한 주
+    /// 내내 지친 얼굴로 있게 된다.
+    ///
+    /// **5시간 한도가 없는 계정(인증된 Ultra)만 주간으로 본다.** 거기서는 주간이 곧 제일
+    /// 먼저 막히는 한도다. 세션만 보고 있으면 주간을 다 쓰는 순간까지 멀쩡하다가 갑자기
+    /// 쓰러진다 — 다가오는 것을 미리 보여주는 단계가 통째로 없어진다.
+    ///
+    /// **가르는 자리를 여기 하나에 둔다.** 기분을 정하는 <c>OwlMoodResolver</c> 는 계정
+    /// 모양을 모르고, 부르는 쪽(HUD·렌더 통로)이 저마다 고르면 그림과 걸음이 갈린다.
+    /// </summary>
+    public double? TiringUtilization =>
+        (HasSessionLimit ? Snapshot?.FiveHour : Snapshot?.SevenDay)?.Utilization;
+
+    /// <summary>
     /// 화면에 그릴 모델별 주간 한도 하나. 없으면 null.
     ///
     /// **셈은 <see cref="UsageSnapshot.ScopedLimit"/> 이 한다** — HUD 는 스토어를 모르고

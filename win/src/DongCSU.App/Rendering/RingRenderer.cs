@@ -5,6 +5,21 @@ using DongCSU.Core.Usage;
 namespace DongCSU.App.Rendering;
 
 /// <summary>
+/// 링 한 겹에 그릴 것.
+/// </summary>
+/// <param name="Percent">
+/// 사용률. **null 과 0% 는 다르다** — null 이면 진행선을 아예 안 그리고 트랙만 남긴다
+/// (값이 아직 안 온 한도).
+/// </param>
+/// <param name="SpentColor">
+/// 다 써서 칠할 회색. 안 주면 제 사용률 색으로 그린다.
+///
+/// **숫자는 그대로 두고 색만 뺀다** — 얼마나 썼는지는 여전히 알아야 하고, 쓸 수 없다는
+/// 것만 더 알려주면 된다.
+/// </param>
+public readonly record struct RingEntry(double? Percent, Color? SpentColor);
+
+/// <summary>
 /// 사용률 링. 바깥부터 5시간 세션 · 7일 주간 · 모델별이다.
 /// **셋째는 설정에서 켰고 서버가 줄 때만 그린다.**
 ///
@@ -62,26 +77,15 @@ public static class RingRenderer
     /// **두께에서 끌어내지 않고 따로 받는다.** 두께의 기준값이 카드(6·5)와 펫에서
     /// 다르므로 나눠서 되돌리면 펫에서 틀린 배율이 나온다.
     /// </param>
-    /// <param name="sessionSpentColor">
-    /// 바깥(세션) 링에 칠할 회색. 안 넘기면 제 사용률 색으로 그린다.
+    /// <param name="entries">
+    /// 그릴 링을 **바깥부터**. 세 겹까지 그리고 나머지는 버린다.
     ///
-    /// **세션이든 주간이든 하나만 차도 세션은 못 쓴다.** 그래서 이쪽이 더 자주 켜진다.
-    /// </param>
-    /// <param name="weeklySpentColor">
-    /// 안쪽(주간) 링에 칠할 회색.
+    /// **무엇이 몇 겹인지 여기서 정하지 않는다.** 5시간 한도가 없는 계정은 세션 링이
+    /// 빠지고 안쪽 것이 바깥 자리를 물려받는데, 그 규칙은 <c>HudView.RingEntries</c>
+    /// 한 곳에 있다 — 그리는 쪽이 이름(세션·주간·모델별)을 알면 빠지는 경우마다
+    /// 여기도 같이 고쳐야 한다.
     ///
-    /// **주간이 스스로 찼을 때만 켠다.** 세션만 찬 것으로 여기까지 회색을 칠하면,
-    /// 다음 창이 열리면 실제로 쓸 수 있는 여유를 숨기는 셈이다.
-    /// </param>
-    /// <param name="scopedPercent">
-    /// 제일 안쪽 모델별 링(예: Fable). **없으면 아예 안 그린다.**
-    ///
-    /// 서버가 줄 때만 있는 값이라 늘 자리를 비워 두면, 링이 있는 사람과 없는 사람의
-    /// 가운데 그림 크기가 달라진다.
-    /// </param>
-    /// <param name="scopedSpentColor">
-    /// 모델별 링에 칠할 회색. **주간과 짝이다** — 모델별도 주간 창이라 주간이 차면
-    /// 같이 죽는다.
+    /// **바깥 한 겹만 굵다.** 두 번째부터는 <paramref name="innerThickness"/> 다.
     /// </param>
     public static void Draw(
         DrawingContext context,
@@ -90,39 +94,39 @@ public static class RingRenderer
         double outerThickness,
         double innerThickness,
         double gap,
-        double? sessionPercent,
-        double? weeklyPercent,
         Color trackColor,
         bool grayscale,
-        Color? sessionSpentColor = null,
-        Color? weeklySpentColor = null,
-        double scale = 1,
-        double? scopedPercent = null)
+        IReadOnlyList<RingEntry> entries,
+        double scale = 1)
     {
-        // 선이 지름 밖으로 삐져나가지 않게 두께의 절반만큼 안으로 넣는다.
-        var outerRadius = (outerDiameter - outerThickness) / 2;
-        var innerDiameter = Nested(outerDiameter, outerThickness, gap);
-        var innerRadius = (innerDiameter - innerThickness) / 2;
+        var diameter = outerDiameter;
+        var thickness = outerThickness;
 
-        DrawOne(context, center, outerRadius, outerThickness, sessionPercent, trackColor, grayscale,
-            sessionSpentColor, scale);
-        if (innerRadius <= innerThickness) return;
+        for (var depth = 0; depth < entries.Count && depth < MaxRings; depth++)
+        {
+            if (depth > 0)
+            {
+                diameter = Nested(diameter, thickness, gap);
+                thickness = innerThickness;
+            }
 
-        DrawOne(context, center, innerRadius, innerThickness, weeklyPercent, trackColor, grayscale,
-            weeklySpentColor, scale);
+            // 선이 지름 밖으로 삐져나가지 않게 두께의 절반만큼 안으로 넣는다.
+            var radius = (diameter - thickness) / 2;
+            // **자리가 모자라면 거기서 멈춘다.** 안쪽으로 갈수록 좁아지므로 뒤쪽은
+            // 더 모자란다 — 그려 봐야 선이 서로 겹쳐 뭉개진다.
+            if (depth > 0 && radius <= thickness) return;
 
-        // **모델별은 값이 있을 때만.** 트랙만 그려 두면 "쓸 수 있는데 0%" 로 읽힌다.
-        if (scopedPercent is null) return;
-
-        var scopedDiameter = Nested(innerDiameter, innerThickness, gap);
-        var scopedRadius = (scopedDiameter - innerThickness) / 2;
-        if (scopedRadius <= innerThickness) return;
-
-        // **주간과 같은 색이다.** 모델별은 주간 창의 한 조각이라 따로 죽지 않는다 —
-        // 색을 따로 받으면 부르는 쪽이 둘을 다르게 줄 수 있는 것처럼 읽힌다.
-        DrawOne(context, center, scopedRadius, innerThickness, scopedPercent, trackColor, grayscale,
-            weeklySpentColor, scale);
+            var entry = entries[depth];
+            DrawOne(context, center, radius, thickness, entry.Percent, trackColor, grayscale,
+                entry.SpentColor, scale);
+        }
     }
+
+    /// <summary>
+    /// 겹쳐 그릴 수 있는 링의 최대 수. 셋을 넘으면 가운데 그림 자리가 안 남는다
+    /// (<c>HudView.IconRoom</c> 과 같은 전제다).
+    /// </summary>
+    public const int MaxRings = 3;
 
     /// <summary>
     /// 링 하나 안쪽에 들어가는 다음 링의 지름.

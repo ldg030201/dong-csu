@@ -69,6 +69,18 @@ public sealed record UsageSnapshot
     public IReadOnlyList<UsageLimit> Limits { get; init; } = [];
 
     /// <summary>
+    /// 이 계정에 5시간 창이 있는지.
+    ///
+    /// **Ultra 는 인증이 끝나면 5시간 한도가 없어진다.** 그때 서버는 <c>five_hour</c> 를
+    /// 빼지 않고 <c>null</c> 로 준다. 키가 아예 없는 것(옛 응답)과는 다르게 다룬다 —
+    /// 그쪽은 값을 모르는 것이라 화면에 "—" 로 남긴다.
+    ///
+    /// **요금제 이름으로 가르지 않는다.** 인증 전인 Ultra 는 임시 5시간 한도가 걸려
+    /// 있어서, 이름만 보고 숨기면 있는 한도를 가린다. 조회할 때마다 응답을 본다.
+    /// </summary>
+    public bool HasSessionLimit { get; init; } = true;
+
+    /// <summary>
     /// 화면에 그릴 모델별 주간 한도(<c>weekly_scoped</c>) 하나. **제일 많이 쓴 것.**
     ///
     /// **세션·주간과 달리 없을 수 있다.** 요금제와 쓴 모델에 따라 달라서, 화면에서도

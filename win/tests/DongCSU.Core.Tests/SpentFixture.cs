@@ -18,13 +18,18 @@ internal static class SpentFixture
     public static UsageStore Empty() =>
         new(new UsageApi(new HttpClient(), new CredentialStore(new NoCredentials(), null, null)));
 
-    public static UsageStore Store(double? session, double? weekly)
+    /// <param name="hasSessionLimit">
+    /// 이 계정에 5시간 창이 있는지. **인증된 Ultra 는 서버가 없다고 알려 준다** —
+    /// 그때는 세션 링·줄이 빠지고 지침도 주간으로 재진다.
+    /// </param>
+    public static UsageStore Store(double? session, double? weekly, bool hasSessionLimit = true)
     {
         var store = Empty();
         store.Preview(new UsageSnapshot
         {
             FiveHour = session is { } s ? Window(s) : null,
             SevenDay = weekly is { } w ? Window(w) : null,
+            HasSessionLimit = hasSessionLimit,
             FetchedAt = DateTimeOffset.UtcNow,
         });
         return store;

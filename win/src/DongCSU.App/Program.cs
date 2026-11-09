@@ -441,9 +441,10 @@ public sealed class AppController : IDisposable
         // 다음 조회 시각은 결과에 따라 달라진다(429 를 맞으면 물러난다).
         pollTimer.Interval = store.NextPollDelay();
 
-        var session = store.Snapshot?.FiveHour?.Utilization;
+        // **어느 한도로 지치는지는 저장소가 고른다**(5시간이 없는 계정은 주간).
+        // 여기서 `FiveHour` 를 직접 집으면 Ultra 계정은 주간을 다 쓸 때까지 안 지친다.
         var mood = OwlMoodResolver.Resolve(
-            OwlDocument.Embedded, session, store.IsDisconnected, store.IsSpent);
+            OwlDocument.Embedded, store.TiringUtilization, store.IsDisconnected, store.IsSpent);
         // 다 썼으면 자세는 탈진 그대로 두고 색을 뺀다. 링·숫자와 같은 규칙이다.
         //
         // **세션도 본다.** 세션을 다 쓴 사람은 다음 창이 열릴 때까지 한 글자도 못
@@ -471,6 +472,9 @@ public sealed class AppController : IDisposable
         // **세션 몫을 따로 넘긴다.** 세션 링·세션 줄만 회색이 되는 경우가 있어서
         // 하나로 합칠 수 없다 — 주간은 다음 창이 열리면 실제로 쓸 수 있는 양이다.
         hud.View.IsSessionSpent = store.IsSessionSpent;
+        // **5시간 한도가 없는 계정이면 세션 링·줄이 통째로 빠진다**(인증된 Ultra).
+        // 설정이 아니라 조회 응답에서 오는 값이라 여기서 넘긴다.
+        hud.View.HasSessionLimit = store.HasSessionLimit;
         hud.View.IsStale = store.IsStale;
         hud.View.NeedsReauth = store.NeedsReauth;
         hud.View.IsRefreshing = store.IsRefreshing;
