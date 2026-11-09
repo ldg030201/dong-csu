@@ -149,15 +149,21 @@ internal static class RenderProbe
         {
             Console.WriteLine("--render-settings <out.png> "
                 + "[status|measure|display|icon|pet|account|version] "
-                + "[너비x높이] [dark|light] [새 버전(예: 1.2.3)]");
+                + "[너비x높이] [dark|light] [새 버전(예: 1.2.3)] [reauth]");
             return 2;
         }
 
         var tab = Word(args, 2) ?? "status";
         var size = Size(Word(args, 3)) ?? new Size(760, 760);
+        // **재로그인이 필요한 모습.** 고정값은 늘 멀쩡한 조회라, 이걸 안 주면 로그인이 낡은
+        // 사람이 실제로 보는 계정 탭 안내·상태 탭 딱지를 한 번도 못 본다. 자리를 안 가리고
+        // 낱말 하나로 받는다 — 새 버전 칸과 섞이지 않게 그 칸에서는 뺀다.
+        var reauth = args.Skip(2).Any(arg => arg.Equals("reauth", StringComparison.OrdinalIgnoreCase));
         // 새 버전이 있는 모습을 보고 싶을 때만 준다. 맥의 `update=1.2.3` 과 같은 자리다.
         // **소문자로 뭉개지 않는다** — 버전 문자열은 그대로 화면에 나온다.
-        var latest = args.Length > 5 ? args[5] : null;
+        var latest = args.Length > 5 && !args[5].Equals("reauth", StringComparison.OrdinalIgnoreCase)
+            ? args[5]
+            : null;
 
         var settings = new AppSettings { Theme = Word(args, 4) == "light" ? HudTheme.Light : HudTheme.Dark };
 
@@ -166,7 +172,7 @@ internal static class RenderProbe
         // 그 한 벌은 `ProbeLayout.ProbeWindow` 한 곳에서만 나와야 한다 —
         // `--probe-layout` 이 재는 화면과 여기서 그리는 화면이 갈리면 둘 다 못 믿게 된다.
         // 창을 화면 밖에 두는 것도 저쪽이 한다.
-        var window = ProbeLayout.ProbeWindow(settings, latest);
+        var window = ProbeLayout.ProbeWindow(settings, latest, needsReauth: reauth);
 
         // **크기만 여기서 준다.** 재는 쪽은 창 기본 크기와 최소 크기를 쓰지만 그리는 쪽은
         // 인자로 받은 크기로 뽑는다 — 갈리는 것이 이것 하나뿐이라 창을 만든 뒤에 얹는다.

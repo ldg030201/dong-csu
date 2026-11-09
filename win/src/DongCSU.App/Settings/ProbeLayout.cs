@@ -209,8 +209,13 @@ internal static class ProbeLayout
     /// <b>여기서 새 고정값을 지어내지 않는다</b> — 다른 모습이 필요하면 부르는 쪽이
     /// <c>MeterPreview</c> 에서 뽑아 넘긴다. 두 곳에서 지으면 잰 화면과 그린 화면이 갈린다.
     /// </param>
+    /// <param name="needsReauth">
+    /// 로그인이 낡아 재로그인이 필요한 모습. 값은 그대로 두고 그 상태만 얹는다 —
+    /// 실제 앱도 마지막 성공값을 남긴 채 딱지를 단다.
+    /// </param>
     internal static SettingsWindow ProbeWindow(
-        AppSettings settings, string? latestVersion = null, UsageMeter? meter = null)
+        AppSettings settings, string? latestVersion = null, UsageMeter? meter = null,
+        bool needsReauth = false)
     {
         var http = UsageApi.CreateHttpClient();
         var credentials = new CredentialStore(
@@ -245,7 +250,9 @@ internal static class ProbeLayout
                 ],
             },
             // 상태 탭이 조회 카운트다운을 그린다. 예정 시각까지 넣어야 실제와 같아진다.
-            nextPoll: now.AddMinutes(7).AddSeconds(12));
+            nextPoll: now.AddMinutes(7).AddSeconds(12),
+            error: needsReauth ? UsageError.TokenExpired(fileAlsoSaidExpired: true).Message : null,
+            needsReauth: needsReauth);
 
         // 버전 탭의 "마지막 확인" 줄. 설치본으로 친다 — 폴더에 놓인 exe 로 재면 늘
         // "설치본이 아니라 자동 업데이트를 쓸 수 없습니다" 가 나와 실제와 달라진다.
