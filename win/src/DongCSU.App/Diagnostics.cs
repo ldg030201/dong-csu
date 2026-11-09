@@ -225,12 +225,14 @@ public static partial class Diagnostics
     {
         var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
         Console.WriteLine("재로그인 — claude 실행 파일 찾기");
         Console.WriteLine($"  네이티브 설치 자리: {ClaudeCli.NativeRoot(appData)}");
+        Console.WriteLine($"  데스크톱 앱 자리 : {ClaudeCli.DesktopRoot(localAppData)}");
         Console.WriteLine();
         Console.WriteLine("  후보 (위에서부터 본다)");
-        foreach (var candidate in ClaudeCli.Candidates(home, appData, Directory.EnumerateDirectories))
+        foreach (var candidate in ClaudeCli.Candidates(home, appData, localAppData, Directory.EnumerateDirectories))
         {
             Console.WriteLine($"    {(File.Exists(candidate) ? "있음" : "없음")}  {candidate}");
         }
@@ -244,7 +246,7 @@ public static partial class Diagnostics
         }
 
         var insideWsl = ClaudeCli.IsInsideWsl(credentialPath);
-        var executable = ClaudeCli.Resolve(home, appData, File.Exists, Directory.EnumerateDirectories);
+        var executable = ClaudeCli.Resolve(home, appData, localAppData, File.Exists, Directory.EnumerateDirectories);
 
         Console.WriteLine();
         Console.WriteLine($"  자격 증명: {credentialPath ?? "(못 찾음)"}{(insideWsl ? "  ← WSL 안" : "")}");

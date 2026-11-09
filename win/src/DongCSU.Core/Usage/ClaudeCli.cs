@@ -32,8 +32,13 @@ public static class ClaudeCli
     /// 그게 바로 이 매개변수를 만든 이유였던 버그다 — 공식 설치본으로 깐 사람에게
     /// "실행 파일을 찾지 못했습니다" 만 뜨던 것. 잊어도 컴파일이 되면 언제든 되돌아온다.
     /// </param>
+    /// <param name="localAppData">
+    /// <c>%LOCALAPPDATA%</c>. Claude 데스크톱 앱이 Claude Code 를 여기 깐다
+    /// (<see cref="DesktopRoot"/>). <b>기본값을 두지 않는다</b> — 위와 같은 이유다.
+    /// </param>
     public static IEnumerable<string> Candidates(
-        string home, string appData, Func<string, IEnumerable<string>> listDirectories)
+        string home, string appData, string localAppData,
+        Func<string, IEnumerable<string>> listDirectories)
     {
         yield return Path.Combine(home, ".local", "bin", "claude.exe");
         yield return Path.Combine(home, ".claude", "local", "claude.exe");
@@ -46,6 +51,72 @@ public static class ClaudeCli
         foreach (var path in VersionedCandidates(NativeRoot(appData), listDirectories))
         {
             yield return path;
+        }
+
+        // **데스크톱 앱이 깐 것은 그보다도 뒤다.** 앱이 저 쓰려고 둔 것이라 따로 깐
+        // CLI 가 있으면 그쪽이 맞다. 데스크톱 앱만 쓰는 사람에게는 이것이 유일한 CLI 다.
+        foreach (var path in DesktopCandidates(DesktopRoot(localAppData), listDirectories))
+        {
+            yield return path;
+        }
+    }
+
+    /// <summary>
+    /// Claude 데스크톱 앱이 Claude Code 를 깔아 두는 자리.
+    /// <c>%LOCALAPPDATA%\Claude-Data\claude_&lt;프로필&gt;\claude-code\&lt;버전&gt;\&lt;해시&gt;\claude.exe</c>.
+    ///
+    /// **실측으로 확인한 자리다** — 데스크톱 앱 4.23118 에서 <c>2.1.309</c> · <c>2.1.317</c>
+    /// 두 벌이 이렇게 깔려 있었고, 그 앱이 띄운 Claude Code 의 <c>CLAUDE_CODE_EXECPATH</c>
+    /// 가 그중 새것을 가리켰다. <see cref="NativeRoot"/>(로밍 · 해시 폴더 없음)는 그 전
+    /// 배치다 — 앱이 자리를 옮긴 뒤로 거기는 비어 있다.
+    ///
+    /// **이 자리를 안 보던 것이 실제로 문제였다.** 데스크톱 앱으로만 Claude Code 를 쓰면
+    /// 앱이 로그인을 제 안에 들고 있어서 <c>~/.claude/.credentials.json</c> 의 로그인이
+    /// 갱신되지 않고 낡는다. 그래서 재로그인이 꼭 필요한데, 정작 그 버튼이 "실행 파일을
+    /// 찾지 못했습니다" 만 띄웠다.
+    /// </summary>
+    public static string DesktopRoot(string localAppData) =>
+        Path.Combine(localAppData, "Claude-Data");
+
+    /// <summary>
+    /// 데스크톱 앱 자리 안의 실행 파일들. <b>모든 프로필을 통틀어 높은 버전부터</b> 낸다.
+    ///
+    /// 버전 폴더 안에 해시 폴더가 한 겹 더 있다(같은 버전이 다시 깔리면 해시가 갈린다).
+    /// 해시끼리는 어느 쪽이 새것인지 이름으로 알 수 없어서 늘어놓인 차례대로 둔다 —
+    /// 부르는 쪽이 있는 것 중 첫째를 고르므로 어느 쪽이든 실제로 있는 것이 잡힌다.
+    ///
+    /// <see cref="VersionedCandidates"/> 와 같이 <b>못 읽으면 조용히 빈 목록이다.</b>
+    /// 데스크톱 앱을 안 쓰는 사람에게는 이 자리가 늘 없다.
+    /// </summary>
+    public static IEnumerable<string> DesktopCandidates(
+        string root, Func<string, IEnumerable<string>> listDirectories)
+    {
+        var versions = new List<string>();
+        foreach (var profile in SafeList(root, listDirectories))
+        {
+            versions.AddRange(SafeList(Path.Combine(profile, "claude-code"), listDirectories));
+        }
+
+        foreach (var version in versions.OrderByDescending(NumericKey, StringComparer.Ordinal))
+        {
+            foreach (var build in SafeList(version, listDirectories))
+            {
+                yield return Path.Combine(build, "claude.exe");
+            }
+        }
+    }
+
+    /// <summary>하위 폴더. 없거나 못 읽으면 빈 목록 — 후보를 늘어놓다 던지면 재로그인이 죽는다.</summary>
+    private static IReadOnlyList<string> SafeList(
+        string directory, Func<string, IEnumerable<string>> listDirectories)
+    {
+        try
+        {
+            return [.. listDirectories(directory)];
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return [];
         }
     }
 
@@ -104,9 +175,9 @@ public static class ClaudeCli
     /// <param name="exists">파일이 있는지. 테스트가 진짜 디스크 없이 돈다.</param>
     /// <param name="listDirectories"><inheritdoc cref="Candidates" path="/param[@name='listDirectories']/node()"/></param>
     public static string? Resolve(
-        string home, string appData, Func<string, bool> exists,
+        string home, string appData, string localAppData, Func<string, bool> exists,
         Func<string, IEnumerable<string>> listDirectories) =>
-        Candidates(home, appData, listDirectories).FirstOrDefault(exists);
+        Candidates(home, appData, localAppData, listDirectories).FirstOrDefault(exists);
 
     /// <summary>
     /// 자격 증명을 <b>WSL 안에서</b> 찾았는지.

@@ -546,6 +546,9 @@ public sealed class AppController : IDisposable
         var executable = ClaudeCli.Resolve(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            // 데스크톱 앱이 깐 Claude Code 가 여기 있다. 데스크톱 앱만 쓰는 사람에게는
+            // 이것이 유일한 CLI 다.
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             File.Exists,
             Directory.EnumerateDirectories);
 
