@@ -135,7 +135,7 @@ public static class Changelog
         new ChangelogEntry
         {
             Version = "2.6.0",
-            Date = null,
+            Date = "2026-11-10",
             Groups =
             [
                 new ChangelogGroup
