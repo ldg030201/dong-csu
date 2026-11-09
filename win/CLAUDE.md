@@ -43,6 +43,41 @@
 
 지금 이 실행이 어느 쪽 파일을 보는지는 `DongCSU.exe --where` 로 찍어 본다.
 
+### Claude 데스크톱 앱 안에서 띄우면 `%APPDATA%` 가 다른 곳이다
+
+**Claude 데스크톱 앱은 MSIX 패키지다**(`Claude_<id>`). 그 앱의 Claude Code 세션에서
+`./build.ps1 -Test -Run` 이나 `Start-Process` 로 띄운 것은 패키지 안에서 돌아서,
+`%APPDATA%` 에 쓰는 것이 **`%LOCALAPPDATA%\Packages\Claude_<id>\LocalCache\Roaming\`** 으로
+간다. 그 세션에서 읽을 때도 그쪽이 먼저 보인다. 그래서:
+
+- 세션에서 띄운 테스트판의 `settings.json`·`log.txt` 는 **사용자가 시작 메뉴로 띄운 것과
+  다른 파일**이다. 세션 안에서 본 기록이 실제 사용자 기록이 아니다
+- 진짜 사용자처럼 띄우려면 **탐색기를 거친다** — `explorer.exe <exe 경로>`. 그러면 패키지
+  밖에서 돌고, 세션의 `CLAUDECODE`·`CLAUDE_CODE_*` 환경 변수도 안 물려받는다(재로그인이
+  띄우는 `claude.exe` 가 그걸 물려받으면 데스크톱 세션의 자식처럼 군다)
+- 패키지 밖에서 무엇이 찍히는지 세션에서 보려면, 출력을 **AppData 가 아닌 자리**(예:
+  `build/`)에 쓰는 `.cmd` 를 만들어 탐색기로 연다. **ASCII · CRLF 로 써라** — UTF-8 ·
+  LF 로 쓴 것은 아무것도 안 하고 끝났다
+- **`~/.claude` 는 프로필 뿌리라 가상화되지 않는다.** 자격 증명 파일은 안팎이 같다.
+  `%LOCALAPPDATA%\Claude-Data`(데스크톱 앱이 Claude Code 를 까는 자리)도 진짜 자리다
+
+이름 붙은 뮤텍스는 패키지 안팎이 같은 것을 본다 — 세션에서 띄운 두 번째 것이 탐색기로
+띄운 첫 번째 것을 불러내는 것까지 확인했다.
+
+### 판마다 하나만 뜬다
+
+**두 번째로 띄우면 먼저 뜬 것을 앞으로 불러내고 물러난다**(`Services/SingleInstance`).
+트레이에만 떠서 켜진 줄 모르고 바로가기를 또 누르기 쉽고, 그러면 HUD 가 겹치고 조회가
+두 배로 나가며 두 프로세스가 같은 `settings.json`·`token.json` 을 번갈아 덮는다.
+
+| | |
+| --- | --- |
+| 이름 | `Local\<어셈블리 이름>.Instance` — **정식판과 테스트판은 따로 하나씩** 뜬다 |
+| 불려 나온 쪽 | 숨긴 HUD 면 다시 보이고, 이미 보이면 설정 창을 앞으로 (`AppController.Reveal`) |
+| 업데이트 직후 | 옛 프로세스가 끝나는 중일 수 있어서 **5초 기다렸다** 물러난다. 그 안에 놓이면 넘겨받는다 |
+
+**진단 통로(`--probe-*`)와 Velopack 훅은 이 검사보다 앞이다** — 앱이 떠 있어도 돈다.
+
 ## 윈도우에서 작업한다면 — 먼저 읽어라
 
 이 앱은 처음에 **맥에서 눈으로 한 번도 못 보고** 만들어졌다. WPF 가 맥에서 컴파일되지
@@ -137,9 +172,9 @@ dotnet run --project tools/DongCSU.Tools -- --print-owl      idle    # 글자로
 DongCSU.exe --version
 DongCSU.exe --where          # 어느 판인지, 설정·기록·토큰이 어느 폴더인지
 DongCSU.exe --probe          # 자격 증명이 읽히는지, 사용량이 오는지
-DongCSU.exe --probe-login    # 재로그인을 누르면 무엇이 뜨는지 (후보를 전부 찍는다)
+DongCSU.exe --probe-login    # 재로그인을 누르면 무엇이 뜨는지 (후보를 전부 찍는다 · 데스크톱 앱이 깐 것까지)
 DongCSU.exe --probe-layout   # 탭마다 세로로 몇 pt 인지, 가로로 잘리는 곳은 없는지
-DongCSU.exe --probe-hud      # 카드가 모든 조합(보기 3 × 모델별 × CPU × 배율 4)에서 안 넘치는지
+DongCSU.exe --probe-hud      # 카드가 모든 조합(보기 3 × 5시간 유무 × 모델별 × CPU × 배율 4)에서 안 넘치는지
 DongCSU.exe --probe-perch    # 창에 붙는 규칙 (selftest) · 지금 떠 있는 창 (windows)
 DongCSU.exe --probe-pet      # 다른 화면으로 넘어가는 계산
 DongCSU.exe --probe-mascot   # 시트가 어떻게 구워져 있는지 재서 칸 표와 대조 (캐릭터 전부)
@@ -152,6 +187,7 @@ DongCSU.exe --log            # 기록 파일 내용
 # 화면을 PNG 로 (창을 안 띄운다)
 DongCSU.exe --render out.png 34 61 expanded owlsheet normal dark
 DongCSU.exe --render-settings out.png version 760x760 light
+DongCSU.exe --render-settings out.png account 760x760 light reauth   # 재로그인이 필요한 모습
 DongCSU.exe --render-owl out.png 64
 DongCSU.exe --render-menubar out.png 32 6   # 트레이 아이콘. 기분마다 한 줄, 프레임마다 한 칸
 ```
@@ -228,9 +264,11 @@ if ($run.ExitCode -ne 0) { exit 1 }
 **맥과 세로가 뒤집혀 있다.** 맥은 y 가 위로 크다. 네 변의 부호를 옮겨 적을 때 제일
 틀리기 쉬운 자리라 `PerchLayoutTests` 가 변마다 하나씩 굳혀 놨다.
 
-안 붙는다는 말을 들으면 **기록부터 본다** — 놓을 때마다 왜 안 붙었는지 창·변마다 한 줄씩
-남는다(`%APPDATA%\DongCSU\log.txt`). 지금 떠 있는 창은 `--probe-perch windows`,
-규칙 자체는 `--probe-perch selftest` 다.
+안 붙는다는 말을 들으면 **테스트판으로 재현해서 기록을 본다** — 놓을 때마다 왜 안
+붙었는지 창·변마다 한 줄씩 남는다(`%APPDATA%\DongCSU-Test\log.txt`). **정식판은
+"안 붙었다" 한 줄만 남긴다** — 창 목록에는 그때 열려 있던 남의 앱 이름과 창 자리가
+줄줄이 들어가서, 고치는 우리만 쓸 것을 사용자 쪽에 쌓을 이유가 없다(맥 2.6.0 과 같다).
+지금 떠 있는 창은 `--probe-perch windows`, 규칙 자체는 `--probe-perch selftest` 다.
 
 ## 부엉이
 
