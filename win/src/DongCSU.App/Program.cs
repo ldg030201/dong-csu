@@ -805,8 +805,13 @@ public sealed class AppController : IDisposable
         var planner = Planner(window);
         var windows = SurveyWindows(window);
 
-        if (!CanStayPerched
-            || planner.Snap(new Point(window.Left, window.Top), windows) is not { } spot)
+        // **못 붙으면 어느 길로 빠지든 미리 잡아 둔 자세를 되돌린다.**
+        //
+        // 안 되돌리면 아무 데도 안 붙은 채로 매달린 그림이 남는데, 그 상태에서는 걷는
+        // 자세가 아니라 매달린 그림으로 미끄러지고(애니메이터가 매달림을 먼저 본다),
+        // 커서 피하기도 죽고, 마우스를 받는 자리도 좁혀진 채로 남는다 — 다시 집어 들기
+        // 전에는 아무도 안 풀어 준다. 맥 2.6.0 에서 같은 자리를 고쳤다.
+        void GiveUp()
         {
             LogPerchAttempt(window, planner, windows);
             // **붙어 있던 것도 놓는다.** 자세만 되돌리고 여기를 빼먹으면 그림은 선
@@ -816,11 +821,19 @@ public sealed class AppController : IDisposable
             // 미리보기로 잡아 둔 자세를 되돌린다.
             if (animator.SetPerch(null)) { StartFrameTimer(); RefreshHud(); }
             SyncMotion();
+        }
+
+        if (!CanStayPerched
+            || planner.Snap(new Point(window.Left, window.Top), windows) is not { } spot)
+        {
+            GiveUp();
             return;
         }
 
-        if (planner.Origin(spot) is not { } at) { SyncMotion(); return; }
-        if (!motion.Perch(spot)) { SyncMotion(); return; }
+        // **자리를 못 잡거나 붙이기가 거절당한 것도 "못 붙은 것"이다.** 예전에는 이 둘만
+        // `SyncMotion()` 으로 빠져나가서 매달린 자세가 그대로 남았다.
+        if (planner.Origin(spot) is not { } at) { GiveUp(); return; }
+        if (!motion.Perch(spot)) { GiveUp(); return; }
 
         window.Left = at.X;
         window.Top = at.Y;
