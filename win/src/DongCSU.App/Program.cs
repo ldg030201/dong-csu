@@ -878,13 +878,22 @@ public sealed class AppController : IDisposable
         var origin = new Point(window.Left, window.Top);
         if (planner.MascotRect(origin) is not { } mascot) return;
 
+        var head = $"창에 안 붙었다 — 그림 자리 {PerchFinder.Box(mascot)} · 아이콘 {settings.IconStyle}";
+
+        // **정식판에는 창 목록을 안 적는다.** 한 덩이에 그때 열려 있던 창의 **앱 이름과
+        // 화면상 자리**가 줄줄이 들어가는데, 쓸 사람은 이걸 고치는 우리뿐이고 쌓이는 것은
+        // 사용자 쪽이다 — 맥에서 실제로 213KB · 앱 17개가 적혀 있었다(2.6.0 에서 테스트판
+        // 한정으로 바꿨다). 왜 안 붙었는지 봐야 할 때는 테스트판으로 재현하거나
+        // `--probe-perch` 를 쓴다.
+        if (!AppInfo.IsTestBuild)
+        {
+            AppLog.Write(head);
+            return;
+        }
+
         // **한 번에 쓴다.** `AppLog.Write` 는 부를 때마다 파일을 열고 닫아서, 창마다
         // 부르면 놓을 때 한 번에 서른 번 넘게 디스크를 두드린다 — 그것도 화면 갈래에서.
-        AppLog.Write(string.Join(Environment.NewLine, [
-            $"창에 안 붙었다 — 그림 자리 {PerchFinder.Box(mascot)} "
-                + $"· 아이콘 {settings.IconStyle}",
-            .. planner.Explain(origin, windows),
-        ]));
+        AppLog.Write(string.Join(Environment.NewLine, [head, .. planner.Explain(origin, windows)]));
     }
 
     /// <summary>붙어 있는 동안의 한 틱. 창을 따라가고 층을 맞춘다.</summary>
